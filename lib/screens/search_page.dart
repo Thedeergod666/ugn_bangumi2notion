@@ -1,0 +1,226 @@
+import 'package:flutter/material.dart';
+
+import '../models/bangumi_models.dart';
+import '../services/bangumi_api.dart';
+import '../services/settings_storage.dart';
+import '../widgets/navigation_shell.dart';
+import 'detail_page.dart';
+
+class SearchPage extends StatefulWidget {
+  const SearchPage({super.key});
+
+  @override
+  State<SearchPage> createState() => _SearchPageState();
+}
+
+class _SearchPageState extends State<SearchPage> {
+  final _controller = TextEditingController();
+  final _api = BangumiApi();
+  final _storage = SettingsStorage();
+
+  List<BangumiSearchItem> _items = [];
+  bool _loading = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final keyword = _controller.text.trim();
+      final resolvedKeyword =
+          keyword.isEmpty ? '魔法少女小圆' : keyword;
+      if (keyword.isEmpty) {
+        _controller.text = resolvedKeyword;
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: resolvedKeyword.length),
+        );
+      }
+      final data = await _storage.loadAll();
+      final token = data[SettingsKeys.bangumiAccessToken] ?? '';
+      if (token.isEmpty) {
+        throw Exception('未设置 Bangumi Access Token，请先在设置页授权');
+      }
+      final items =
+          await _api.search(keyword: resolvedKeyword, accessToken: token);
+      if (mounted) {
+        setState(() {
+          _items = items;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _items = [];
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NavigationShell(
+      title: 'Bangumi / Notion 导入器',
+      selectedRoute: '/search',
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '搜索条目',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    decoration: const InputDecoration(
+                      hintText: '输入番剧名称或关键字',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _search(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: _loading ? null : _search,
+                  icon: const Icon(Icons.search),
+                  label: const Text('搜索'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '搜索结果',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            if (_loading)
+              const Expanded(
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_errorMessage != null)
+              Expanded(
+                child: Center(
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _items.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = _items[index];
+                    return _ResultCard(
+                      item: item,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => DetailPage(subjectId: item.id),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultCard extends StatelessWidget {
+  const _ResultCard({required this.item, required this.onTap});
+
+  final BangumiSearchItem item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 72,
+                height: 96,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                  image: item.imageUrl.isNotEmpty
+                      ? DecorationImage(
+                          image: NetworkImage(item.imageUrl),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: item.imageUrl.isEmpty
+                    ? const Icon(Icons.image, size: 32)
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text('放送开始：${item.airDate.isEmpty ? '-': item.airDate}'),
+                    const SizedBox(height: 8),
+                    Text(
+                      item.summary.isEmpty ? '暂无简介' : item.summary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,89 @@
+name: flutter_utools
+description: 一个新的 Flutter 项目。
+
+# 以下行防止通过 `flutter pub publish` 意外发布到 pub.dev，私有包建议保留此设置
+publish_to: 'none' # 如需发布到 pub.dev，请移除此行
+
+# 以下定义应用程序的版本号和构建号
+# 版本号格式为三个用点分隔的数字，例如 1.2.43
+# 后面可跟一个用 + 分隔的可选构建号
+# 在 Flutter 构建时可通过 --build-name 和 --build-number 分别覆盖这些值
+# 在 Android 中，build-name 用作 versionName，build-number 用作 versionCode
+# 更多 Android 版本控制信息请参考：
+# https://developer.android.com/studio/publish/versioning
+# 在 iOS 中，build-name 用作 CFBundleShortVersionString，build-number 用作 CFBundleVersion
+# 更多 iOS 版本控制信息请参考：
+# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+# 在 Windows 中，build-name 用作产品和文件版本的主版本号、次版本号和修订号
+# build-number 用作构建后缀
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.6 <4.0.0'
+
+# 依赖项指定您的包所需的其他包
+# 要自动将依赖项升级到最新版本，可运行 `flutter pub upgrade --major-versions`
+# 或者手动修改下面的版本号为 pub.dev 上的最新版本
+# 要查看哪些依赖项有新版本，可运行 `flutter pub outdated`
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 以下添加 Cupertino Icons 字体到您的应用程序
+  # 与 CupertinoIcons 类一起使用可获得 iOS 风格图标
+  cupertino_icons: ^1.0.2
+  flutter_web_auth_2: ^3.1.1
+  http: ^1.2.2
+  shared_preferences: ^2.2.3
+  url_launcher: ^6.3.2
+  google_fonts: ^6.2.1
+  flutter_dotenv: ^6.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # 下面的 "flutter_lints" 包包含一组推荐的代码检查规则
+  # 用于鼓励良好的编码实践。该包提供的规则集已激活在
+  # 您包根目录下的 `analysis_options.yaml` 文件中
+  # 查看该文件可了解如何禁用特定规则或激活额外规则
+  flutter_lints: ^2.0.0
+
+# 有关此文件中通用 Dart 配置的信息，请参考：
+# https://dart.dev/tools/pub/pubspec
+
+# 以下部分是 Flutter 包特有的配置
+flutter:
+
+  # 以下行确保 Material Icons 字体被包含在您的应用程序中
+  # 以便您可以使用 Material Icons 类中的图标
+  uses-material-design: true
+
+  # 要添加资源到您的应用程序，请添加 assets 部分，例如：
+  assets:
+    - .env
+
+  # 图像资源可以引用一个或多个分辨率特定的"变体"
+  # 参见：https://flutter.dev/assets-and-images/#resolution-aware
+
+  # 关于从包依赖添加资源的详细信息，请参考：
+  # https://flutter.dev/assets-and-images/#from-packages
+
+  # 要添加自定义字体到您的应用程序，请在此 "flutter" 部分添加 fonts 配置
+  # 列表中的每个条目应包含 "family" 键（字体家族名称）和
+  # "fonts" 键（包含字体资源和其他描述符的列表）
+  # 例如：
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # 关于从包依赖添加字体的详细信息，请参考：
+  # https://flutter.dev/custom-fonts/#from-packages
