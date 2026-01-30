@@ -27,7 +27,7 @@ class _MappingPageState extends State<MappingPage> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool forceRefresh = false}) async {
     setState(() => _isLoading = true);
     try {
       final settings = await _settingsStorage.loadAll();
@@ -36,10 +36,17 @@ class _MappingPageState extends State<MappingPage> {
       _currentConfig = await _settingsStorage.getMappingConfig();
 
       if (_notionToken.isNotEmpty && _notionDatabaseId.isNotEmpty) {
-        _notionProperties = await _notionApi.getDatabaseProperties(
-          token: _notionToken,
-          databaseId: _notionDatabaseId,
-        );
+        if (!forceRefresh) {
+          _notionProperties = await _settingsStorage.getNotionProperties();
+        }
+
+        if (forceRefresh || _notionProperties.isEmpty) {
+          _notionProperties = await _notionApi.getDatabaseProperties(
+            token: _notionToken,
+            databaseId: _notionDatabaseId,
+          );
+          await _settingsStorage.saveNotionProperties(_notionProperties);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -76,6 +83,19 @@ class _MappingPageState extends State<MappingPage> {
     return NavigationShell(
       title: '字段映射设置',
       selectedRoute: '/mapping',
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: '刷新属性',
+          onPressed: _isLoading ? null : () => _loadData(forceRefresh: true),
+        ),
+        IconButton(
+          icon: const Icon(Icons.save),
+          tooltip: '保存配置',
+          onPressed: _isLoading ? null : _saveConfig,
+        ),
+        const SizedBox(width: 8),
+      ],
       child: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _notionToken.isEmpty || _notionDatabaseId.isEmpty
@@ -83,19 +103,9 @@ class _MappingPageState extends State<MappingPage> {
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          '字段映射配置',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-                        ),
-                        FilledButton.icon(
-                          onPressed: _saveConfig,
-                          icon: const Icon(Icons.save),
-                          label: const Text('保存配置'),
-                        ),
-                      ],
+                    const Text(
+                      '字段映射配置',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 16),
                     _buildMappingItem('标题 (Name)', _currentConfig.title, (val) {
@@ -166,7 +176,7 @@ class _MappingPageState extends State<MappingPage> {
           Expanded(
             flex: 3,
             child: DropdownButtonFormField<String>(
-              value: currentValue,
+              initialValue: currentValue,
               items: items.toSet().map((prop) {
                 // 如果 prop 为空或 null，显示为空字符串
                 final displayText = prop;

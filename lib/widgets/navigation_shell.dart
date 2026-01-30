@@ -8,11 +8,13 @@ class NavigationShell extends StatefulWidget {
     required this.title,
     required this.selectedRoute,
     required this.child,
+    this.actions,
   });
 
   final String title;
   final String selectedRoute;
   final Widget child;
+  final List<Widget>? actions;
 
   @override
   State<NavigationShell> createState() => _NavigationShellState();
@@ -97,6 +99,7 @@ class _NavigationShellState extends State<NavigationShell> {
             title: Text(widget.title),
             automaticallyImplyLeading: false,
             leading: null,
+            actions: widget.actions,
           ),
           body: Row(
             children: [

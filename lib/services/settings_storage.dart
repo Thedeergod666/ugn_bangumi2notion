@@ -11,6 +11,7 @@ class SettingsKeys {
   static const notionDatabaseId = 'notionDatabaseId';
   static const themeMode = 'themeMode';
   static const mappingConfig = 'mappingConfig';
+  static const notionProperties = 'notionProperties';
 }
 
 class SettingsStorage {
@@ -42,6 +43,16 @@ class SettingsStorage {
     final prefs = await _prefs;
     await prefs.setString(SettingsKeys.notionToken, notionToken);
     await prefs.setString(SettingsKeys.notionDatabaseId, notionDatabaseId);
+  }
+
+  Future<void> saveNotionProperties(List<String> properties) async {
+    final prefs = await _prefs;
+    await prefs.setStringList(SettingsKeys.notionProperties, properties);
+  }
+
+  Future<List<String>> getNotionProperties() async {
+    final prefs = await _prefs;
+    return prefs.getStringList(SettingsKeys.notionProperties) ?? [];
   }
 
   Future<void> saveThemeMode(String mode) async {

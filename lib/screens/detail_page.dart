@@ -146,23 +146,31 @@ class _DetailPageState extends State<DetailPage> {
                         ListTile(
                           leading: const Icon(Icons.check_circle, color: Colors.green),
                           title: const Text('已关联 Notion 页面'),
-                          subtitle: Text('ID: ${existingPageId!.substring(0, 8)}...'),
+                          subtitle: Text('ID: ${existingPageId.substring(0, 8)}...'),
                           dense: true,
                         )
                       else ...[
-                        RadioListTile<bool>(
-                          title: const Text('新建页面'),
-                          value: false,
+                        RadioGroup<bool>(
                           groupValue: isBindMode,
-                          onChanged: (val) => setDialogState(() => isBindMode = val!),
-                          dense: true,
-                        ),
-                        RadioListTile<bool>(
-                          title: const Text('绑定到已有页面'),
-                          value: true,
-                          groupValue: isBindMode,
-                          onChanged: (val) => setDialogState(() => isBindMode = val!),
-                          dense: true,
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() => isBindMode = val);
+                            }
+                          },
+                          child: Column(
+                            children: [
+                              RadioListTile<bool>(
+                                title: const Text('新建页面'),
+                                value: false,
+                                dense: true,
+                              ),
+                              RadioListTile<bool>(
+                                title: const Text('绑定到已有页面'),
+                                value: true,
+                                dense: true,
+                              ),
+                            ],
+                          ),
                         ),
                         if (isBindMode)
                           Padding(
