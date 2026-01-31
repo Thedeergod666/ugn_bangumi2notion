@@ -13,6 +13,7 @@ class MappingConfig {
   final String content;
   final String description;
   final String idPropertyName;
+  final String notionId;
 
   MappingConfig({
     this.title = '',
@@ -28,7 +29,8 @@ class MappingConfig {
     this.storyboard = '',
     this.content = '',
     this.description = '',
-    this.idPropertyName = '',
+    this.idPropertyName = 'Bangumi ID',
+    this.notionId = 'Notion ID',
   });
 
   Map<String, String> toJson() {
@@ -47,6 +49,7 @@ class MappingConfig {
       'content': content,
       'description': description,
       'idPropertyName': idPropertyName,
+      'notionId': notionId,
     };
   }
 
@@ -65,7 +68,8 @@ class MappingConfig {
       storyboard: json['storyboard'] ?? '',
       content: json['content'] ?? '',
       description: json['description'] ?? '',
-      idPropertyName: json['idPropertyName'] ?? '',
+      idPropertyName: json['idPropertyName'] ?? 'Bangumi ID',
+      notionId: json['notionId'] ?? 'Notion ID',
     );
   }
 
@@ -84,6 +88,7 @@ class MappingConfig {
     String? content,
     String? description,
     String? idPropertyName,
+    String? notionId,
   }) {
     return MappingConfig(
       title: title ?? this.title,
@@ -100,6 +105,7 @@ class MappingConfig {
       content: content ?? this.content,
       description: description ?? this.description,
       idPropertyName: idPropertyName ?? this.idPropertyName,
+      notionId: notionId ?? this.notionId,
     );
   }
 }

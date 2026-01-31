@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/mapping_config.dart';
+import '../models/notion_models.dart';
 
 class SettingsKeys {
   static const bangumiAppId = 'bangumiAppId';
@@ -59,14 +60,16 @@ class SettingsStorage {
     await prefs.setString(SettingsKeys.notionDatabaseId, notionDatabaseId);
   }
 
-  Future<void> saveNotionProperties(List<String> properties) async {
+  Future<void> saveNotionProperties(List<NotionProperty> properties) async {
     final prefs = await _prefs;
-    await prefs.setStringList(SettingsKeys.notionProperties, properties);
+    final jsonList = properties.map((p) => jsonEncode(p.toJson())).toList();
+    await prefs.setStringList(SettingsKeys.notionProperties, jsonList);
   }
 
-  Future<List<String>> getNotionProperties() async {
+  Future<List<NotionProperty>> getNotionProperties() async {
     final prefs = await _prefs;
-    return prefs.getStringList(SettingsKeys.notionProperties) ?? [];
+    final jsonList = prefs.getStringList(SettingsKeys.notionProperties) ?? [];
+    return jsonList.map((j) => NotionProperty.fromJson(jsonDecode(j))).toList();
   }
 
   Future<void> saveThemeMode(String mode) async {

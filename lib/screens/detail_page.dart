@@ -145,7 +145,8 @@ class _DetailPageState extends State<DetailPage> {
     final List<String> topTags = _detail!.tags.take(10).toList();
     final Set<String> selectedTags = {};
 
-    final TextEditingController bindIdController = TextEditingController();
+    final TextEditingController bangumiIdController = TextEditingController();
+    final TextEditingController notionIdController = TextEditingController();
     bool isBindMode = false;
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -199,14 +200,36 @@ class _DetailPageState extends State<DetailPage> {
                         if (isBindMode)
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            child: TextField(
-                              controller: bindIdController,
-                              decoration: const InputDecoration(
-                                labelText: 'Notion Page ID',
-                                hintText: '输入 32 位 ID 或页面 URL',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: bangumiIdController,
+                                    enabled: notionIdController.text.isEmpty,
+                                    onChanged: (val) => setDialogState(() {}),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Bangumi ID',
+                                      hintText: 'Bangumi ID',
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: notionIdController,
+                                    enabled: bangumiIdController.text.isEmpty,
+                                    onChanged: (val) => setDialogState(() {}),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Notion ID',
+                                      hintText: 'Notion ID',
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                       ],
@@ -271,7 +294,9 @@ class _DetailPageState extends State<DetailPage> {
                     Navigator.pop(context, {
                       'fields': selectedFields,
                       'tags': selectedTags,
-                      'pageId': isBindMode ? bindIdController.text.trim() : existingPageId,
+                      'bangumiId': bangumiIdController.text.trim(),
+                      'notionId': notionIdController.text.trim(),
+                      'existingPageId': existingPageId,
                       'isBind': isBindMode,
                     });
                   },
@@ -287,30 +312,55 @@ class _DetailPageState extends State<DetailPage> {
     if (result != null && mappingConfig != null) {
       final Set<String> fields = result['fields'];
       final Set<String> tags = result['tags'];
-      final String? pageId = result['pageId'];
+      final String? bangumiIdStr = result['bangumiId'];
+      final String? notionIdStr = result['notionId'];
+      final String? existingPageIdResult = result['existingPageId'];
 
-      // 如果是绑定模式，需要先验证 ID
-      String? targetPageId = pageId;
-      if (result['isBind'] == true && (targetPageId == null || targetPageId.isEmpty)) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('请输入有效的 Notion Page ID')),
-          );
-        }
-        return;
-      }
+      // 如果是绑定模式，需要根据 ID 查找页面
+      String? targetPageId = existingPageIdResult;
+      if (result['isBind'] == true) {
+        setState(() => _importing = true);
+        try {
+          final settings = await _storage.loadAll();
+          final token = settings[SettingsKeys.notionToken] ?? '';
+          final databaseId = settings[SettingsKeys.notionDatabaseId] ?? '';
 
-      if (result['isBind'] == true && targetPageId != null) {
-        final normalized = _notionApi.normalizePageId(targetPageId);
-        if (normalized == null) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Notion Page ID 无效')),
+          if (bangumiIdStr != null && bangumiIdStr.isNotEmpty) {
+            targetPageId = await _notionApi.findPageByProperty(
+              token: token,
+              databaseId: databaseId,
+              propertyName: mappingConfig.idPropertyName,
+              value: int.tryParse(bangumiIdStr) ?? 0,
+              type: 'number',
+            );
+          } else if (notionIdStr != null && notionIdStr.isNotEmpty) {
+            targetPageId = await _notionApi.findPageByProperty(
+              token: token,
+              databaseId: databaseId,
+              propertyName: mappingConfig.notionId,
+              value: notionIdStr,
+              type: 'rich_text',
             );
           }
+
+          if (targetPageId == null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('未找到对应的 Notion 页面，请检查输入')),
+              );
+            }
+            setState(() => _importing = false);
+            return;
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('查找页面失败: $e')),
+            );
+          }
+          setState(() => _importing = false);
           return;
         }
-        targetPageId = normalized;
       }
 
       _importToNotion(

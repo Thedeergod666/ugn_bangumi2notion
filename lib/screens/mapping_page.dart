@@ -3,6 +3,7 @@ import '../models/mapping_config.dart';
 import '../services/notion_api.dart';
 import '../services/settings_storage.dart';
 import '../widgets/navigation_shell.dart';
+import '../models/notion_models.dart';
 
 class MappingPage extends StatefulWidget {
   const MappingPage({super.key});
@@ -16,7 +17,7 @@ class _MappingPageState extends State<MappingPage> {
   final SettingsStorage _settingsStorage = SettingsStorage();
 
   bool _isLoading = true;
-  List<String> _notionProperties = [];
+  List<NotionProperty> _notionProperties = [];
   MappingConfig _currentConfig = MappingConfig();
   String _notionToken = '';
   String _notionDatabaseId = '';
@@ -150,18 +151,28 @@ class _MappingPageState extends State<MappingPage> {
                     _buildMappingItem('Bangumi ID 属性 (Property Name)', _currentConfig.idPropertyName, (val) {
                       setState(() => _currentConfig = _currentConfig.copyWith(idPropertyName: val));
                     }),
+                    const Divider(),
+                    _buildMappingItem('Notion ID 属性 (Used for Binding)', _currentConfig.notionId, (val) {
+                      setState(() => _currentConfig = _currentConfig.copyWith(notionId: val));
+                    }),
                     const SizedBox(height: 24),
                   ],
                 ),
     );
   }
 
-  Widget _buildMappingItem(String label, String currentValue, ValueChanged<String?> onChanged) {
+  Widget _buildMappingItem(String label, String currentValue, ValueChanged<String?>? onChanged, {bool enabled = true}) {
     // 确保当前值在选项列表中，如果不在则添加（可能是之前保存的但现在数据库里没了，或者初始默认值）
     // 同时确保包含一个空字符串选项，用于“置空”
-    final List<String> items = ['', ..._notionProperties];
-    if (currentValue.isNotEmpty && !items.contains(currentValue)) {
-      items.add(currentValue);
+    final List<NotionProperty> items = [
+      NotionProperty(name: '', type: ''),
+      ..._notionProperties
+    ];
+
+    // 检查 currentValue 是否在 items 中（仅按名称匹配）
+    final bool exists = items.any((p) => p.name == currentValue);
+    if (currentValue.isNotEmpty && !exists) {
+      items.add(NotionProperty(name: currentValue, type: 'unknown'));
     }
 
     return Padding(
@@ -176,16 +187,34 @@ class _MappingPageState extends State<MappingPage> {
           Expanded(
             flex: 3,
             child: DropdownButtonFormField<String>(
-              initialValue: currentValue,
-              items: items.toSet().map((prop) {
-                // 如果 prop 为空或 null，显示为空字符串
-                final displayText = prop;
+              value: currentValue,
+              items: items.map((prop) {
                 return DropdownMenuItem(
-                  value: prop,
-                  child: Text(displayText, overflow: TextOverflow.ellipsis),
+                  value: prop.name,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          prop.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (prop.type.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '(${prop.type})',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).disabledColor,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 );
               }).toList(),
-              onChanged: onChanged,
+              onChanged: enabled ? onChanged : null,
               decoration: const InputDecoration(
                 isDense: true,
                 border: OutlineInputBorder(),

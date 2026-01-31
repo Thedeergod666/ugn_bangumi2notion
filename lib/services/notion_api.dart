@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/bangumi_models.dart';
 import '../models/mapping_config.dart';
+import '../models/notion_models.dart';
 
 class NotionApi {
   static const String _baseUrl = 'https://api.notion.com/v1';
@@ -76,7 +77,7 @@ class NotionApi {
     }
   }
 
-  Future<List<String>> getDatabaseProperties({
+  Future<List<NotionProperty>> getDatabaseProperties({
     required String token,
     required String databaseId,
   }) async {
@@ -100,7 +101,13 @@ class NotionApi {
       final data = jsonDecode(response.body);
       final properties = data['properties'] as Map<String, dynamic>?;
       if (properties != null) {
-        return properties.keys.toList();
+        return properties.entries.map((e) {
+          final val = e.value as Map<String, dynamic>;
+          return NotionProperty(
+            name: e.key,
+            type: val['type'] ?? '',
+          );
+        }).toList();
       }
       return [];
     }
@@ -150,11 +157,12 @@ class NotionApi {
     throw Exception(_mapNotionError('查询 Unique ID', response));
   }
 
-  Future<String?> findPageByBangumiId({
+  Future<String?> findPageByProperty({
     required String token,
     required String databaseId,
-    required int bangumiId,
-    String propertyName = 'Bangumi ID',
+    required String propertyName,
+    required dynamic value,
+    String type = 'number', // 'number' or 'rich_text'
   }) async {
     final normalizedDatabaseId = _normalizePageId(databaseId);
     if (normalizedDatabaseId == null) {
@@ -162,6 +170,24 @@ class NotionApi {
     }
     final url = Uri.parse(_baseUrl)
         .replace(pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query']);
+
+    Map<String, dynamic> filter;
+    if (type == 'number') {
+      filter = {
+        'property': propertyName,
+        'number': {
+          'equals': value is String ? int.tryParse(value) ?? 0 : value,
+        },
+      };
+    } else {
+      filter = {
+        'property': propertyName,
+        'rich_text': {
+          'equals': value.toString(),
+        },
+      };
+    }
+
     final response = await http
         .post(
           url,
@@ -171,12 +197,7 @@ class NotionApi {
             'Content-Type': 'application/json',
           },
           body: jsonEncode({
-            'filter': {
-              'property': propertyName,
-              'number': {
-                'equals': bangumiId,
-              },
-            },
+            'filter': filter,
           }),
         )
         .timeout(_timeout);
@@ -190,7 +211,22 @@ class NotionApi {
       return null;
     }
 
-    throw Exception(_mapNotionError('查询 Bangumi ID', response));
+    throw Exception(_mapNotionError('查询 $propertyName', response));
+  }
+
+  Future<String?> findPageByBangumiId({
+    required String token,
+    required String databaseId,
+    required int bangumiId,
+    String propertyName = 'Bangumi ID',
+  }) async {
+    return findPageByProperty(
+      token: token,
+      databaseId: databaseId,
+      propertyName: propertyName,
+      value: bangumiId,
+      type: 'number',
+    );
   }
 
   Future<void> appendBlockChildren({
