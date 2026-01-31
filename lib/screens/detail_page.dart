@@ -105,7 +105,9 @@ class _DetailPageState extends State<DetailPage> {
           token: token,
           databaseId: databaseId,
           bangumiId: _detail!.id,
-          propertyName: mappingConfig.bangumiId.isNotEmpty ? mappingConfig.bangumiId : 'Bangumi ID',
+          propertyName: mappingConfig.bangumiId.isNotEmpty
+              ? mappingConfig.bangumiId
+              : 'Bangumi ID',
         );
       }
     } catch (_) {
@@ -128,18 +130,38 @@ class _DetailPageState extends State<DetailPage> {
       'script': '脚本',
       'storyboard': '分镜',
       'content': '简介 (正文)',
+      'description': '描述',
       'coverUrl': '正文图片 (URL)',
     };
 
     // 初始选择逻辑
     final Set<String> selectedFields = {};
-    if (existingPageId == null) {
-      // 新建模式默认全选
-      selectedFields.addAll(fieldLabels.keys);
-      selectedFields.remove('coverUrl'); // 默认不勾选正文图片
+    if (mappingConfig != null) {
+      if (mappingConfig.titleEnabled) selectedFields.add('title');
+      if (mappingConfig.airDateEnabled) selectedFields.add('airDate');
+      if (mappingConfig.tagsEnabled) selectedFields.add('tags');
+      if (mappingConfig.imageUrlEnabled) selectedFields.add('imageUrl');
+      if (mappingConfig.bangumiIdEnabled) selectedFields.add('bangumiId');
+      if (mappingConfig.scoreEnabled) selectedFields.add('score');
+      if (mappingConfig.linkEnabled) selectedFields.add('link');
+      if (mappingConfig.animationProductionEnabled) {
+        selectedFields.add('animationProduction');
+      }
+      if (mappingConfig.directorEnabled) selectedFields.add('director');
+      if (mappingConfig.scriptEnabled) selectedFields.add('script');
+      if (mappingConfig.storyboardEnabled) selectedFields.add('storyboard');
+      if (mappingConfig.contentEnabled) selectedFields.add('content');
+      if (mappingConfig.descriptionEnabled) selectedFields.add('description');
     } else {
-      // 更新模式默认勾选
-      selectedFields.addAll(['score', 'link', 'bangumiId']);
+      if (existingPageId == null) {
+        // 新建模式默认全选
+        selectedFields.addAll(fieldLabels.keys);
+        selectedFields.remove('coverUrl'); // 默认不勾选正文图片
+        selectedFields.remove('description');
+      } else {
+        // 更新模式默认勾选
+        selectedFields.addAll(['score', 'link', 'bangumiId']);
+      }
     }
 
     final List<String> topTags = _detail!.tags.take(10).toList();
@@ -169,37 +191,40 @@ class _DetailPageState extends State<DetailPage> {
                       _buildDialogSectionTitle('目标定位'),
                       if (isUpdateMode)
                         ListTile(
-                          leading: const Icon(Icons.check_circle, color: Colors.green),
+                          leading:
+                              const Icon(Icons.check_circle, color: Colors.green),
                           title: const Text('已关联 Notion 页面'),
-                          subtitle: Text('ID: ${existingPageId.substring(0, 8)}...'),
+                          subtitle:
+                              Text('ID: ${existingPageId!.substring(0, 8)}...'),
                           dense: true,
                         )
                       else ...[
-                        RadioGroup<bool>(
+                        RadioListTile<bool>(
+                          title: const Text('新建页面'),
+                          value: false,
                           groupValue: isBindMode,
                           onChanged: (val) {
                             if (val != null) {
                               setDialogState(() => isBindMode = val);
                             }
                           },
-                          child: const Column(
-                            children: [
-                              RadioListTile<bool>(
-                                title: Text('新建页面'),
-                                value: false,
-                                dense: true,
-                              ),
-                              RadioListTile<bool>(
-                                title: Text('绑定到已有页面'),
-                                value: true,
-                                dense: true,
-                              ),
-                            ],
-                          ),
+                          dense: true,
+                        ),
+                        RadioListTile<bool>(
+                          title: const Text('绑定到已有页面'),
+                          value: true,
+                          groupValue: isBindMode,
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() => isBindMode = val);
+                            }
+                          },
+                          dense: true,
                         ),
                         if (isBindMode)
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
                             child: Row(
                               children: [
                                 Expanded(
@@ -260,7 +285,8 @@ class _DetailPageState extends State<DetailPage> {
                       // 区域 C: 标签选择
                       _buildDialogSectionTitle('标签选择 (Top 10)'),
                       if (topTags.isEmpty)
-                        const Text('暂无标签', style: TextStyle(fontSize: 12, color: Colors.grey))
+                        const Text('暂无标签',
+                            style: TextStyle(fontSize: 12, color: Colors.grey))
                       else
                         Wrap(
                           spacing: 8,
@@ -472,7 +498,8 @@ class _DetailPageState extends State<DetailPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline, size: 64, color: Theme.of(context).colorScheme.error),
+                Icon(Icons.error_outline,
+                    size: 64, color: Theme.of(context).colorScheme.error),
                 const SizedBox(height: 16),
                 Text(
                   _errorMessage!,
@@ -518,8 +545,10 @@ class _DetailPageState extends State<DetailPage> {
             : FloatingActionButton.extended(
                 onPressed: _showImportConfirmDialog,
                 backgroundColor: Theme.of(context).colorScheme.primary,
-                icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white),
-                label: const Text('导入到 Notion', style: TextStyle(color: Colors.white)),
+                icon:
+                    const Icon(Icons.auto_awesome_rounded, color: Colors.white),
+                label: const Text('导入到 Notion',
+                    style: TextStyle(color: Colors.white)),
               ),
       ),
     );
@@ -538,7 +567,10 @@ class _DetailPageState extends State<DetailPage> {
       ),
       actions: const [],
       flexibleSpace: FlexibleSpaceBar(
-        stretchModes: const [StretchMode.zoomBackground, StretchMode.blurBackground],
+        stretchModes: const [
+          StretchMode.zoomBackground,
+          StretchMode.blurBackground
+        ],
         background: Stack(
           fit: StackFit.expand,
           children: [
@@ -593,7 +625,8 @@ class _DetailPageState extends State<DetailPage> {
                             : null,
                       ),
                       child: detail.imageUrl.isEmpty
-                          ? const Icon(Icons.image, size: 48, color: Colors.white24)
+                          ? const Icon(Icons.image,
+                              size: 48, color: Colors.white24)
                           : null,
                     ),
                   ),
@@ -616,7 +649,8 @@ class _DetailPageState extends State<DetailPage> {
                         const SizedBox(height: 8),
                         Text(
                           detail.airDate,
-                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12),
                         ),
                         const SizedBox(height: 12),
                         Row(
@@ -637,17 +671,21 @@ class _DetailPageState extends State<DetailPage> {
                                   children: List.generate(5, (index) {
                                     final rating = detail.score / 2;
                                     if (index < rating.floor()) {
-                                      return const Icon(Icons.star, color: Colors.orangeAccent, size: 12);
+                                      return const Icon(Icons.star,
+                                          color: Colors.orangeAccent, size: 12);
                                     } else if (index < rating) {
-                                      return const Icon(Icons.star_half, color: Colors.orangeAccent, size: 12);
+                                      return const Icon(Icons.star_half,
+                                          color: Colors.orangeAccent, size: 12);
                                     } else {
-                                      return const Icon(Icons.star_border, color: Colors.orangeAccent, size: 12);
+                                      return const Icon(Icons.star_border,
+                                          color: Colors.orangeAccent, size: 12);
                                     }
                                   }),
                                 ),
                                 Text(
                                   'Rank #${detail.rank ?? "N/A"}',
-                                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                                  style: const TextStyle(
+                                      color: Colors.white54, fontSize: 10),
                                 ),
                               ],
                             ),
@@ -657,26 +695,34 @@ class _DetailPageState extends State<DetailPage> {
                         // Action Button: View on Bangumi
                         InkWell(
                           onTap: () async {
-                            final url = Uri.parse('https://bgm.tv/subject/${widget.subjectId}');
+                            final url = Uri.parse(
+                                'https://bgm.tv/subject/${widget.subjectId}');
                             if (await canLaunchUrl(url)) {
                               await launchUrl(url);
                             }
                           },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
                               color: Colors.blueAccent.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.5)),
+                              border: Border.all(
+                                  color: Colors.blueAccent
+                                      .withValues(alpha: 0.5)),
                             ),
                             child: const Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.open_in_new, color: Colors.blueAccent, size: 14),
+                                Icon(Icons.open_in_new,
+                                    color: Colors.blueAccent, size: 14),
                                 SizedBox(width: 6),
                                 Text(
                                   'Bangumi',
-                                  style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                  style: TextStyle(
+                                      color: Colors.blueAccent,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold),
                                 ),
                               ],
                             ),
@@ -687,7 +733,9 @@ class _DetailPageState extends State<DetailPage> {
                   ),
                   // Right: Rating Distribution
                   Expanded(
-                    child: RatingChart(ratingCount: detail.ratingCount, total: detail.ratingTotal),
+                    child: RatingChart(
+                        ratingCount: detail.ratingCount,
+                        total: detail.ratingTotal),
                   ),
                 ],
               ),
@@ -717,7 +765,8 @@ class _DetailPageState extends State<DetailPage> {
           _buildSectionTitle(context, '简介'),
           const SizedBox(height: 12),
           InkWell(
-            onTap: () => setState(() => _isSummaryExpanded = !_isSummaryExpanded),
+            onTap: () =>
+                setState(() => _isSummaryExpanded = !_isSummaryExpanded),
             borderRadius: BorderRadius.circular(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -725,7 +774,9 @@ class _DetailPageState extends State<DetailPage> {
                 Text(
                   detail.summary.isEmpty ? '暂无简介' : detail.summary,
                   maxLines: _isSummaryExpanded ? null : 6,
-                  overflow: _isSummaryExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                  overflow: _isSummaryExpanded
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
                   style: const TextStyle(
                     height: 1.7,
                     color: Colors.white70,
@@ -773,7 +824,8 @@ class _DetailPageState extends State<DetailPage> {
                           },
                           borderRadius: BorderRadius.circular(20),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(20),
@@ -853,8 +905,12 @@ class _DetailPageState extends State<DetailPage> {
             children: [
               CircleAvatar(
                 radius: 18,
-                backgroundImage: comment.user.avatar.isNotEmpty ? NetworkImage(comment.user.avatar) : null,
-                child: comment.user.avatar.isEmpty ? const Icon(Icons.person, size: 18) : null,
+                backgroundImage: comment.user.avatar.isNotEmpty
+                    ? NetworkImage(comment.user.avatar)
+                    : null,
+                child: comment.user.avatar.isEmpty
+                    ? const Icon(Icons.person, size: 18)
+                    : null,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -866,11 +922,15 @@ class _DetailPageState extends State<DetailPage> {
                       children: [
                         Text(
                           comment.user.nickname,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13),
                         ),
                         Text(
                           _formatTime(comment.updatedAt),
-                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 11),
                         ),
                       ],
                     ),
@@ -879,7 +939,9 @@ class _DetailPageState extends State<DetailPage> {
                       Row(
                         children: List.generate(5, (i) {
                           return Icon(
-                            i < (comment.rate / 2).ceil() ? Icons.star : Icons.star_border,
+                            i < (comment.rate / 2).ceil()
+                                ? Icons.star
+                                : Icons.star_border,
                             color: Colors.orangeAccent,
                             size: 10,
                           );
@@ -888,7 +950,8 @@ class _DetailPageState extends State<DetailPage> {
                     const SizedBox(height: 8),
                     Text(
                       comment.comment,
-                      style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 13, height: 1.5),
                     ),
                   ],
                 ),
@@ -941,7 +1004,17 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _buildInfoGrid(BangumiSubjectDetail detail) {
     // 过滤掉一些不需要在制作人员列表中重复显示的字段（如果有的话）
-    final skipKeys = {'中文名', '别名', '话数', '放送开始', '放送星期', '官方网站', '播放电视台', '其他电视台', 'Copyright'};
+    final skipKeys = {
+      '中文名',
+      '别名',
+      '话数',
+      '放送开始',
+      '放送星期',
+      '官方网站',
+      '播放电视台',
+      '其他电视台',
+      'Copyright'
+    };
 
     final items = detail.infoboxMap.entries
         .where((e) => !skipKeys.contains(e.key))
@@ -982,7 +1055,8 @@ class _DetailPageState extends State<DetailPage> {
         padding: EdgeInsets.zero,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: items.length,
-        separatorBuilder: (context, index) => Divider(height: 1, color: Colors.white.withValues(alpha: 0.1)),
+        separatorBuilder: (context, index) =>
+            Divider(height: 1, color: Colors.white.withValues(alpha: 0.1)),
         itemBuilder: (context, index) {
           final item = items[index];
           return Padding(
@@ -1094,7 +1168,10 @@ class RatingChart extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     '${index + 1}',
-                    style: const TextStyle(fontSize: 14, color: Colors.white38, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.white38,
+                        fontWeight: FontWeight.bold),
                   ),
                 ],
               ),

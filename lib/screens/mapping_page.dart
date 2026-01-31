@@ -104,84 +104,296 @@ class _MappingPageState extends State<MappingPage> {
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    const Text(
-                      '字段映射配置',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                    // Row 1: Column Headers (Bangumi Property / Notion Property)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8.0, horizontal: 4.0),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 48), // 对齐带有复选框的字段
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              'Bangumi属性',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              'Notion属性',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    _buildMappingItem('标题 (Name)', _currentConfig.title, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(title: val));
-                    }),
-                    _buildMappingItem('放送开始 (Date)', _currentConfig.airDate, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(airDate: val));
-                    }),
-                    _buildMappingItem('标签 (Multi-select)', _currentConfig.tags, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(tags: val));
-                    }),
-                    _buildMappingItem('封面 (Url)', _currentConfig.imageUrl, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(imageUrl: val));
-                    }),
-                    _buildMappingItem('Bangumi ID (Number)', _currentConfig.bangumiId, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(bangumiId: val));
-                    }),
-                    _buildMappingItem('评分 (Number)', _currentConfig.score, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(score: val));
-                    }),
-                    _buildMappingItem('链接 (Url)', _currentConfig.link, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(link: val));
-                    }),
-                    _buildMappingItem('动画制作 (Rich Text)', _currentConfig.animationProduction, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(animationProduction: val));
-                    }),
-                    _buildMappingItem('导演 (Rich Text)', _currentConfig.director, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(director: val));
-                    }),
-                    _buildMappingItem('脚本 (Rich Text)', _currentConfig.script, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(script: val));
-                    }),
-                    _buildMappingItem('分镜 (Rich Text)', _currentConfig.storyboard, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(storyboard: val));
-                    }),
-                    _buildMappingItem('简介 (Page Content)', _currentConfig.content, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(content: val));
-                    }),
-                    _buildMappingItem('描述 (Rich Text)', _currentConfig.description, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(description: val));
-                    }),
-                    _buildMappingItem('Bangumi ID 属性 (Property Name)', _currentConfig.idPropertyName, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(idPropertyName: val));
-                    }),
+                    // Row 2: Divider
                     const Divider(),
-                    _buildMappingItem('Notion ID 属性 (Used for Binding)', _currentConfig.notionId, (val) {
-                      setState(() => _currentConfig = _currentConfig.copyWith(notionId: val));
-                    }),
+                    // Row 3: Section Title "数据导入配置 (Data Import Config)"
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8.0, horizontal: 4.0),
+                      child: Text(
+                        '数据导入配置 (Data Import Config)',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    // Row 4: The list of mapping fields
+                    _buildMappingItem(
+                      '标题 (Name)',
+                      _currentConfig.title,
+                      _currentConfig.titleEnabled,
+                      (val) {
+                        setState(() =>
+                            _currentConfig = _currentConfig.copyWith(title: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(titleEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '放送开始 (Date)',
+                      _currentConfig.airDate,
+                      _currentConfig.airDateEnabled,
+                      (val) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(airDate: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(airDateEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '标签 (Multi-select)',
+                      _currentConfig.tags,
+                      _currentConfig.tagsEnabled,
+                      (val) {
+                        setState(() =>
+                            _currentConfig = _currentConfig.copyWith(tags: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(tagsEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '封面 (Files & media)',
+                      _currentConfig.imageUrl,
+                      _currentConfig.imageUrlEnabled,
+                      (val) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(imageUrl: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(imageUrlEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      'Bangumi ID (Number)',
+                      _currentConfig.bangumiId,
+                      _currentConfig.bangumiIdEnabled,
+                      (val) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(bangumiId: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(bangumiIdEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '评分 (Number)',
+                      _currentConfig.score,
+                      _currentConfig.scoreEnabled,
+                      (val) {
+                        setState(() =>
+                            _currentConfig = _currentConfig.copyWith(score: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(scoreEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '链接 (Url)',
+                      _currentConfig.link,
+                      _currentConfig.linkEnabled,
+                      (val) {
+                        setState(() =>
+                            _currentConfig = _currentConfig.copyWith(link: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(linkEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '动画制作 (Rich Text)',
+                      _currentConfig.animationProduction,
+                      _currentConfig.animationProductionEnabled,
+                      (val) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(animationProduction: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig = _currentConfig.copyWith(
+                            animationProductionEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '导演 (Rich Text)',
+                      _currentConfig.director,
+                      _currentConfig.directorEnabled,
+                      (val) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(director: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(directorEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '脚本 (Rich Text)',
+                      _currentConfig.script,
+                      _currentConfig.scriptEnabled,
+                      (val) {
+                        setState(() =>
+                            _currentConfig = _currentConfig.copyWith(script: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(scriptEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '分镜 (Rich Text)',
+                      _currentConfig.storyboard,
+                      _currentConfig.storyboardEnabled,
+                      (val) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(storyboard: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(storyboardEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '简介 (Rich Text)',
+                      _currentConfig.content,
+                      _currentConfig.contentEnabled,
+                      (val) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(content: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(contentEnabled: enabled));
+                      },
+                    ),
+                    _buildMappingItem(
+                      '描述 (Rich Text)',
+                      _currentConfig.description,
+                      _currentConfig.descriptionEnabled,
+                      (val) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(description: val));
+                      },
+                      (enabled) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(descriptionEnabled: enabled));
+                      },
+                    ),
+                    const Divider(),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8.0, horizontal: 4.0),
+                      child: Text(
+                        '身份绑定配置 (Identity Binding Config)',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    _buildMappingItem(
+                      'Bangumi ID 属性 (For Page Binding)',
+                      _currentConfig.idPropertyName,
+                      true,
+                      (val) {
+                        setState(() => _currentConfig =
+                            _currentConfig.copyWith(idPropertyName: val));
+                      },
+                      null,
+                    ),
+                    _buildMappingItem(
+                      'Notion ID 属性 (For Page Binding)',
+                      _currentConfig.notionId,
+                      true,
+                      (val) {
+                        setState(() =>
+                            _currentConfig = _currentConfig.copyWith(notionId: val));
+                      },
+                      null,
+                    ),
                     const SizedBox(height: 24),
                   ],
                 ),
     );
   }
 
-  Widget _buildMappingItem(String label, String currentValue, ValueChanged<String?>? onChanged, {bool enabled = true}) {
-    // 确保当前值在选项列表中，如果不在则添加（可能是之前保存的但现在数据库里没了，或者初始默认值）
-    // 同时确保包含一个空字符串选项，用于“置空”
+  Widget _buildMappingItem(
+    String label,
+    String currentValue,
+    bool isEnabled,
+    ValueChanged<String?> onChanged,
+    ValueChanged<bool?>? onEnabledChanged,
+  ) {
     final List<NotionProperty> items = [
       NotionProperty(name: '', type: ''),
       ..._notionProperties
     ];
 
-    // 检查 currentValue 是否在 items 中（仅按名称匹配）
     final bool exists = items.any((p) => p.name == currentValue);
     if (currentValue.isNotEmpty && !exists) {
       items.add(NotionProperty(name: currentValue, type: 'unknown'));
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         children: [
+          if (onEnabledChanged != null)
+            Checkbox(
+              value: isEnabled,
+              onChanged: onEnabledChanged,
+            )
+          else
+            const SizedBox(width: 48), // 对齐没有 Checkbox 的项
           Expanded(
-            flex: 2,
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+            flex: 3,
+            child: Text(label,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: isEnabled ? null : Theme.of(context).disabledColor,
+                )),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -214,7 +426,7 @@ class _MappingPageState extends State<MappingPage> {
                   ),
                 );
               }).toList(),
-              onChanged: enabled ? onChanged : null,
+              onChanged: isEnabled ? onChanged : null,
               decoration: const InputDecoration(
                 isDense: true,
                 border: OutlineInputBorder(),
