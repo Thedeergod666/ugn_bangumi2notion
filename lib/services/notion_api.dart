@@ -256,7 +256,12 @@ class NotionApi {
     void addProperty(
         String fieldKey, String notionKey, dynamic value, String type) {
       if (notionKey.isEmpty) return;
-      if (enabledFields != null && !enabledFields.contains(fieldKey)) return;
+      // 对于 infobox 中的字段，如果 enabledFields 为 null (默认全选) 或者明确包含该 key，则允许
+      if (enabledFields != null &&
+          !enabledFields.contains(fieldKey) &&
+          !fieldKey.startsWith('infobox_')) {
+        return;
+      }
 
       // 记录已映射的属性
       mappedPropertyKeys.add(notionKey);
@@ -324,6 +329,31 @@ class NotionApi {
     addProperty(
         'storyboard', config.storyboard, detail.storyboard, 'rich_text');
     addProperty('description', config.description, detail.summary, 'rich_text');
+
+    // 处理 infoboxMap 中剩下的所有字段
+    // 如果用户在 Notion 数据库中创建了同名属性，尝试自动填充
+    final knownMappedFields = {
+      config.airDate,
+      config.tags,
+      config.imageUrl,
+      config.bangumiId,
+      config.score,
+      config.link,
+      config.animationProduction,
+      config.director,
+      config.script,
+      config.storyboard,
+      config.description,
+      config.title,
+    }.where((k) => k.isNotEmpty).toSet();
+
+    for (final entry in detail.infoboxMap.entries) {
+      if (!knownMappedFields.contains(entry.key)) {
+        // 如果这个 key 还没有被映射过，我们尝试将其作为 rich_text 写入（前提是 Notion 数据库有同名属性）
+        // addProperty 内部已经检查了 notionKey.isEmpty，但这里我们需要传入 entry.key 作为 notionKey
+        addProperty('infobox_${entry.key}', entry.key, entry.value, 'rich_text');
+      }
+    }
 
     // 确保标题属性被正确处理为 title 类型，且不会被其他映射覆盖
     if (config.title.isNotEmpty &&

@@ -47,6 +47,7 @@ class BangumiSubjectDetail {
     required this.ratingTotal,
     required this.ratingCount,
     this.rank,
+    required this.infoboxMap,
   });
 
   final int id;
@@ -66,12 +67,16 @@ class BangumiSubjectDetail {
   final int ratingTotal;
   final Map<String, int> ratingCount;
   final int? rank;
+  final Map<String, String> infoboxMap;
 
   factory BangumiSubjectDetail.fromJson(Map<String, dynamic> json) {
     final images = json['images'] as Map<String, dynamic>?;
     final tagsJson = json['tags'] as List<dynamic>? ?? [];
-    final infobox = json['infobox'] as List<dynamic>? ?? [];
+    final infoboxList = json['infobox'] as List<dynamic>? ?? [];
     final rating = json['rating'] as Map<String, dynamic>?;
+
+    final infoboxMap = _buildInfoboxMap(infoboxList);
+
     return BangumiSubjectDetail(
       id: (json['id'] as num?)?.toInt() ?? 0,
       name: json['name'] as String? ?? '',
@@ -84,11 +89,11 @@ class BangumiSubjectDetail {
           .map((tag) => tag is Map<String, dynamic> ? tag['name'] as String? : null)
           .whereType<String>()
           .toList(),
-      studio: _parseInfobox(infobox, ['动画制作', '制作', '制作会社']),
-      director: _parseInfobox(infobox, ['导演', '監督']),
-      script: _parseInfobox(infobox, ['脚本']),
-      storyboard: _parseInfobox(infobox, ['分镜', '絵コンテ']),
-      animationProduction: _parseInfobox(infobox, ['动画制作', 'アニメーション制作']),
+      studio: _getFromInfoboxMap(infoboxMap, ['动画制作', '制作', '制作会社']),
+      director: _getFromInfoboxMap(infoboxMap, ['导演', '監督']),
+      script: _getFromInfoboxMap(infoboxMap, ['脚本']),
+      storyboard: _getFromInfoboxMap(infoboxMap, ['分镜', '絵コンテ']),
+      animationProduction: _getFromInfoboxMap(infoboxMap, ['动画制作', 'アニメーション制作']),
       score: (rating?['score'] as num?)?.toDouble() ?? 0.0,
       ratingTotal: (rating?['total'] as num?)?.toInt() ?? 0,
       ratingCount: (rating?['count'] as Map<String, dynamic>?)?.map(
@@ -96,30 +101,47 @@ class BangumiSubjectDetail {
           ) ??
           {},
       rank: (json['rating']?['rank'] as num?)?.toInt() ?? (json['rank'] as num?)?.toInt(),
+      infoboxMap: infoboxMap,
     );
   }
 
-  static String _parseInfobox(List<dynamic> infobox, List<String> keys) {
+  static Map<String, String> _buildInfoboxMap(List<dynamic> infobox) {
+    final Map<String, String> result = {};
     for (final item in infobox) {
       if (item is Map<String, dynamic>) {
         final key = item['key'] as String? ?? '';
-        if (keys.any((k) => key == k || key.contains(k))) {
-          final value = item['value'];
-          if (value is String) {
-            return value;
-          }
-          if (value is List) {
-            return value
-                .map((v) {
-                  if (v is Map<String, dynamic>) {
-                    return v['v'] as String? ?? '';
-                  }
-                  return v.toString();
-                })
-                .where((v) => v.isNotEmpty)
-                .join('、');
-          }
+        if (key.isEmpty) continue;
+        final value = item['value'];
+        String valueStr = '';
+        if (value is String) {
+          valueStr = value;
+        } else if (value is List) {
+          valueStr = value
+              .map((v) {
+                if (v is Map<String, dynamic>) {
+                  return v['v'] as String? ?? '';
+                }
+                return v.toString();
+              })
+              .where((v) => v.isNotEmpty)
+              .join('、');
         }
+        if (valueStr.isNotEmpty) {
+          result[key] = valueStr;
+        }
+      }
+    }
+    return result;
+  }
+
+  static String _getFromInfoboxMap(Map<String, String> map, List<String> keys) {
+    for (final key in keys) {
+      if (map.containsKey(key)) return map[key]!;
+    }
+    // 如果没有精确匹配，尝试包含匹配
+    for (final entry in map.entries) {
+      if (keys.any((k) => entry.key.contains(k))) {
+        return entry.value;
       }
     }
     return '';

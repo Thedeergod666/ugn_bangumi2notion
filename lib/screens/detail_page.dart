@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/bangumi_models.dart';
@@ -369,6 +370,7 @@ class _DetailPageState extends State<DetailPage> {
         ratingTotal: _detail!.ratingTotal,
         ratingCount: _detail!.ratingCount,
         rank: _detail!.rank,
+        infoboxMap: _detail!.infoboxMap,
       );
 
       await _notionApi.createAnimePage(
@@ -444,7 +446,7 @@ class _DetailPageState extends State<DetailPage> {
     }
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: const Color(0xFF121212), // Dark theme background
         body: NestedScrollView(
@@ -456,6 +458,7 @@ class _DetailPageState extends State<DetailPage> {
           body: TabBarView(
             children: [
               _buildOverviewTab(context, _detail!),
+              _buildStaffTab(context, _detail!),
               _buildCommentsTab(context),
             ],
           ),
@@ -647,7 +650,8 @@ class _DetailPageState extends State<DetailPage> {
         labelColor: Colors.blueAccent,
         unselectedLabelColor: Colors.white70,
         tabs: [
-          Tab(text: '概览'),
+          Tab(text: '概述'),
+          Tab(text: '制作'),
           Tab(text: '吐槽'),
         ],
       ),
@@ -697,7 +701,7 @@ class _DetailPageState extends State<DetailPage> {
           const SizedBox(height: 32),
           _buildSectionTitle(context, '制作人员'),
           const SizedBox(height: 12),
-          _buildInfoGrid(detail),
+          _buildSimplifiedInfoGrid(detail),
           const SizedBox(height: 32),
           _buildSectionTitle(context, '标签'),
           const SizedBox(height: 12),
@@ -707,18 +711,30 @@ class _DetailPageState extends State<DetailPage> {
             children: detail.tags.isEmpty
                 ? [const Chip(label: Text('暂无标签'))]
                 : detail.tags
-                    .map((tag) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            tag,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
+                    .map((tag) => InkWell(
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: tag));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('已复制标签: $tag'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              tag,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ))
@@ -730,71 +746,107 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
+  Widget _buildStaffTab(BuildContext context, BangumiSubjectDetail detail) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionTitle(context, '全制作人员'),
+          const SizedBox(height: 12),
+          _buildInfoGrid(detail),
+          const SizedBox(height: 100),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCommentsTab(BuildContext context) {
     if (_commentsLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
     if (_comments.isEmpty) {
-      return const Center(
-        child: Text('暂无吐槽', style: TextStyle(color: Colors.white54)),
+      return RefreshIndicator(
+        onRefresh: () async {
+          final data = await _storage.loadAll();
+          final token = data[SettingsKeys.bangumiAccessToken] ?? '';
+          await _loadComments(token);
+        },
+        child: const SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 300,
+            child: Center(
+              child: Text('暂无吐槽', style: TextStyle(color: Colors.white54)),
+            ),
+          ),
+        ),
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(20),
-      itemCount: _comments.length,
-      separatorBuilder: (context, index) => const Divider(height: 32, color: Colors.white10),
-      itemBuilder: (context, index) {
-        final comment = _comments[index];
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundImage: comment.user.avatar.isNotEmpty ? NetworkImage(comment.user.avatar) : null,
-              child: comment.user.avatar.isEmpty ? const Icon(Icons.person, size: 18) : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        comment.user.nickname,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      Text(
-                        _formatTime(comment.updatedAt),
-                        style: const TextStyle(color: Colors.white38, fontSize: 11),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  if (comment.rate > 0)
-                    Row(
-                      children: List.generate(5, (i) {
-                        return Icon(
-                          i < (comment.rate / 2).ceil() ? Icons.star : Icons.star_border,
-                          color: Colors.orangeAccent,
-                          size: 10,
-                        );
-                      }),
-                    ),
-                  const SizedBox(height: 8),
-                  Text(
-                    comment.comment,
-                    style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
+    return RefreshIndicator(
+      onRefresh: () async {
+        final data = await _storage.loadAll();
+        final token = data[SettingsKeys.bangumiAccessToken] ?? '';
+        await _loadComments(token);
       },
+      child: ListView.separated(
+        padding: const EdgeInsets.all(20),
+        itemCount: _comments.length,
+        separatorBuilder: (context, index) =>
+            const Divider(height: 32, color: Colors.white10),
+        itemBuilder: (context, index) {
+          final comment = _comments[index];
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundImage: comment.user.avatar.isNotEmpty ? NetworkImage(comment.user.avatar) : null,
+                child: comment.user.avatar.isEmpty ? const Icon(Icons.person, size: 18) : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          comment.user.nickname,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        Text(
+                          _formatTime(comment.updatedAt),
+                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    if (comment.rate > 0)
+                      Row(
+                        children: List.generate(5, (i) {
+                          return Icon(
+                            i < (comment.rate / 2).ceil() ? Icons.star : Icons.star_border,
+                            color: Colors.orangeAccent,
+                            size: 10,
+                          );
+                        }),
+                      ),
+                    const SizedBox(height: 8),
+                    Text(
+                      comment.comment,
+                      style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -838,14 +890,37 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Widget _buildInfoGrid(BangumiSubjectDetail detail) {
-    final items = [
-      if (detail.animationProduction.isNotEmpty) MapEntry('动画制作', detail.animationProduction),
-      if (detail.director.isNotEmpty) MapEntry('导演', detail.director),
-      if (detail.script.isNotEmpty) MapEntry('脚本', detail.script),
-      if (detail.storyboard.isNotEmpty) MapEntry('分镜', detail.storyboard),
-      MapEntry('Bangumi ID', detail.id.toString()),
-    ];
+    // 过滤掉一些不需要在制作人员列表中重复显示的字段（如果有的话）
+    final skipKeys = {'中文名', '别名', '话数', '放送开始', '放送星期', '官方网站', '播放电视台', '其他电视台', 'Copyright'};
 
+    final items = detail.infoboxMap.entries
+        .where((e) => !skipKeys.contains(e.key))
+        .map((e) => MapEntry(e.key, e.value))
+        .toList();
+
+    // 确保 Bangumi ID 总是显示在最后
+    items.add(MapEntry('Bangumi ID', detail.id.toString()));
+
+    return _buildInfoListContainer(items);
+  }
+
+  Widget _buildSimplifiedInfoGrid(BangumiSubjectDetail detail) {
+    final simplifiedKeys = ['动画制作', '导演', '脚本', '分镜'];
+    final items = <MapEntry<String, String>>[];
+
+    // Bangumi ID should be at the top
+    items.add(MapEntry('Bangumi ID', detail.id.toString()));
+
+    for (final key in simplifiedKeys) {
+      if (detail.infoboxMap.containsKey(key)) {
+        items.add(MapEntry(key, detail.infoboxMap[key]!));
+      }
+    }
+
+    return _buildInfoListContainer(items);
+  }
+
+  Widget _buildInfoListContainer(List<MapEntry<String, String>> items) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.05),
@@ -865,19 +940,32 @@ class _DetailPageState extends State<DetailPage> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  width: 80,
-                  child: Text(
-                    item.key,
-                    style: const TextStyle(
-                      color: Colors.white54,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 13,
+                InkWell(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: item.value));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('已复制 ${item.key}: ${item.value}'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(4),
+                  child: SizedBox(
+                    width: 80,
+                    child: Text(
+                      item.key,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
+                  child: SelectableText(
                     item.value,
                     style: const TextStyle(
                       fontWeight: FontWeight.w400,

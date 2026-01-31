@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:html/parser.dart' show parse;
+import 'package:html/dom.dart' as dom;
 
 import '../models/bangumi_models.dart';
 
@@ -97,31 +99,98 @@ class BangumiApi {
     required String accessToken,
   }) async {
     try {
-      final uri = Uri.parse('$_baseUrl/v0/subjects/$subjectId/comments');
-      final response = await _client
-          .get(
-            uri,
-            headers: {
-              if (accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
-              'Accept': 'application/json',
-              'User-Agent': 'BangumiImporter/1.0',
-            },
-          )
-          .timeout(_timeout);
+      // 这里的爬虫逻辑基于 https://bgm.tv/subject/$subjectId/comments
+      final uri = Uri.parse('https://bgm.tv/subject/$subjectId/comments');
+      final response = await _client.get(
+        uri,
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        },
+      ).timeout(_timeout);
 
       if (response.statusCode != 200) {
-        print('[BangumiApi] fetchSubjectComments error: ${response.statusCode} ${response.body}');
+        print(
+            '[BangumiApi] fetchSubjectComments error: ${response.statusCode} for $uri');
         return [];
       }
 
-      final data = jsonDecode(response.body);
-      if (data is Map<String, dynamic> && data.containsKey('data')) {
-        final list = data['data'] as List<dynamic>? ?? [];
-        return list.whereType<Map<String, dynamic>>().map(BangumiComment.fromJson).toList();
+      final document = parse(utf8.decode(response.bodyBytes));
+      final commentItems = document.querySelectorAll('#comment_box .item');
+      final List<BangumiComment> comments = [];
+
+      for (final item in commentItems) {
+        try {
+          // 解析头像
+          final avatarElement = item.querySelector('a.avatar');
+          String avatar = '';
+          if (avatarElement != null) {
+            final span = avatarElement.querySelector('span');
+            if (span != null) {
+              final style = span.attributes['style'] ?? '';
+              final match = RegExp(r"background-image:url\('([^']+)'\)").firstMatch(style);
+              if (match != null) {
+                avatar = match.group(1) ?? '';
+              }
+            }
+            if (avatar.isEmpty) {
+              final img = avatarElement.querySelector('img');
+              avatar = img?.attributes['src'] ?? '';
+            }
+          }
+          if (avatar.startsWith('//')) {
+            avatar = 'https:$avatar';
+          }
+
+          // 解析用户名
+          final userElement = item.querySelector('.text a');
+          final nickname = userElement?.text.trim() ?? 'Unknown';
+
+          // 解析评分
+          final starsElement = item.querySelector('.starsinfo');
+          int rate = 0;
+          if (starsElement != null) {
+            final classAttr = starsElement.attributes['class'] ?? '';
+            final match = RegExp(r'stars(\d+)').firstMatch(classAttr);
+            if (match != null) {
+              rate = int.tryParse(match.group(1) ?? '0') ?? 0;
+            }
+          }
+
+          // 解析日期
+          final dateElement = item.querySelector('.grey');
+          var updatedAt = dateElement?.text.trim() ?? '';
+          if (updatedAt.startsWith('@ ')) {
+            updatedAt = updatedAt.substring(2);
+          }
+
+          // 解析评论内容
+          final textElement = item.querySelector('.text');
+          String commentText = '';
+          if (textElement != null) {
+            // 我们只需要 .text 下的直接文本或者是除了 meta 信息之外的内容
+            // 简单的做法是克隆节点，移除 meta 信息
+            final clone = textElement.clone(true);
+            // 移除 a 标签 (用户名) 和 span 标签 (评分) 以及 grey 标签 (日期)
+            clone.querySelectorAll('a').forEach((e) => e.remove());
+            clone.querySelectorAll('.starsinfo').forEach((e) => e.remove());
+            clone.querySelectorAll('.grey').forEach((e) => e.remove());
+            commentText = clone.text.trim();
+          }
+
+          comments.add(BangumiComment(
+            user: BangumiUser(nickname: nickname, avatar: avatar),
+            rate: rate,
+            updatedAt: updatedAt,
+            comment: commentText,
+          ));
+        } catch (e) {
+          print('[BangumiApi] Parsing individual comment failed: $e');
+        }
       }
-      
-      print('[BangumiApi] fetchSubjectComments: Unexpected response format or empty data');
-      return [];
+
+      return comments;
     } catch (e) {
       print('[BangumiApi] fetchSubjectComments failed: $e');
       return [];
