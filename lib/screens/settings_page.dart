@@ -457,7 +457,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Icon(
                   Icons.copy_rounded,
                   size: 16,
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.7),
                 ),
               ],
             ),

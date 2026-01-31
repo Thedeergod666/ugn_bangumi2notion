@@ -181,15 +181,15 @@ class _DetailPageState extends State<DetailPage> {
                               setDialogState(() => isBindMode = val);
                             }
                           },
-                          child: Column(
+                          child: const Column(
                             children: [
                               RadioListTile<bool>(
-                                title: const Text('新建页面'),
+                                title: Text('新建页面'),
                                 value: false,
                                 dense: true,
                               ),
                               RadioListTile<bool>(
-                                title: const Text('绑定到已有页面'),
+                                title: Text('绑定到已有页面'),
                                 value: true,
                                 dense: true,
                               ),

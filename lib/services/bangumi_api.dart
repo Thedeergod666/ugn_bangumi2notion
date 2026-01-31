@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' show parse;
-import 'package:html/dom.dart' as dom;
 
 import '../models/bangumi_models.dart';
 
@@ -111,7 +111,7 @@ class BangumiApi {
       ).timeout(_timeout);
 
       if (response.statusCode != 200) {
-        print(
+        debugPrint(
             '[BangumiApi] fetchSubjectComments error: ${response.statusCode} for $uri');
         return [];
       }
@@ -186,13 +186,13 @@ class BangumiApi {
             comment: commentText,
           ));
         } catch (e) {
-          print('[BangumiApi] Parsing individual comment failed: $e');
+          debugPrint('[BangumiApi] Parsing individual comment failed: $e');
         }
       }
 
       return comments;
     } catch (e) {
-      print('[BangumiApi] fetchSubjectComments failed: $e');
+      debugPrint('[BangumiApi] fetchSubjectComments failed: $e');
       return [];
     }
   }

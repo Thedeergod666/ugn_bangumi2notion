@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 
@@ -61,14 +62,14 @@ class BangumiOAuth {
     final redirectUri = await _resolveRedirectUri();
     final callbackScheme = _resolveCallbackScheme(redirectUri);
     // debug: 打印 OAuth 回调相关信息，便于排查 redirect_uri_mismatch
-    print('[BangumiOAuth] platform=${Platform.operatingSystem} redirectUri=$redirectUri callbackScheme=$callbackScheme');
+    debugPrint('[BangumiOAuth] platform=${Platform.operatingSystem} redirectUri=$redirectUri callbackScheme=$callbackScheme');
     final authUri = Uri.parse(_authBase).replace(queryParameters: {
       'client_id': appId,
       'response_type': 'code',
       'redirect_uri': redirectUri,
       'state': state,
     });
-    print('[BangumiOAuth] authUrl=${authUri.toString()}');
+    debugPrint('[BangumiOAuth] authUrl=${authUri.toString()}');
 
     final result = await FlutterWebAuth2.authenticate(
       url: authUri.toString(),
@@ -76,7 +77,7 @@ class BangumiOAuth {
     );
 
     final callbackUri = Uri.parse(result);
-    print('[BangumiOAuth] callbackUri=$callbackUri');
+    debugPrint('[BangumiOAuth] callbackUri=$callbackUri');
     final code = callbackUri.queryParameters['code'];
     final returnedState = callbackUri.queryParameters['state'];
 
