@@ -174,22 +174,69 @@ class NotionApi {
     throw Exception(_mapNotionError('查询 Unique ID', response));
   }
 
+  int? _parseUniqueId(dynamic value) {
+    if (value is int) return value;
+    if (value is String) {
+      final asInt = int.tryParse(value);
+      if (asInt != null) return asInt;
+      // Extract number from end of string (e.g. "UGN-228" -> 228)
+      final match = RegExp(r'(\d+)$').firstMatch(value);
+      if (match != null) {
+        return int.tryParse(match.group(1)!);
+      }
+    }
+    return null;
+  }
+
   Future<String?> findPageByProperty({
     required String token,
     required String databaseId,
     required String propertyName,
     required dynamic value,
-    String type = 'number', // 'number' or 'rich_text'
+    String? type,
   }) async {
     final normalizedDatabaseId = _normalizePageId(databaseId);
     if (normalizedDatabaseId == null) {
       throw Exception('Notion Database ID 无效');
     }
+
+    // 1. 获取数据库 Schema，用于确定属性类型
+    String actualType = type ?? 'number';
+    try {
+      final properties = await getDatabaseProperties(
+        token: token,
+        databaseId: databaseId,
+      );
+      final prop = properties.firstWhere(
+        (p) => p.name == propertyName,
+        orElse: () => NotionProperty(name: propertyName, type: ''),
+      );
+      if (prop.type.isNotEmpty) {
+        actualType = prop.type;
+      }
+    } catch (e) {
+      print('Schema fetch failed in findPageByProperty: $e');
+    }
+
     final url = Uri.parse(_baseUrl)
         .replace(pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query']);
 
     Map<String, dynamic> filter;
-    if (type == 'number') {
+
+    if (actualType == 'unique_id') {
+      final uniqueIdVal = _parseUniqueId(value);
+      if (uniqueIdVal == null) {
+        // 无法从值中解析出 ID 数字，返回空
+        print('无法从 "$value" 解析出 unique_id');
+        return null;
+      }
+      filter = {
+        'property': propertyName,
+        'unique_id': {
+          'equals': uniqueIdVal,
+        },
+      };
+    } else if (actualType == 'number') {
       filter = {
         'property': propertyName,
         'number': {
@@ -197,9 +244,16 @@ class NotionApi {
         },
       };
     } else {
+      // 针对不同文本类型构建正确的 filter key
+      String filterKey = 'rich_text';
+      if (actualType == 'title') filterKey = 'title';
+      else if (actualType == 'url') filterKey = 'url';
+      else if (actualType == 'email') filterKey = 'email';
+      else if (actualType == 'phone_number') filterKey = 'phone_number';
+
       filter = {
         'property': propertyName,
-        'rich_text': {
+        filterKey: {
           'equals': value.toString(),
         },
       };
