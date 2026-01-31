@@ -158,9 +158,9 @@ class BangumiApi {
             }
           }
 
-          // 解析日期
-          final dateElement = item.querySelector('.grey');
-          var updatedAt = dateElement?.text.trim() ?? '';
+          // 解析日期和状态
+          final greyElements = item.querySelectorAll('.grey');
+          var updatedAt = greyElements.map((e) => e.text.trim()).join(' ');
           if (updatedAt.startsWith('@ ')) {
             updatedAt = updatedAt.substring(2);
           }

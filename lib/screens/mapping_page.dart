@@ -4,6 +4,7 @@ import '../services/notion_api.dart';
 import '../services/settings_storage.dart';
 import '../widgets/navigation_shell.dart';
 import '../models/notion_models.dart';
+import '../widgets/error_detail_dialog.dart';
 
 class MappingPage extends StatefulWidget {
   const MappingPage({super.key});
@@ -49,10 +50,24 @@ class _MappingPageState extends State<MappingPage> {
           await _settingsStorage.saveNotionProperties(_notionProperties);
         }
       }
-    } catch (_) {
+    } catch (e, stackTrace) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('加载失败，请稍后重试')),
+          SnackBar(
+            content: const Text('加载失败，请稍后重试'),
+            action: SnackBarAction(
+              label: '详情',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => ErrorDetailDialog(
+                    error: e,
+                    stackTrace: stackTrace,
+                  ),
+                );
+              },
+            ),
+          ),
         );
       }
     } finally {
@@ -70,10 +85,24 @@ class _MappingPageState extends State<MappingPage> {
           const SnackBar(content: Text('保存成功')),
         );
       }
-    } catch (_) {
+    } catch (e, stackTrace) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('保存失败，请稍后重试')),
+          SnackBar(
+            content: const Text('保存失败，请稍后重试'),
+            action: SnackBarAction(
+              label: '详情',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => ErrorDetailDialog(
+                    error: e,
+                    stackTrace: stackTrace,
+                  ),
+                );
+              },
+            ),
+          ),
         );
       }
     }

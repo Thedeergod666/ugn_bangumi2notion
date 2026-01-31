@@ -36,17 +36,34 @@ class NotionApi {
   }
 
   String _mapNotionError(String action, http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      // 优先显示 Notion 返回的具体错误信息
+      if (body is Map && body.containsKey('message')) {
+        final message = body['message'].toString();
+        // 如果是常见的属性不存在错误，进行中文化优化
+        if (message.contains('does not exist')) {
+          return '$action失败：${message}。请检查 Notion 数据库属性名称是否匹配。';
+        }
+        return '$action失败：$message';
+      }
+    } catch (_) {
+      // JSON 解析失败，忽略
+    }
+
     switch (response.statusCode) {
       case 401:
       case 403:
-        return '$action失败：权限不足或凭证无效';
+        return '$action失败：权限不足或凭证无效 (HTTP ${response.statusCode})';
+      case 404:
+        return '$action失败：资源不存在 (HTTP 404)';
       case 429:
         return '$action失败：请求过于频繁，请稍后重试';
       default:
         if (response.statusCode >= 500) {
-          return '$action失败：Notion 服务异常';
+          return '$action失败：Notion 服务异常 (HTTP ${response.statusCode})';
         }
-        return '$action失败：请求异常';
+        return '$action失败：请求异常 (HTTP ${response.statusCode})';
     }
   }
 
@@ -188,6 +205,10 @@ class NotionApi {
       };
     }
 
+    final requestBody = jsonEncode({
+      'filter': filter,
+    });
+
     final response = await http
         .post(
           url,
@@ -196,11 +217,17 @@ class NotionApi {
             'Notion-Version': _notionVersion,
             'Content-Type': 'application/json',
           },
-          body: jsonEncode({
-            'filter': filter,
-          }),
+          body: requestBody,
         )
         .timeout(_timeout);
+
+    if (response.statusCode != 200) {
+      print('Notion Query Error:');
+      print('URL: $url');
+      print('Request Body: $requestBody');
+      print('Status Code: ${response.statusCode}');
+      print('Response Body: ${response.body}');
+    }
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -220,13 +247,30 @@ class NotionApi {
     required int bangumiId,
     String propertyName = 'Bangumi ID',
   }) async {
-    return findPageByProperty(
-      token: token,
-      databaseId: databaseId,
-      propertyName: propertyName,
-      value: bangumiId,
-      type: 'number',
-    );
+    try {
+      return await findPageByProperty(
+        token: token,
+        databaseId: databaseId,
+        propertyName: propertyName,
+        value: bangumiId,
+        type: 'number',
+      );
+    } catch (e) {
+      final errorMsg = e.toString();
+      // 如果遇到属性类型不匹配错误（用户数据库中可能是 Text 类型），尝试作为 string 查询
+      // Error example: "database property text does not match filter number"
+      if (errorMsg.contains('does not match filter number') ||
+          errorMsg.contains('validation_error')) {
+        return findPageByProperty(
+          token: token,
+          databaseId: databaseId,
+          propertyName: propertyName,
+          value: bangumiId.toString(),
+          type: 'rich_text',
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<void> appendBlockChildren({
@@ -273,7 +317,20 @@ class NotionApi {
     }
     final config = mappingConfig ?? MappingConfig();
 
-    // 1. 查找是否存在现有页面 (如果未提供)
+    // 1. 获取数据库 Schema，用于验证属性是否存在及类型匹配
+    Map<String, String> schemaTypes = {};
+    try {
+      final schema = await getDatabaseProperties(
+          token: token, databaseId: normalizedDatabaseId);
+      schemaTypes = {for (var p in schema) p.name: p.type};
+    } catch (e) {
+      print('获取数据库 Schema 失败: $e');
+      // 如果获取失败，可以决定是中止还是尝试继续（可能会遇到属性不存在的错误）
+      // 这里选择继续，保持原有行为，但在 addProperty 中会因为 schemaTypes 为空而稍作处理
+      // 实际上如果这里失败了，后续写入大概率也会失败。但为了兼容旧逻辑，暂不强制抛出。
+    }
+
+    // 2. 查找是否存在现有页面 (如果未提供)
     final targetPageId = existingPageId ??
         await findPageByBangumiId(
           token: token,
@@ -291,7 +348,7 @@ class NotionApi {
     final List<Map<String, dynamic>> bodyBlocks = [];
 
     void addProperty(
-        String fieldKey, String notionKey, dynamic value, String type) {
+        String fieldKey, String notionKey, dynamic value, String intendedType) {
       if (notionKey.isEmpty) return;
       // 对于 infobox 中的字段，如果 enabledFields 为 null (默认全选) 或者明确包含该 key，则允许
       if (enabledFields != null &&
@@ -330,10 +387,23 @@ class NotionApi {
         return;
       }
 
+      // --- Schema 验证与自适应 ---
+      // 如果成功获取了 schema，则进行检查
+      if (schemaTypes.isNotEmpty) {
+        if (!schemaTypes.containsKey(notionKey)) {
+          // 属性在数据库中不存在，跳过，避免报错 "property does not exist"
+          print('属性不存在，跳过: $notionKey');
+          return;
+        }
+      }
+      
+      final actualType = schemaTypes[notionKey] ?? intendedType;
+      
       // 记录已映射的属性
       mappedPropertyKeys.add(notionKey);
 
-      switch (type) {
+      // 根据 actualType 决定如何写入
+      switch (actualType) {
         case 'title':
           properties[notionKey] = {
             'title': [
@@ -344,7 +414,8 @@ class NotionApi {
           };
           break;
         case 'rich_text':
-          if (value.toString().isNotEmpty) {
+          // 即使 intendedType 是 number，如果 actualType 是 rich_text，也转 string
+          if (value != null && value.toString().isNotEmpty) {
             properties[notionKey] = {
               'rich_text': [
                 {
@@ -355,8 +426,15 @@ class NotionApi {
           }
           break;
         case 'number':
+          num? numValue;
           if (value is num) {
-            properties[notionKey] = {'number': value};
+            numValue = value;
+          } else if (value is String) {
+            numValue = num.tryParse(value);
+          }
+          
+          if (numValue != null) {
+            properties[notionKey] = {'number': numValue};
           }
           break;
         case 'date':
@@ -367,10 +445,23 @@ class NotionApi {
           }
           break;
         case 'multi_select':
+          // 如果 intendedType 不是 multi_select (比如是 rich_text)，但 actualType 是 multi_select
+          // 我们尝试把值作为单个 tag 放入
           if (value is List && value.isNotEmpty) {
-            properties[notionKey] = {
+             properties[notionKey] = {
               'multi_select':
                   value.map((tag) => {'name': tag.toString()}).toList()
+            };
+          } else if (value is String && value.isNotEmpty) {
+             properties[notionKey] = {
+              'multi_select': [{'name': value}]
+            };
+          }
+          break;
+        case 'select': // 处理 Select 类型
+          if (value != null && value.toString().isNotEmpty) {
+             properties[notionKey] = {
+              'select': {'name': value.toString()}
             };
           }
           break;
@@ -379,6 +470,20 @@ class NotionApi {
             properties[notionKey] = {'url': value.toString()};
           }
           break;
+         default:
+           // 如果是未知类型，尝试按照 intendedType 写入，或者跳过
+           // 这里为了安全，如果类型不匹配且无法转换，最好什么都不做
+           // 但为了兼容，如果 schema为空，我们 switch intendedType
+           if (schemaTypes.isEmpty) {
+              // Fallback to original logic based on intendedType
+              switch (intendedType) {
+                // ... 重复之前的逻辑 ...
+                // 为简化代码，其实可以将 actualType 默认为 intendedType，
+                // 上面的 switch 已经覆盖了大部分情况。
+                // 只有当 intendedType 和 actualType 完全不兼容且未在上面处理时才会出问题。
+              }
+           }
+           break;
       }
     }
 

@@ -8,6 +8,7 @@ import '../services/bangumi_api.dart';
 import '../services/settings_storage.dart';
 import '../services/notion_api.dart';
 import '../models/mapping_config.dart';
+import '../widgets/error_detail_dialog.dart';
 
 class DetailPage extends StatefulWidget {
   const DetailPage({super.key, required this.subjectId});
@@ -118,21 +119,31 @@ class _DetailPageState extends State<DetailPage> {
 
     if (!mounted) return;
 
+    String formatLabel(String bangumiLabel, String? notionLabel) {
+      if (notionLabel == null || notionLabel.trim().isEmpty) return '';
+      // 移除 Bangumi 属性中括号及其后面的内容
+      final cleanBangumi =
+          bangumiLabel.split('(').first.split('（').first.trim();
+      // Notion 属性名已经是清洗过的，直接拼接
+      return '$cleanBangumi（$notionLabel）';
+    }
+
     final Map<String, String> fieldLabels = {
-      'title': mappingConfig?.title ?? '标题',
-      'airDate': mappingConfig?.airDate ?? '放送日期',
-      'tags': mappingConfig?.tags ?? '标签',
-      'imageUrl': mappingConfig?.imageUrl ?? '封面链接',
-      'bangumiId': mappingConfig?.bangumiId ?? 'Bangumi ID',
-      'score': mappingConfig?.score ?? '评分',
-      'link': mappingConfig?.link ?? 'Bangumi 链接',
-      'animationProduction': mappingConfig?.animationProduction ?? '动画制作',
-      'director': mappingConfig?.director ?? '导演',
-      'script': mappingConfig?.script ?? '脚本',
-      'storyboard': mappingConfig?.storyboard ?? '分镜',
-      'content': mappingConfig?.content ?? '简介 (正文)',
-      'description': mappingConfig?.description ?? '描述',
-      'coverUrl': '正文图片 (URL)',
+      'title': formatLabel('标题', mappingConfig?.title),
+      'airDate': formatLabel('放送开始', mappingConfig?.airDate),
+      'tags': formatLabel('标签', mappingConfig?.tags),
+      'imageUrl': formatLabel('封面', mappingConfig?.imageUrl),
+      'bangumiId': formatLabel('Bangumi ID', mappingConfig?.bangumiId),
+      'score': formatLabel('评分', mappingConfig?.score),
+      'link': formatLabel('链接', mappingConfig?.link),
+      'animationProduction':
+          formatLabel('动画制作', mappingConfig?.animationProduction),
+      'director': formatLabel('导演', mappingConfig?.director),
+      'script': formatLabel('脚本', mappingConfig?.script),
+      'storyboard': formatLabel('分镜', mappingConfig?.storyboard),
+      'content': formatLabel('简介', mappingConfig?.content),
+      'description': formatLabel('描述', mappingConfig?.description),
+      'coverUrl': '正文图片（URL）',
     };
 
     // 移除为空的字段（如果没有在 mappingConfig 中定义，说明该字段不可用）
@@ -270,16 +281,21 @@ class _DetailPageState extends State<DetailPage> {
                       const Divider(),
 
                       // 区域 B: 字段更新选择
-                      _buildDialogSectionTitle('字段更新选择'),
-                      const Padding(
-                        padding: EdgeInsets.only(left: 16, bottom: 8),
-                        child: Text(
-                          'Bangumi属性（Notion属性）',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          _buildDialogSectionTitle('字段更新选择'),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Bangumi属性（Notion属性）',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
                       ),
                       Wrap(
                         spacing: 8,
+                        runSpacing: 8,
                         children: fieldLabels.entries.map((entry) {
                           return FilterChip(
                             label: Text(entry.value),
@@ -310,6 +326,7 @@ class _DetailPageState extends State<DetailPage> {
                             opacity: selectedFields.contains('tags') ? 1.0 : 0.5,
                             child: Wrap(
                               spacing: 8,
+                              runSpacing: 8,
                               children: topTags.map((tag) {
                                 return FilterChip(
                                   label: Text(tag),
@@ -485,12 +502,29 @@ class _DetailPageState extends State<DetailPage> {
           const SnackBar(content: Text('操作成功！')),
         );
       }
-    } catch (_) {
+    } catch (e, stackTrace) {
       if (mounted) {
+        // 提取异常消息，移除 "Exception: " 前缀
+        final errorMessage = e.toString().replaceAll('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('操作失败，请稍后重试'),
+            // 显示具体的错误原因，而不是通用的“操作失败”
+            content: Text(errorMessage),
             backgroundColor: Theme.of(context).colorScheme.error,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: '查看详情',
+              textColor: Colors.white,
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => ErrorDetailDialog(
+                    error: e,
+                    stackTrace: stackTrace,
+                  ),
+                );
+              },
+            ),
           ),
         );
       }
