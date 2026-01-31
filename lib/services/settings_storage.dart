@@ -25,7 +25,14 @@ class SettingsStorage {
   }) async {
     final prefs = await _prefs;
     await prefs.setString(SettingsKeys.bangumiAppId, appId);
-    await prefs.remove(SettingsKeys.bangumiAppSecret);
+    if (appSecret.isEmpty) {
+      await _secureStorage.delete(key: SettingsKeys.bangumiAppSecret);
+    } else {
+      await _secureStorage.write(
+        key: SettingsKeys.bangumiAppSecret,
+        value: appSecret,
+      );
+    }
   }
 
   Future<void> saveBangumiRedirectPort(String port) async {
@@ -94,7 +101,8 @@ class SettingsStorage {
     final prefs = await _prefs;
     return {
       SettingsKeys.bangumiAppId: prefs.getString(SettingsKeys.bangumiAppId) ?? '',
-      SettingsKeys.bangumiAppSecret: '',
+      SettingsKeys.bangumiAppSecret:
+          await _secureStorage.read(key: SettingsKeys.bangumiAppSecret) ?? '',
       SettingsKeys.bangumiAccessToken:
           await _secureStorage.read(key: SettingsKeys.bangumiAccessToken) ?? '',
       SettingsKeys.bangumiRedirectPort:

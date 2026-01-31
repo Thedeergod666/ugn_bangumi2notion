@@ -55,6 +55,11 @@
    - `NOTION_TOKEN`
    - `NOTION_DATABASE_ID`
 
+3. Bangumi 回调地址（必须在后台注册）：
+
+   - Windows 固定回调：`http://localhost:61390`
+   - 非 Windows 回调：`bangumi-importer://oauth2redirect`
+
 > `.env` 已被 [`.gitignore`](.gitignore:46) 忽略，避免误提交。
 
 ## 运行与构建

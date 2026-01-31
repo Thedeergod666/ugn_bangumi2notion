@@ -47,7 +47,10 @@ class _SettingsPageState extends State<SettingsPage> {
       appId = dotenv.env['BANGUMI_APP_ID'] ?? '';
     }
 
-    String appSecret = _appSecretInMemory;
+    String appSecret = data[SettingsKeys.bangumiAppSecret] ?? '';
+    if (appSecret.isEmpty) {
+      appSecret = dotenv.env['BANGUMI_APP_SECRET'] ?? '';
+    }
 
     String notionToken = data[SettingsKeys.notionToken] ?? '';
     if (notionToken.isEmpty) {
@@ -87,11 +90,15 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _autoSaveBangumiCredentials() async {
-    _appSecretInMemory = _appSecretController.text.trim();
+    final appSecretInput = _appSecretController.text.trim();
+    final appSecret = appSecretInput.isNotEmpty
+        ? appSecretInput
+        : _appSecretInMemory;
+    _appSecretInMemory = appSecret;
     try {
       await _storage.saveBangumiCredentials(
         appId: _appIdController.text.trim(),
-        appSecret: _appSecretController.text.trim(),
+        appSecret: appSecret,
       );
     } catch (_) {}
   }
@@ -113,10 +120,14 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
-      _appSecretInMemory = _appSecretController.text.trim();
+      final appSecretInput = _appSecretController.text.trim();
+      final appSecret = appSecretInput.isNotEmpty
+          ? appSecretInput
+          : _appSecretInMemory;
+      _appSecretInMemory = appSecret;
       await _storage.saveBangumiCredentials(
         appId: _appIdController.text.trim(),
-        appSecret: _appSecretController.text.trim(),
+        appSecret: appSecret,
       );
       await _storage.saveNotionSettings(
         notionToken: _notionTokenController.text.trim(),
@@ -280,7 +291,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   decoration: const InputDecoration(
                     labelText: 'Bangumi App Secret',
                     border: OutlineInputBorder(),
-                    helperText: '仅在本次运行内存中使用，不会本地持久化',
+                    helperText: '将安全保存，可留空以保持已保存的密钥',
                   ),
                   obscureText: true,
                   onChanged: (_) => _autoSaveBangumiCredentials(),

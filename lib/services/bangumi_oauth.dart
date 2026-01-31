@@ -20,14 +20,7 @@ class BangumiOAuth {
   static const _tokenUrl = 'https://bgm.tv/oauth/access_token';
   static const _customScheme = 'bangumi-importer';
   static const _customRedirectUri = 'bangumi-importer://oauth2redirect';
-  static const _windowsLoopbackPortMin = 49152;
-  static const _windowsLoopbackPortMax = 65535;
-
-  int _randomPort() {
-    final rand = Random.secure();
-    return _windowsLoopbackPortMin +
-        rand.nextInt(_windowsLoopbackPortMax - _windowsLoopbackPortMin);
-  }
+  static const _windowsLoopbackPort = 61390;
 
   bool _isValidLoopbackCallback(Uri callbackUri, int port) {
     final isLocalhost = callbackUri.host == 'localhost' ||
@@ -47,9 +40,8 @@ class BangumiOAuth {
 
   Future<String> _resolveRedirectUri() async {
     if (Platform.isWindows) {
-      final port = _randomPort();
-      await _storage.saveBangumiRedirectPort('$port');
-      return 'http://localhost:$port';
+      await _storage.saveBangumiRedirectPort('$_windowsLoopbackPort');
+      return 'http://localhost:$_windowsLoopbackPort';
     }
     return _customRedirectUri;
   }
@@ -67,19 +59,24 @@ class BangumiOAuth {
   }) async {
     final state = _buildState();
     final redirectUri = await _resolveRedirectUri();
+    final callbackScheme = _resolveCallbackScheme(redirectUri);
+    // debug: 打印 OAuth 回调相关信息，便于排查 redirect_uri_mismatch
+    print('[BangumiOAuth] platform=${Platform.operatingSystem} redirectUri=$redirectUri callbackScheme=$callbackScheme');
     final authUri = Uri.parse(_authBase).replace(queryParameters: {
       'client_id': appId,
       'response_type': 'code',
       'redirect_uri': redirectUri,
       'state': state,
     });
+    print('[BangumiOAuth] authUrl=${authUri.toString()}');
 
     final result = await FlutterWebAuth2.authenticate(
       url: authUri.toString(),
-      callbackUrlScheme: _resolveCallbackScheme(redirectUri),
+      callbackUrlScheme: callbackScheme,
     );
 
     final callbackUri = Uri.parse(result);
+    print('[BangumiOAuth] callbackUri=$callbackUri');
     final code = callbackUri.queryParameters['code'];
     final returnedState = callbackUri.queryParameters['state'];
 
