@@ -44,6 +44,8 @@ class BangumiSubjectDetail {
     required this.storyboard,
     required this.animationProduction,
     required this.score,
+    required this.ratingTotal,
+    required this.ratingCount,
     this.rank,
   });
 
@@ -61,6 +63,8 @@ class BangumiSubjectDetail {
   final String storyboard;
   final String animationProduction;
   final double score;
+  final int ratingTotal;
+  final Map<String, int> ratingCount;
   final int? rank;
 
   factory BangumiSubjectDetail.fromJson(Map<String, dynamic> json) {
@@ -86,6 +90,11 @@ class BangumiSubjectDetail {
       storyboard: _parseInfobox(infobox, ['分镜', '絵コンテ']),
       animationProduction: _parseInfobox(infobox, ['动画制作', 'アニメーション制作']),
       score: (rating?['score'] as num?)?.toDouble() ?? 0.0,
+      ratingTotal: (rating?['total'] as num?)?.toInt() ?? 0,
+      ratingCount: (rating?['count'] as Map<String, dynamic>?)?.map(
+            (key, value) => MapEntry(key, (value as num).toInt()),
+          ) ??
+          {},
       rank: (json['rating']?['rank'] as num?)?.toInt() ?? (json['rank'] as num?)?.toInt(),
     );
   }
@@ -114,5 +123,49 @@ class BangumiSubjectDetail {
       }
     }
     return '';
+  }
+}
+
+class BangumiUser {
+  const BangumiUser({
+    required this.nickname,
+    required this.avatar,
+  });
+
+  final String nickname;
+  final String avatar;
+
+  factory BangumiUser.fromJson(Map<String, dynamic> json) {
+    final avatarMap = json['avatar'] as Map<String, dynamic>?;
+    return BangumiUser(
+      nickname: json['nickname'] as String? ?? '',
+      avatar: avatarMap?['large'] as String? ??
+          avatarMap?['medium'] as String? ??
+          avatarMap?['small'] as String? ??
+          '',
+    );
+  }
+}
+
+class BangumiComment {
+  const BangumiComment({
+    required this.user,
+    required this.rate,
+    required this.updatedAt,
+    required this.comment,
+  });
+
+  final BangumiUser user;
+  final int rate;
+  final String updatedAt;
+  final String comment;
+
+  factory BangumiComment.fromJson(Map<String, dynamic> json) {
+    return BangumiComment(
+      user: BangumiUser.fromJson(json['user'] as Map<String, dynamic>? ?? {}),
+      rate: (json['rate'] as num?)?.toInt() ?? 0,
+      updatedAt: json['updated_at'] as String? ?? '',
+      comment: json['comment'] as String? ?? '',
+    );
   }
 }

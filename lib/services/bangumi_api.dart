@@ -91,4 +91,40 @@ class BangumiApi {
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return BangumiSubjectDetail.fromJson(data);
   }
+
+  Future<List<BangumiComment>> fetchSubjectComments({
+    required int subjectId,
+    required String accessToken,
+  }) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/v0/subjects/$subjectId/comments');
+      final response = await _client
+          .get(
+            uri,
+            headers: {
+              if (accessToken.isNotEmpty) 'Authorization': 'Bearer $accessToken',
+              'Accept': 'application/json',
+              'User-Agent': 'BangumiImporter/1.0',
+            },
+          )
+          .timeout(_timeout);
+
+      if (response.statusCode != 200) {
+        print('[BangumiApi] fetchSubjectComments error: ${response.statusCode} ${response.body}');
+        return [];
+      }
+
+      final data = jsonDecode(response.body);
+      if (data is Map<String, dynamic> && data.containsKey('data')) {
+        final list = data['data'] as List<dynamic>? ?? [];
+        return list.whereType<Map<String, dynamic>>().map(BangumiComment.fromJson).toList();
+      }
+      
+      print('[BangumiApi] fetchSubjectComments: Unexpected response format or empty data');
+      return [];
+    } catch (e) {
+      print('[BangumiApi] fetchSubjectComments failed: $e');
+      return [];
+    }
+  }
 }

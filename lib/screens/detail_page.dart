@@ -23,7 +23,9 @@ class _DetailPageState extends State<DetailPage> {
   final _storage = SettingsStorage();
 
   BangumiSubjectDetail? _detail;
+  List<BangumiComment> _comments = [];
   bool _loading = true;
+  bool _commentsLoading = true;
   bool _importing = false;
   bool _isSummaryExpanded = false;
   String? _errorMessage;
@@ -51,12 +53,33 @@ class _DetailPageState extends State<DetailPage> {
           _loading = false;
         });
       }
+      _loadComments(token);
     } catch (_) {
       if (mounted) {
         setState(() {
           _errorMessage = '加载失败，请稍后重试';
           _loading = false;
         });
+      }
+    }
+  }
+
+  Future<void> _loadComments(String token) async {
+    try {
+      final comments = await _api.fetchSubjectComments(
+        subjectId: widget.subjectId,
+        accessToken: token,
+      );
+      if (mounted) {
+        setState(() {
+          _comments = comments;
+          _commentsLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load comments: $e');
+      if (mounted) {
+        setState(() => _commentsLoading = false);
       }
     }
   }
@@ -343,6 +366,8 @@ class _DetailPageState extends State<DetailPage> {
         storyboard: _detail!.storyboard,
         animationProduction: _detail!.animationProduction,
         score: _detail!.score,
+        ratingTotal: _detail!.ratingTotal,
+        ratingCount: _detail!.ratingCount,
         rank: _detail!.rank,
       );
 
@@ -418,144 +443,223 @@ class _DetailPageState extends State<DetailPage> {
       );
     }
 
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          _buildSliverAppBar(context, _detail!),
-          SliverToBoxAdapter(
-            child: _buildContent(context, _detail!),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF121212), // Dark theme background
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+            return [
+              _buildSliverAppBar(context, _detail!),
+            ];
+          },
+          body: TabBarView(
+            children: [
+              _buildOverviewTab(context, _detail!),
+              _buildCommentsTab(context),
+            ],
           ),
-        ],
+        ),
+        floatingActionButton: _importing
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: _showImportConfirmDialog,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white),
+                label: const Text('导入到 Notion', style: TextStyle(color: Colors.white)),
+              ),
       ),
-      bottomNavigationBar: _buildBottomBar(context),
     );
   }
 
   Widget _buildSliverAppBar(BuildContext context, BangumiSubjectDetail detail) {
     final title = detail.nameCn.isNotEmpty ? detail.nameCn : detail.name;
     return SliverAppBar(
-      expandedHeight: 420,
+      expandedHeight: 380,
       pinned: true,
       stretch: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: const Color(0xFF121212),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () => Navigator.pop(context),
+      ),
+      actions: const [],
       flexibleSpace: FlexibleSpaceBar(
-        stretchModes: const [
-          StretchMode.zoomBackground,
-          StretchMode.blurBackground,
-          StretchMode.fadeTitle,
-        ],
-        centerTitle: false,
-        titlePadding: const EdgeInsetsDirectional.only(start: 16, bottom: 16, end: 16),
-        title: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.black.withValues(alpha: 0.2),
-          ),
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              shadows: [Shadow(blurRadius: 8, color: Colors.black54, offset: Offset(0, 2))],
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+        stretchModes: const [StretchMode.zoomBackground, StretchMode.blurBackground],
         background: Stack(
           fit: StackFit.expand,
           children: [
-            // 背景模糊图
+            // Backdrop with blur
             if (detail.imageUrl.isNotEmpty)
               ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                 child: Opacity(
-                  opacity: 0.7,
-                  child: Image.network(
-                    detail.imageUrl,
-                    fit: BoxFit.cover,
-                  ),
+                  opacity: 0.5,
+                  child: Image.network(detail.imageUrl, fit: BoxFit.cover),
                 ),
               ),
-            // 渐变遮罩
+            // Gradient Overlay
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  stops: const [0.0, 0.3, 0.7, 1.0],
                   colors: [
                     Colors.black.withValues(alpha: 0.3),
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.4),
-                    Theme.of(context).colorScheme.surface,
+                    const Color(0xFF121212),
                   ],
                 ),
               ),
             ),
-            // 居中封面图 - 比例更大
-            Center(
-              child: Hero(
-                tag: 'subject-${detail.id}',
-                child: Container(
-                  width: 180,
-                  height: 260,
-                  margin: const EdgeInsets.only(bottom: 60),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        blurRadius: 30,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 12),
-                      )
-                    ],
-                    image: detail.imageUrl.isNotEmpty
-                        ? DecorationImage(
-                            image: NetworkImage(detail.imageUrl),
-                            fit: BoxFit.cover,
+            // Content
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 100, 16, 60),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left: Poster
+                  Hero(
+                    tag: 'subject-${detail.id}',
+                    child: Container(
+                      width: 120,
+                      height: 180,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
                           )
-                        : null,
+                        ],
+                        image: detail.imageUrl.isNotEmpty
+                            ? DecorationImage(
+                                image: NetworkImage(detail.imageUrl),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child: detail.imageUrl.isEmpty
+                          ? const Icon(Icons.image, size: 48, color: Colors.white24)
+                          : null,
+                    ),
                   ),
-                  child: detail.imageUrl.isEmpty
-                      ? const Icon(Icons.image, size: 64, color: Colors.white)
-                      : null,
-                ),
+                  const SizedBox(width: 16),
+                  // Middle: Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          detail.airDate,
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Text(
+                              detail.score.toStringAsFixed(1),
+                              style: const TextStyle(
+                                color: Colors.orangeAccent,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: List.generate(5, (index) {
+                                    final rating = detail.score / 2;
+                                    if (index < rating.floor()) {
+                                      return const Icon(Icons.star, color: Colors.orangeAccent, size: 12);
+                                    } else if (index < rating) {
+                                      return const Icon(Icons.star_half, color: Colors.orangeAccent, size: 12);
+                                    } else {
+                                      return const Icon(Icons.star_border, color: Colors.orangeAccent, size: 12);
+                                    }
+                                  }),
+                                ),
+                                Text(
+                                  'Rank #${detail.rank ?? "N/A"}',
+                                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // Action Button: View on Bangumi
+                        InkWell(
+                          onTap: () async {
+                            final url = Uri.parse('https://bgm.tv/subject/${widget.subjectId}');
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(url);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.blueAccent.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.5)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.open_in_new, color: Colors.blueAccent, size: 14),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Bangumi',
+                                  style: TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Right: Rating Distribution
+                  Expanded(
+                    child: RatingChart(ratingCount: detail.ratingCount, total: detail.ratingTotal),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       ),
+      bottom: const TabBar(
+        indicatorColor: Colors.blueAccent,
+        labelColor: Colors.blueAccent,
+        unselectedLabelColor: Colors.white70,
+        tabs: [
+          Tab(text: '概览'),
+          Tab(text: '吐槽'),
+        ],
+      ),
     );
   }
 
-  Widget _buildContent(BuildContext context, BangumiSubjectDetail detail) {
-    return Padding(
+  Widget _buildOverviewTab(BuildContext context, BangumiSubjectDetail detail) {
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(20.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 快速信息卡片组
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildStatCard(context, '评分', detail.score.toString(), Icons.star_rounded, Colors.orange),
-                const SizedBox(width: 12),
-                _buildStatCard(context, '集数', detail.epsCount.toString(), Icons.playlist_play_rounded, Colors.blue),
-                const SizedBox(width: 12),
-                _buildStatCard(context, '放送', detail.airDate.split('-').first, Icons.calendar_month_rounded, Colors.green),
-                const SizedBox(width: 12),
-                _buildStatCard(context, '排名', '#${detail.rank ?? "N/A"}', Icons.trending_up_rounded, Colors.purple),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          // 简介
           _buildSectionTitle(context, '简介'),
           const SizedBox(height: 12),
           InkWell(
@@ -566,21 +670,22 @@ class _DetailPageState extends State<DetailPage> {
               children: [
                 Text(
                   detail.summary.isEmpty ? '暂无简介' : detail.summary,
-                  maxLines: _isSummaryExpanded ? null : 4,
+                  maxLines: _isSummaryExpanded ? null : 6,
                   overflow: _isSummaryExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        height: 1.7,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        letterSpacing: 0.3,
-                      ),
+                  style: const TextStyle(
+                    height: 1.7,
+                    color: Colors.white70,
+                    fontSize: 14,
+                    letterSpacing: 0.3,
+                  ),
                 ),
                 if (detail.summary.length > 100)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: 8),
                     child: Text(
                       _isSummaryExpanded ? '收起' : '展开全部',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
+                      style: const TextStyle(
+                        color: Colors.blueAccent,
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
@@ -590,14 +695,10 @@ class _DetailPageState extends State<DetailPage> {
             ),
           ),
           const SizedBox(height: 32),
-
-          // 制作团队
-          _buildSectionTitle(context, '制作团队'),
+          _buildSectionTitle(context, '制作人员'),
           const SizedBox(height: 12),
           _buildInfoGrid(detail),
-          const SizedBox(height: 28),
-
-          // 标签
+          const SizedBox(height: 32),
           _buildSectionTitle(context, '标签'),
           const SizedBox(height: 12),
           Wrap(
@@ -609,69 +710,106 @@ class _DetailPageState extends State<DetailPage> {
                     .map((tag) => Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(10),
+                            color: Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
                             tag,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Theme.of(context).colorScheme.onSecondaryContainer,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                         ))
                     .toList(),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 100), // Bottom padding for FAB
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(BuildContext context, String label, String value, IconData icon, Color color) {
-    return Container(
-      width: 100,
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
+  Widget _buildCommentsTab(BuildContext context) {
+    if (_commentsLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_comments.isEmpty) {
+      return const Center(
+        child: Text('暂无吐槽', style: TextStyle(color: Colors.white54)),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(20),
+      itemCount: _comments.length,
+      separatorBuilder: (context, index) => const Divider(height: 32, color: Colors.white10),
+      itemBuilder: (context, index) {
+        final comment = _comments[index];
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundImage: comment.user.avatar.isNotEmpty ? NetworkImage(comment.user.avatar) : null,
+              child: comment.user.avatar.isEmpty ? const Icon(Icons.person, size: 18) : null,
             ),
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        comment.user.nickname,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      Text(
+                        _formatTime(comment.updatedAt),
+                        style: const TextStyle(color: Colors.white38, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (comment.rate > 0)
+                    Row(
+                      children: List.generate(5, (i) {
+                        return Icon(
+                          i < (comment.rate / 2).ceil() ? Icons.star : Icons.star_border,
+                          color: Colors.orangeAccent,
+                          size: 10,
+                        );
+                      }),
+                    ),
+                  const SizedBox(height: 8),
+                  Text(
+                    comment.comment,
+                    style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                  ),
+                ],
+              ),
             ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.outline,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
+  }
+
+  String _formatTime(String time) {
+    try {
+      final dt = DateTime.parse(time);
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.year}-${dt.month}-${dt.day}';
+    } catch (_) {
+      return time;
+    }
   }
 
   Widget _buildSectionTitle(BuildContext context, String title) {
@@ -679,16 +817,21 @@ class _DetailPageState extends State<DetailPage> {
       children: [
         Container(
           width: 4,
-          height: 20,
+          height: 18,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary,
-            borderRadius: BorderRadius.circular(4),
+            color: Colors.blueAccent,
+            borderRadius: BorderRadius.circular(2),
           ),
         ),
         const SizedBox(width: 10),
         Text(
           title,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+            color: Colors.white,
+          ),
         ),
       ],
     );
@@ -705,42 +848,42 @@ class _DetailPageState extends State<DetailPage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLow.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: ListView.separated(
         shrinkWrap: true,
         padding: EdgeInsets.zero,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: items.length,
-        separatorBuilder: (context, index) => Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        separatorBuilder: (context, index) => Divider(height: 1, color: Colors.white.withValues(alpha: 0.1)),
         itemBuilder: (context, index) {
           final item = items[index];
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  width: 90,
+                  width: 80,
                   child: Text(
                     item.key,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.outline,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
                     ),
                   ),
                 ),
                 Expanded(
                   child: Text(
                     item.value,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontWeight: FontWeight.w400,
-                      fontSize: 14,
-                      color: Theme.of(context).colorScheme.onSurface,
-                      height: 1.4,
+                      fontSize: 13,
+                      color: Colors.white,
+                      height: 1.5,
                     ),
                   ),
                 ),
@@ -751,69 +894,75 @@ class _DetailPageState extends State<DetailPage> {
       ),
     );
   }
+}
 
-  Widget _buildBottomBar(BuildContext context) {
+class RatingChart extends StatelessWidget {
+  const RatingChart({
+    super.key,
+    required this.ratingCount,
+    required this.total,
+  });
+
+  final Map<String, int> ratingCount;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    if (total == 0) return const SizedBox.shrink();
+
+    // Bangumi ratings are 1-10
+    final counts = List.generate(10, (index) {
+      final key = (index + 1).toString();
+      return ratingCount[key] ?? 0;
+    });
+
+    final maxCount = counts.reduce((a, b) => a > b ? a : b);
+
     return Container(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.of(context).padding.bottom),
+      height: 180,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          )
-        ],
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
-        children: [
-          SizedBox(
-            height: 52,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final url = Uri.parse('https://bgm.tv/subject/${widget.subjectId}');
-                if (await canLaunchUrl(url)) {
-                  await launchUrl(url);
-                }
-              },
-              style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-              ),
-              icon: const Icon(Icons.open_in_browser_rounded),
-              label: const Text('BGM'),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: _importing ? null : _showImportConfirmDialog,
-                style: FilledButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 2,
-                  shadowColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
-                ),
-                icon: _importing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(10, (index) {
+          // 1 star (left) to 10 stars (right)
+          final count = counts[index];
+          final ratio = maxCount == 0 ? 0.0 : count / maxCount;
+
+          return Expanded(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: FractionallySizedBox(
+                        heightFactor: ratio.clamp(0.05, 1.0),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.orangeAccent.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
-                      )
-                    : const Icon(Icons.auto_awesome_rounded),
-                label: Text(
-                  _importing ? '正在导入...' : '导入到 Notion',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${index + 1}',
+                    style: const TextStyle(fontSize: 14, color: Colors.white38, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+          );
+        }),
       ),
     );
   }
