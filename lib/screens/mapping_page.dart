@@ -48,10 +48,10 @@ class _MappingPageState extends State<MappingPage> {
           await _settingsStorage.saveNotionProperties(_notionProperties);
         }
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载失败: $e')),
+          const SnackBar(content: Text('加载失败，请稍后重试')),
         );
       }
     } finally {
@@ -69,10 +69,10 @@ class _MappingPageState extends State<MappingPage> {
           const SnackBar(content: Text('保存成功')),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败: $e')),
+          const SnackBar(content: Text('保存失败，请稍后重试')),
         );
       }
     }

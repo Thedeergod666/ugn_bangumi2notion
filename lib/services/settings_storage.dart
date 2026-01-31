@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/mapping_config.dart';
 
@@ -16,6 +17,7 @@ class SettingsKeys {
 
 class SettingsStorage {
   Future<SharedPreferences> get _prefs async => SharedPreferences.getInstance();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   Future<void> saveBangumiCredentials({
     required String appId,
@@ -23,7 +25,7 @@ class SettingsStorage {
   }) async {
     final prefs = await _prefs;
     await prefs.setString(SettingsKeys.bangumiAppId, appId);
-    await prefs.setString(SettingsKeys.bangumiAppSecret, appSecret);
+    await prefs.remove(SettingsKeys.bangumiAppSecret);
   }
 
   Future<void> saveBangumiRedirectPort(String port) async {
@@ -32,8 +34,10 @@ class SettingsStorage {
   }
 
   Future<void> saveBangumiAccessToken(String token) async {
-    final prefs = await _prefs;
-    await prefs.setString(SettingsKeys.bangumiAccessToken, token);
+    await _secureStorage.write(
+      key: SettingsKeys.bangumiAccessToken,
+      value: token,
+    );
   }
 
   Future<void> saveNotionSettings({
@@ -41,7 +45,10 @@ class SettingsStorage {
     required String notionDatabaseId,
   }) async {
     final prefs = await _prefs;
-    await prefs.setString(SettingsKeys.notionToken, notionToken);
+    await _secureStorage.write(
+      key: SettingsKeys.notionToken,
+      value: notionToken,
+    );
     await prefs.setString(SettingsKeys.notionDatabaseId, notionDatabaseId);
   }
 
@@ -87,13 +94,13 @@ class SettingsStorage {
     final prefs = await _prefs;
     return {
       SettingsKeys.bangumiAppId: prefs.getString(SettingsKeys.bangumiAppId) ?? '',
-      SettingsKeys.bangumiAppSecret:
-          prefs.getString(SettingsKeys.bangumiAppSecret) ?? '',
+      SettingsKeys.bangumiAppSecret: '',
       SettingsKeys.bangumiAccessToken:
-          prefs.getString(SettingsKeys.bangumiAccessToken) ?? '',
+          await _secureStorage.read(key: SettingsKeys.bangumiAccessToken) ?? '',
       SettingsKeys.bangumiRedirectPort:
           prefs.getString(SettingsKeys.bangumiRedirectPort) ?? '',
-      SettingsKeys.notionToken: prefs.getString(SettingsKeys.notionToken) ?? '',
+      SettingsKeys.notionToken:
+          await _secureStorage.read(key: SettingsKeys.notionToken) ?? '',
       SettingsKeys.notionDatabaseId:
           prefs.getString(SettingsKeys.notionDatabaseId) ?? '',
       SettingsKeys.themeMode: prefs.getString(SettingsKeys.themeMode) ?? 'system',

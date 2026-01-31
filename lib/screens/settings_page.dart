@@ -25,6 +25,8 @@ class _SettingsPageState extends State<SettingsPage> {
   final _notionTokenController = TextEditingController();
   final _notionDbController = TextEditingController();
 
+  String _appSecretInMemory = '';
+
   bool _loading = true;
   bool _saving = false;
   String? _errorMessage;
@@ -45,10 +47,7 @@ class _SettingsPageState extends State<SettingsPage> {
       appId = dotenv.env['BANGUMI_APP_ID'] ?? '';
     }
 
-    String appSecret = data[SettingsKeys.bangumiAppSecret] ?? '';
-    if (appSecret.isEmpty) {
-      appSecret = dotenv.env['BANGUMI_APP_SECRET'] ?? '';
-    }
+    String appSecret = _appSecretInMemory;
 
     String notionToken = data[SettingsKeys.notionToken] ?? '';
     if (notionToken.isEmpty) {
@@ -61,7 +60,8 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     _appIdController.text = appId;
-    _appSecretController.text = appSecret;
+    _appSecretController.text = '';
+    _appSecretInMemory = appSecret;
     _accessTokenController.text = data[SettingsKeys.bangumiAccessToken] ?? '';
     _notionTokenController.text = notionToken;
     _notionDbController.text = notionDbId;
@@ -87,6 +87,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _autoSaveBangumiCredentials() async {
+    _appSecretInMemory = _appSecretController.text.trim();
     try {
       await _storage.saveBangumiCredentials(
         appId: _appIdController.text.trim(),
@@ -112,6 +113,7 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
+      _appSecretInMemory = _appSecretController.text.trim();
       await _storage.saveBangumiCredentials(
         appId: _appIdController.text.trim(),
         appSecret: _appSecretController.text.trim(),
@@ -126,12 +128,12 @@ class _SettingsPageState extends State<SettingsPage> {
         });
         _showSnackBar('设置已保存');
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _errorMessage = '保存失败：$e';
+          _errorMessage = '保存失败，请稍后重试';
         });
-        _showSnackBar('保存失败：$e', isError: true);
+        _showSnackBar('保存失败，请稍后重试', isError: true);
       }
     } finally {
       if (mounted) {
@@ -151,10 +153,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
     try {
       final appId = _appIdController.text.trim();
-      final appSecret = _appSecretController.text.trim();
+      final appSecretInput = _appSecretController.text.trim();
+      final appSecret = appSecretInput.isNotEmpty ? appSecretInput : _appSecretInMemory;
       if (appId.isEmpty || appSecret.isEmpty) {
         throw Exception('请先填写 Bangumi AppID 与 App Secret');
       }
+      _appSecretInMemory = appSecret;
       await _storage.saveBangumiCredentials(
         appId: appId,
         appSecret: appSecret,
@@ -171,12 +175,12 @@ class _SettingsPageState extends State<SettingsPage> {
         });
         _showSnackBar('Bangumi Access Token 已更新');
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _errorMessage = '授权失败：$e';
+          _errorMessage = '授权失败，请稍后重试';
         });
-        _showSnackBar('授权失败：$e', isError: true);
+        _showSnackBar('授权失败，请稍后重试', isError: true);
       }
     } finally {
       if (mounted) {
@@ -186,7 +190,6 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     }
   }
-
   Future<void> _testNotionConnection() async {
     setState(() {
       _saving = true;
@@ -213,12 +216,12 @@ class _SettingsPageState extends State<SettingsPage> {
         });
         _showSnackBar('Notion 连接成功');
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _errorMessage = '连接失败：$e';
+          _errorMessage = '连接失败，请稍后重试';
         });
-        _showSnackBar('连接失败：$e', isError: true);
+        _showSnackBar('连接失败，请稍后重试', isError: true);
       }
     } finally {
       if (mounted) {
@@ -277,6 +280,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   decoration: const InputDecoration(
                     labelText: 'Bangumi App Secret',
                     border: OutlineInputBorder(),
+                    helperText: '仅在本次运行内存中使用，不会本地持久化',
                   ),
                   obscureText: true,
                   onChanged: (_) => _autoSaveBangumiCredentials(),
@@ -293,7 +297,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Access Token 无需手动填写，会在授权成功后自动写入。',
+                  'Access Token 无需手动填写，会在授权成功后自动写入并安全保存。',
                   style: TextStyle(color: Theme.of(context).colorScheme.outline),
                 ),
                 const SizedBox(height: 12),
@@ -327,7 +331,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ),
                     ),
-                    helperText: '前往 Notion 开发者后台获取 Internal Integration Token',
+                    helperText: '前往 Notion 开发者后台获取 Internal Integration Token，将安全保存',
                   ),
                   obscureText: true,
                   onChanged: (_) => _autoSaveNotionSettings(),
@@ -380,9 +384,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 24),
                 const Text(
                   '''OAuth 回调配置：
-Windows 必须使用固定 loopback 回调：http://localhost:61390
+Windows 使用回环地址 http://localhost:{随机端口}
 其它平台使用 bangumi-importer://oauth2redirect
-请在 Bangumi 开发者后台添加回调（示例：http://localhost:61390）。''',
+请在 Bangumi 开发者后台添加回调（Windows 需允许回环地址）。''',
                   style: TextStyle(color: Colors.black54),
                 ),
               ],

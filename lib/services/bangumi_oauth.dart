@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -19,7 +20,24 @@ class BangumiOAuth {
   static const _tokenUrl = 'https://bgm.tv/oauth/access_token';
   static const _customScheme = 'bangumi-importer';
   static const _customRedirectUri = 'bangumi-importer://oauth2redirect';
-  static const _windowsLoopbackPort = 61390;
+  static const _windowsLoopbackPortMin = 49152;
+  static const _windowsLoopbackPortMax = 65535;
+
+  int _randomPort() {
+    final rand = Random.secure();
+    return _windowsLoopbackPortMin +
+        rand.nextInt(_windowsLoopbackPortMax - _windowsLoopbackPortMin);
+  }
+
+  bool _isValidLoopbackCallback(Uri callbackUri, int port) {
+    final isLocalhost = callbackUri.host == 'localhost' ||
+        callbackUri.host == '127.0.0.1' ||
+        callbackUri.host == '::1';
+    return callbackUri.scheme == 'http' &&
+        isLocalhost &&
+        callbackUri.port == port &&
+        (callbackUri.path.isEmpty || callbackUri.path == '/');
+  }
 
   String _buildState() {
     final rand = Random.secure();
@@ -29,7 +47,9 @@ class BangumiOAuth {
 
   Future<String> _resolveRedirectUri() async {
     if (Platform.isWindows) {
-      return 'http://localhost:$_windowsLoopbackPort';
+      final port = _randomPort();
+      await _storage.saveBangumiRedirectPort('$port');
+      return 'http://localhost:$port';
     }
     return _customRedirectUri;
   }
@@ -47,9 +67,6 @@ class BangumiOAuth {
   }) async {
     final state = _buildState();
     final redirectUri = await _resolveRedirectUri();
-    if (Platform.isWindows) {
-      await _storage.saveBangumiRedirectPort('$_windowsLoopbackPort');
-    }
     final authUri = Uri.parse(_authBase).replace(queryParameters: {
       'client_id': appId,
       'response_type': 'code',
@@ -66,26 +83,35 @@ class BangumiOAuth {
     final code = callbackUri.queryParameters['code'];
     final returnedState = callbackUri.queryParameters['state'];
 
+    if (Platform.isWindows) {
+      final redirect = Uri.parse(redirectUri);
+      if (!_isValidLoopbackCallback(callbackUri, redirect.port)) {
+        throw Exception('Bangumi 授权失败：回调地址校验失败');
+      }
+    }
+
     if (code == null || returnedState != state) {
       throw Exception('Bangumi 授权失败：未收到有效授权码');
     }
 
-    final response = await _client.post(
-      Uri.parse(_tokenUrl),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'grant_type': 'authorization_code',
-        'client_id': appId,
-        'client_secret': appSecret,
-        'code': code,
-        'redirect_uri': redirectUri,
-      }),
-    );
+    final response = await _client
+        .post(
+          Uri.parse(_tokenUrl),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'grant_type': 'authorization_code',
+            'client_id': appId,
+            'client_secret': appSecret,
+            'code': code,
+            'redirect_uri': redirectUri,
+          }),
+        )
+        .timeout(const Duration(seconds: 12));
 
     if (response.statusCode != 200) {
-      throw Exception('Bangumi 获取 Token 失败：${response.statusCode} ${response.body}');
+      throw Exception('Bangumi 获取 Token 失败');
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;

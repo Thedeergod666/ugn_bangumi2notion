@@ -6,29 +6,73 @@ import '../models/mapping_config.dart';
 class NotionApi {
   static const String _baseUrl = 'https://api.notion.com/v1';
   static const String _notionVersion = '2022-06-28';
+  static const Duration _timeout = Duration(seconds: 12);
+
+  String? _normalizePageId(String input) {
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return null;
+    final urlMatch = RegExp(r"https?://(www\.)?notion\.so/.+").hasMatch(trimmed);
+    final raw = urlMatch ? _extractPageIdFromUrl(trimmed) : trimmed;
+    if (raw == null) return null;
+    final cleaned = raw.replaceAll('-', '').toLowerCase();
+    if (!RegExp(r'^[0-9a-f]{32}$').hasMatch(cleaned)) {
+      return null;
+    }
+    return cleaned;
+  }
+
+  String? _extractPageIdFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final segments = uri.pathSegments;
+      if (segments.isEmpty) return null;
+      final last = segments.last;
+      final match = RegExp(r'([0-9a-fA-F]{32})').firstMatch(last);
+      return match?.group(1);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _mapNotionError(String action, http.Response response) {
+    switch (response.statusCode) {
+      case 401:
+      case 403:
+        return '$action失败：权限不足或凭证无效';
+      case 429:
+        return '$action失败：请求过于频繁，请稍后重试';
+      default:
+        if (response.statusCode >= 500) {
+          return '$action失败：Notion 服务异常';
+        }
+        return '$action失败：请求异常';
+    }
+  }
+
+  String? normalizePageId(String input) => _normalizePageId(input);
 
   Future<void> testConnection({
     required String token,
     required String databaseId,
   }) async {
-    final url = Uri.parse('$_baseUrl/databases/$databaseId');
-    final response = await http.get(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Notion-Version': _notionVersion,
-      },
-    );
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
+    final url = Uri.parse(_baseUrl)
+        .replace(pathSegments: ['v1', 'databases', normalizedDatabaseId]);
+    final response = await http
+        .get(
+          url,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Notion-Version': _notionVersion,
+          },
+        )
+        .timeout(_timeout);
 
     if (response.statusCode != 200) {
-      try {
-        final errorData = jsonDecode(response.body);
-        throw Exception(
-            'Notion 连接失败: ${errorData['message'] ?? response.reasonPhrase}');
-      } catch (_) {
-        throw Exception(
-            'Notion 连接失败: ${response.statusCode} ${response.reasonPhrase}');
-      }
+      throw Exception(_mapNotionError('Notion 连接', response));
     }
   }
 
@@ -36,14 +80,21 @@ class NotionApi {
     required String token,
     required String databaseId,
   }) async {
-    final url = Uri.parse('$_baseUrl/databases/$databaseId');
-    final response = await http.get(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Notion-Version': _notionVersion,
-      },
-    );
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
+    final url = Uri.parse(_baseUrl)
+        .replace(pathSegments: ['v1', 'databases', normalizedDatabaseId]);
+    final response = await http
+        .get(
+          url,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Notion-Version': _notionVersion,
+          },
+        )
+        .timeout(_timeout);
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -52,11 +103,9 @@ class NotionApi {
         return properties.keys.toList();
       }
       return [];
-    } else {
-      final errorData = jsonDecode(response.body);
-      throw Exception(
-          '获取数据库属性失败: ${errorData['message'] ?? response.reasonPhrase}');
     }
+
+    throw Exception(_mapNotionError('获取数据库属性', response));
   }
 
   Future<String?> findPageByUniqueId({
@@ -64,23 +113,30 @@ class NotionApi {
     required String databaseId,
     required int uniqueId,
   }) async {
-    final url = Uri.parse('$_baseUrl/databases/$databaseId/query');
-    final response = await http.post(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Notion-Version': _notionVersion,
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'filter': {
-          'property': 'ID',
-          'unique_id': {
-            'equals': uniqueId,
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
+    final url = Uri.parse(_baseUrl)
+        .replace(pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query']);
+    final response = await http
+        .post(
+          url,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Notion-Version': _notionVersion,
+            'Content-Type': 'application/json',
           },
-        },
-      }),
-    );
+          body: jsonEncode({
+            'filter': {
+              'property': 'ID',
+              'unique_id': {
+                'equals': uniqueId,
+              },
+            },
+          }),
+        )
+        .timeout(_timeout);
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -89,11 +145,9 @@ class NotionApi {
         return results.first['id'];
       }
       return null;
-    } else {
-      final errorData = jsonDecode(response.body);
-      throw Exception(
-          '查询 Unique ID 失败: ${errorData['message'] ?? response.reasonPhrase}');
     }
+
+    throw Exception(_mapNotionError('查询 Unique ID', response));
   }
 
   Future<String?> findPageByBangumiId({
@@ -102,23 +156,30 @@ class NotionApi {
     required int bangumiId,
     String propertyName = 'Bangumi ID',
   }) async {
-    final url = Uri.parse('$_baseUrl/databases/$databaseId/query');
-    final response = await http.post(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Notion-Version': _notionVersion,
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'filter': {
-          'property': propertyName,
-          'number': {
-            'equals': bangumiId,
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
+    final url = Uri.parse(_baseUrl)
+        .replace(pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query']);
+    final response = await http
+        .post(
+          url,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Notion-Version': _notionVersion,
+            'Content-Type': 'application/json',
           },
-        },
-      }),
-    );
+          body: jsonEncode({
+            'filter': {
+              'property': propertyName,
+              'number': {
+                'equals': bangumiId,
+              },
+            },
+          }),
+        )
+        .timeout(_timeout);
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -127,11 +188,9 @@ class NotionApi {
         return results.first['id'];
       }
       return null;
-    } else {
-      final errorData = jsonDecode(response.body);
-      throw Exception(
-          '查询 Bangumi ID 失败: ${errorData['message'] ?? response.reasonPhrase}');
     }
+
+    throw Exception(_mapNotionError('查询 Bangumi ID', response));
   }
 
   Future<void> appendBlockChildren({
@@ -139,23 +198,28 @@ class NotionApi {
     required String pageId,
     required List<Map<String, dynamic>> blocks,
   }) async {
-    final url = Uri.parse('$_baseUrl/blocks/$pageId/children');
-    final response = await http.patch(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Notion-Version': _notionVersion,
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'children': blocks,
-      }),
-    );
+    final normalizedId = _normalizePageId(pageId);
+    if (normalizedId == null) {
+      throw Exception('Notion 页面 ID 无效');
+    }
+    final url = Uri.parse(_baseUrl)
+        .replace(pathSegments: ['v1', 'blocks', normalizedId, 'children']);
+    final response = await http
+        .patch(
+          url,
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Notion-Version': _notionVersion,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'children': blocks,
+          }),
+        )
+        .timeout(_timeout);
 
     if (response.statusCode != 200) {
-      final errorData = jsonDecode(response.body);
-      throw Exception(
-          '追加页面内容失败: ${errorData['message'] ?? response.reasonPhrase}');
+      throw Exception(_mapNotionError('追加页面内容', response));
     }
   }
 
@@ -167,13 +231,17 @@ class NotionApi {
     Set<String>? enabledFields,
     String? existingPageId,
   }) async {
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
     final config = mappingConfig ?? MappingConfig();
 
     // 1. 查找是否存在现有页面 (如果未提供)
     final targetPageId = existingPageId ??
         await findPageByBangumiId(
           token: token,
-          databaseId: databaseId,
+          databaseId: normalizedDatabaseId,
           propertyName:
               config.bangumiId.isNotEmpty ? config.bangumiId : 'Bangumi ID',
           bangumiId: detail.id,
@@ -282,7 +350,7 @@ class NotionApi {
     // 只有在创建新页面时才添加简介内容
     // Notion API 更新正文需要调用不同的接口，这里我们主要在创建时支持 children
     if (targetPageId == null) {
-      body['parent'] = {'database_id': databaseId};
+      body['parent'] = {'database_id': normalizedDatabaseId};
 
       final List<Map<String, dynamic>> children = [];
 
@@ -323,11 +391,18 @@ class NotionApi {
       }
     }
 
-    final url = targetPageId != null
-        ? Uri.parse('$_baseUrl/pages/$targetPageId')
-        : Uri.parse('$_baseUrl/pages');
+    final normalizedTargetId =
+        targetPageId != null ? _normalizePageId(targetPageId) : null;
+    if (targetPageId != null && normalizedTargetId == null) {
+      throw Exception('Notion 页面 ID 无效');
+    }
 
-    final response = await (targetPageId != null
+    final url = normalizedTargetId != null
+        ? Uri.parse(_baseUrl)
+            .replace(pathSegments: ['v1', 'pages', normalizedTargetId])
+        : Uri.parse(_baseUrl).replace(pathSegments: ['v1', 'pages']);
+
+    final response = await (normalizedTargetId != null
         ? http.patch(
             url,
             headers: {
@@ -345,12 +420,12 @@ class NotionApi {
               'Content-Type': 'application/json',
             },
             body: jsonEncode(body),
-          ));
+          ))
+        .timeout(_timeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
-      final errorData = jsonDecode(response.body);
-      throw Exception(
-          'Notion ${targetPageId != null ? "更新" : "导入"}失败: ${errorData['message'] ?? response.reasonPhrase}');
+      throw Exception(_mapNotionError(
+          normalizedTargetId != null ? 'Notion 更新' : 'Notion 导入', response));
     }
   }
 }

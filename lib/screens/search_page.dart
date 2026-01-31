@@ -14,6 +14,8 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
+  static const int _maxKeywordLength = 50;
+
   final _controller = TextEditingController();
   final _api = BangumiApi();
   final _storage = SettingsStorage();
@@ -36,13 +38,25 @@ class _SearchPageState extends State<SearchPage> {
 
     try {
       final keyword = _controller.text.trim();
-      final resolvedKeyword =
-          keyword.isEmpty ? '魔法少女小圆' : keyword;
+      final resolvedKeyword = keyword.isEmpty ? '魔法少女小圆' : keyword;
       if (keyword.isEmpty) {
         _controller.text = resolvedKeyword;
         _controller.selection = TextSelection.fromPosition(
           TextPosition(offset: resolvedKeyword.length),
         );
+      }
+      final normalizedKeyword = resolvedKeyword.trim();
+      final limitedKeyword = normalizedKeyword.length > _maxKeywordLength
+          ? normalizedKeyword.substring(0, _maxKeywordLength)
+          : normalizedKeyword;
+      if (limitedKeyword != normalizedKeyword) {
+        _controller.text = limitedKeyword;
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: limitedKeyword.length),
+        );
+      }
+      if (limitedKeyword.isEmpty) {
+        throw Exception('请输入有效关键词');
       }
       final data = await _storage.loadAll();
       final token = data[SettingsKeys.bangumiAccessToken] ?? '';
@@ -50,16 +64,16 @@ class _SearchPageState extends State<SearchPage> {
         throw Exception('未设置 Bangumi Access Token，请先在设置页授权');
       }
       final items =
-          await _api.search(keyword: resolvedKeyword, accessToken: token);
+          await _api.search(keyword: limitedKeyword, accessToken: token);
       if (mounted) {
         setState(() {
           _items = items;
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = '搜索失败，请稍后重试';
           _items = [];
         });
       }
@@ -93,7 +107,7 @@ class _SearchPageState extends State<SearchPage> {
                   child: TextField(
                     controller: _controller,
                     decoration: const InputDecoration(
-                      hintText: '输入番剧名称或关键字',
+                      hintText: '输入番剧名称或关键字（最多 50 字）',
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),

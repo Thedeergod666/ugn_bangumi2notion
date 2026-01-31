@@ -51,10 +51,10 @@ class _DetailPageState extends State<DetailPage> {
           _loading = false;
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = '加载失败，请稍后重试';
           _loading = false;
         });
       }
@@ -84,8 +84,8 @@ class _DetailPageState extends State<DetailPage> {
           propertyName: mappingConfig.bangumiId.isNotEmpty ? mappingConfig.bangumiId : 'Bangumi ID',
         );
       }
-    } catch (e) {
-      debugPrint('Pre-check failed: $e');
+    } catch (_) {
+      debugPrint('Pre-check failed');
     } finally {
       if (mounted) setState(() => _importing = false);
     }
@@ -276,6 +276,19 @@ class _DetailPageState extends State<DetailPage> {
         return;
       }
 
+      if (result['isBind'] == true && targetPageId != null) {
+        final normalized = _notionApi.normalizePageId(targetPageId);
+        if (normalized == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Notion Page ID 无效')),
+            );
+          }
+          return;
+        }
+        targetPageId = normalized;
+      }
+
       _importToNotion(
         enabledFields: fields,
         mappingConfig: mappingConfig,
@@ -347,11 +360,11 @@ class _DetailPageState extends State<DetailPage> {
           const SnackBar(content: Text('操作成功！')),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('操作失败: ${e.toString()}'),
+            content: const Text('操作失败，请稍后重试'),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
