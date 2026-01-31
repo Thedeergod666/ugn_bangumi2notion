@@ -82,7 +82,7 @@ class _MappingPageState extends State<MappingPage> {
   @override
   Widget build(BuildContext context) {
     return NavigationShell(
-      title: '字段映射设置',
+      title: '映射配置',
       selectedRoute: '/mapping',
       actions: [
         IconButton(
@@ -368,6 +368,7 @@ class _MappingPageState extends State<MappingPage> {
   ) {
     final List<NotionProperty> items = [
       NotionProperty(name: '', type: ''),
+      NotionProperty(name: '正文', type: 'page_content'),
       ..._notionProperties
     ];
 

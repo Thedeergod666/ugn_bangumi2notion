@@ -119,20 +119,29 @@ class _DetailPageState extends State<DetailPage> {
     if (!mounted) return;
 
     final Map<String, String> fieldLabels = {
-      'title': '标题',
-      'airDate': '放送日期',
-      'imageUrl': '封面链接',
-      'bangumiId': 'Bangumi ID',
-      'score': '评分',
-      'link': 'Bangumi 链接',
-      'animationProduction': '动画制作',
-      'director': '导演',
-      'script': '脚本',
-      'storyboard': '分镜',
-      'content': '简介 (正文)',
-      'description': '描述',
+      'title': mappingConfig?.title ?? '标题',
+      'airDate': mappingConfig?.airDate ?? '放送日期',
+      'tags': mappingConfig?.tags ?? '标签',
+      'imageUrl': mappingConfig?.imageUrl ?? '封面链接',
+      'bangumiId': mappingConfig?.bangumiId ?? 'Bangumi ID',
+      'score': mappingConfig?.score ?? '评分',
+      'link': mappingConfig?.link ?? 'Bangumi 链接',
+      'animationProduction': mappingConfig?.animationProduction ?? '动画制作',
+      'director': mappingConfig?.director ?? '导演',
+      'script': mappingConfig?.script ?? '脚本',
+      'storyboard': mappingConfig?.storyboard ?? '分镜',
+      'content': mappingConfig?.content ?? '简介 (正文)',
+      'description': mappingConfig?.description ?? '描述',
       'coverUrl': '正文图片 (URL)',
     };
+
+    // 移除为空的字段（如果没有在 mappingConfig 中定义，说明该字段不可用）
+    if (mappingConfig != null) {
+      fieldLabels.removeWhere((key, value) {
+        if (key == 'coverUrl') return false;
+        return value.trim().isEmpty;
+      });
+    }
 
     // 初始选择逻辑
     final Set<String> selectedFields = {};
@@ -164,7 +173,7 @@ class _DetailPageState extends State<DetailPage> {
       }
     }
 
-    final List<String> topTags = _detail!.tags.take(10).toList();
+    final List<String> topTags = _detail!.tags.take(30).toList();
     final Set<String> selectedTags = {};
 
     final TextEditingController bangumiIdController = TextEditingController();
@@ -262,6 +271,13 @@ class _DetailPageState extends State<DetailPage> {
 
                       // 区域 B: 字段更新选择
                       _buildDialogSectionTitle('字段更新选择'),
+                      const Padding(
+                        padding: EdgeInsets.only(left: 16, bottom: 8),
+                        child: Text(
+                          'Bangumi属性（Notion属性）',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ),
                       Wrap(
                         spacing: 8,
                         children: fieldLabels.entries.map((entry) {
@@ -283,28 +299,34 @@ class _DetailPageState extends State<DetailPage> {
                       const Divider(),
 
                       // 区域 C: 标签选择
-                      _buildDialogSectionTitle('标签选择 (Top 10)'),
+                      _buildDialogSectionTitle('标签选择 (Top 30)'),
                       if (topTags.isEmpty)
                         const Text('暂无标签',
                             style: TextStyle(fontSize: 12, color: Colors.grey))
                       else
-                        Wrap(
-                          spacing: 8,
-                          children: topTags.map((tag) {
-                            return FilterChip(
-                              label: Text(tag),
-                              selected: selectedTags.contains(tag),
-                              onSelected: (val) {
-                                setDialogState(() {
-                                  if (val) {
-                                    selectedTags.add(tag);
-                                  } else {
-                                    selectedTags.remove(tag);
-                                  }
-                                });
-                              },
-                            );
-                          }).toList(),
+                        AbsorbPointer(
+                          absorbing: !selectedFields.contains('tags'),
+                          child: Opacity(
+                            opacity: selectedFields.contains('tags') ? 1.0 : 0.5,
+                            child: Wrap(
+                              spacing: 8,
+                              children: topTags.map((tag) {
+                                return FilterChip(
+                                  label: Text(tag),
+                                  selected: selectedTags.contains(tag),
+                                  onSelected: (val) {
+                                    setDialogState(() {
+                                      if (val) {
+                                        selectedTags.add(tag);
+                                      } else {
+                                        selectedTags.remove(tag);
+                                      }
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                          ),
                         ),
                     ],
                   ),

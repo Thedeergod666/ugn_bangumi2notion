@@ -288,6 +288,7 @@ class NotionApi {
 
     // 记录哪些字段被映射到了 Notion 的属性中
     final Set<String> mappedPropertyKeys = {};
+    final List<Map<String, dynamic>> bodyBlocks = [];
 
     void addProperty(
         String fieldKey, String notionKey, dynamic value, String type) {
@@ -296,6 +297,36 @@ class NotionApi {
       if (enabledFields != null &&
           !enabledFields.contains(fieldKey) &&
           !fieldKey.startsWith('infobox_')) {
+        return;
+      }
+
+      // 特殊处理：如果映射到“正文”，则加入 bodyBlocks 而不是 properties
+      if (notionKey == '正文') {
+        if (value == null || value.toString().isEmpty) return;
+
+        if (fieldKey == 'imageUrl') {
+          bodyBlocks.add({
+            'object': 'block',
+            'type': 'image',
+            'image': {
+              'type': 'external',
+              'external': {'url': value.toString()}
+            }
+          });
+        } else {
+          bodyBlocks.add({
+            'object': 'block',
+            'type': 'paragraph',
+            'paragraph': {
+              'rich_text': [
+                {
+                  'type': 'text',
+                  'text': {'content': value.toString()}
+                }
+              ]
+            }
+          });
+        }
         return;
       }
 
@@ -418,10 +449,13 @@ class NotionApi {
     if (targetPageId == null) {
       body['parent'] = {'database_id': normalizedDatabaseId};
 
-      final List<Map<String, dynamic>> children = [];
+      final List<Map<String, dynamic>> children = [...bodyBlocks];
 
-      // 如果启用了正文图片
-      if (enabledFields != null &&
+      // 如果没有显式映射到“正文”，但启用了 coverUrl 字段，则仍然按照旧逻辑添加（兼容性）
+      final bool alreadyHasImage =
+          children.any((block) => block['type'] == 'image');
+      if (!alreadyHasImage &&
+          enabledFields != null &&
           enabledFields.contains('coverUrl') &&
           detail.imageUrl.isNotEmpty) {
         children.add({
@@ -434,10 +468,15 @@ class NotionApi {
         });
       }
 
-      // 如果 content 字段被映射了，且启用了该字段，则将其作为简介内容
+      // 如果没有显式映射到“正文”，但 content 被映射到了其他属性且启用了，则不再重复添加到正文
+      // 除非 content 显式映射到了“正文” (已经在 bodyBlocks 中了)
       if (config.content.isNotEmpty &&
+          config.content != '正文' &&
           (enabledFields == null || enabledFields.contains('content')) &&
           detail.summary.isNotEmpty) {
+        // 如果 content 映射的是一个非空属性，之前 addProperty 会把它加入 properties
+        // 这里我们要保持向后兼容：如果 content 被映射了，默认也加入正文？
+        // 原逻辑是只要 config.content 不为空就加入正文。
         children.add({
           'object': 'block',
           'type': 'paragraph',
