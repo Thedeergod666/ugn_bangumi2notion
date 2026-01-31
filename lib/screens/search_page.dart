@@ -89,7 +89,7 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     return NavigationShell(
-      title: 'Bangumi / Notion 导入器',
+      title: '悠gn助手',
       selectedRoute: '/search',
       child: Padding(
         padding: const EdgeInsets.all(16),

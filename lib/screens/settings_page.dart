@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -393,15 +394,76 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ],
                 const SizedBox(height: 24),
-                const Text(
-                  '''OAuth 回调配置：
-Windows 使用回环地址 http://localhost:{随机端口}
-其它平台使用 bangumi-importer://oauth2redirect
-请在 Bangumi 开发者后台添加回调（Windows 需允许回环地址）。''',
-                  style: TextStyle(color: Colors.black54),
+                _sectionTitle('OAuth 回调配置'),
+                _buildCopyableTile(
+                  context,
+                  label: 'Windows 回调地址',
+                  value: 'http://localhost:61390',
+                ),
+                _buildCopyableTile(
+                  context,
+                  label: '其它平台回调地址',
+                  value: 'bangumi-importer://oauth2redirect',
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '请在 Bangumi 开发者后台添加回调（Windows 需允许回环地址）。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildCopyableTile(
+    BuildContext context, {
+    required String label,
+    required String value,
+  }) {
+    return InkWell(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: value));
+        _showSnackBar('已复制到剪贴板: $value');
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.copy_rounded,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
