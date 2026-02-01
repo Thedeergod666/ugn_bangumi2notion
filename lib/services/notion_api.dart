@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:http/http.dart' as http;
 import '../models/bangumi_models.dart';
 import '../models/mapping_config.dart';
@@ -43,7 +44,7 @@ class NotionApi {
         final message = body['message'].toString();
         // 如果是常见的属性不存在错误，进行中文化优化
         if (message.contains('does not exist')) {
-          return '$action失败：${message}。请检查 Notion 数据库属性名称是否匹配。';
+          return '$action失败：$message。请检查 Notion 数据库属性名称是否匹配。';
         }
         return '$action失败：$message';
       }
@@ -215,7 +216,7 @@ class NotionApi {
         actualType = prop.type;
       }
     } catch (e) {
-      print('Schema fetch failed in findPageByProperty: $e');
+      developer.log('Schema fetch failed in findPageByProperty: $e');
     }
 
     final url = Uri.parse(_baseUrl)
@@ -227,7 +228,7 @@ class NotionApi {
       final uniqueIdVal = _parseUniqueId(value);
       if (uniqueIdVal == null) {
         // 无法从值中解析出 ID 数字，返回空
-        print('无法从 "$value" 解析出 unique_id');
+        developer.log('无法从 "$value" 解析出 unique_id');
         return null;
       }
       filter = {
@@ -246,10 +247,15 @@ class NotionApi {
     } else {
       // 针对不同文本类型构建正确的 filter key
       String filterKey = 'rich_text';
-      if (actualType == 'title') filterKey = 'title';
-      else if (actualType == 'url') filterKey = 'url';
-      else if (actualType == 'email') filterKey = 'email';
-      else if (actualType == 'phone_number') filterKey = 'phone_number';
+      if (actualType == 'title') {
+        filterKey = 'title';
+      } else if (actualType == 'url') {
+        filterKey = 'url';
+      } else if (actualType == 'email') {
+        filterKey = 'email';
+      } else if (actualType == 'phone_number') {
+        filterKey = 'phone_number';
+      }
 
       filter = {
         'property': propertyName,
@@ -276,11 +282,11 @@ class NotionApi {
         .timeout(_timeout);
 
     if (response.statusCode != 200) {
-      print('Notion Query Error:');
-      print('URL: $url');
-      print('Request Body: $requestBody');
-      print('Status Code: ${response.statusCode}');
-      print('Response Body: ${response.body}');
+      developer.log('Notion Query Error:');
+      developer.log('URL: $url');
+      developer.log('Request Body: $requestBody');
+      developer.log('Status Code: ${response.statusCode}');
+      developer.log('Response Body: ${response.body}');
     }
 
     if (response.statusCode == 200) {
@@ -378,7 +384,7 @@ class NotionApi {
           token: token, databaseId: normalizedDatabaseId);
       schemaTypes = {for (var p in schema) p.name: p.type};
     } catch (e) {
-      print('获取数据库 Schema 失败: $e');
+      developer.log('获取数据库 Schema 失败: $e');
       // 如果获取失败，可以决定是中止还是尝试继续（可能会遇到属性不存在的错误）
       // 这里选择继续，保持原有行为，但在 addProperty 中会因为 schemaTypes 为空而稍作处理
       // 实际上如果这里失败了，后续写入大概率也会失败。但为了兼容旧逻辑，暂不强制抛出。
@@ -446,7 +452,7 @@ class NotionApi {
       if (schemaTypes.isNotEmpty) {
         if (!schemaTypes.containsKey(notionKey)) {
           // 属性在数据库中不存在，跳过，避免报错 "property does not exist"
-          print('属性不存在，跳过: $notionKey');
+          developer.log('属性不存在，跳过: $notionKey');
           return;
         }
       }

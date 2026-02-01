@@ -429,7 +429,7 @@ class _MappingPageState extends State<MappingPage> {
           Expanded(
             flex: 3,
             child: DropdownButtonFormField<String>(
-              value: currentValue,
+              initialValue: currentValue,
               items: items.map((prop) {
                 return DropdownMenuItem(
                   value: prop.name,
