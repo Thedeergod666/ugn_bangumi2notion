@@ -3,9 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/bangumi_oauth_config.dart';
+import '../models/bangumi_models.dart';
+import '../services/bangumi_api.dart';
 import '../services/bangumi_oauth.dart';
 import '../services/notion_api.dart';
 import '../services/settings_storage.dart';
+import '../widgets/error_detail_dialog.dart';
 import '../widgets/navigation_shell.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -20,18 +24,17 @@ class _SettingsPageState extends State<SettingsPage> {
   final _oauth = BangumiOAuth();
   final _notionApi = NotionApi();
 
-  final _appIdController = TextEditingController();
-  final _appSecretController = TextEditingController();
-  final _accessTokenController = TextEditingController();
   final _notionTokenController = TextEditingController();
   final _notionDbController = TextEditingController();
-
-  String _appSecretInMemory = '';
 
   bool _loading = true;
   bool _saving = false;
   String? _errorMessage;
   String? _successMessage;
+  bool _bangumiLoading = false;
+  bool _bangumiHasToken = false;
+  bool _bangumiTokenValid = false;
+  BangumiUser? _bangumiUser;
 
   @override
   void initState() {
@@ -41,17 +44,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _load() async {
     final data = await _storage.loadAll();
-
-    // Load from storage first, then fallback to .env if storage is empty
-    String appId = data[SettingsKeys.bangumiAppId] ?? '';
-    if (appId.isEmpty) {
-      appId = dotenv.env['BANGUMI_APP_ID'] ?? '';
-    }
-
-    String appSecret = data[SettingsKeys.bangumiAppSecret] ?? '';
-    if (appSecret.isEmpty) {
-      appSecret = dotenv.env['BANGUMI_APP_SECRET'] ?? '';
-    }
 
     String notionToken = data[SettingsKeys.notionToken] ?? '';
     if (notionToken.isEmpty) {
@@ -63,10 +55,6 @@ class _SettingsPageState extends State<SettingsPage> {
       notionDbId = dotenv.env['NOTION_DATABASE_ID'] ?? '';
     }
 
-    _appIdController.text = appId;
-    _appSecretController.text = '';
-    _appSecretInMemory = appSecret;
-    _accessTokenController.text = data[SettingsKeys.bangumiAccessToken] ?? '';
     _notionTokenController.text = notionToken;
     _notionDbController.text = notionDbId;
 
@@ -74,6 +62,41 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {
         _loading = false;
       });
+    }
+
+    await _refreshBangumiStatus();
+  }
+
+  Future<void> _refreshBangumiStatus() async {
+    final token = await _oauth.getStoredAccessToken();
+    if (token == null || token.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _bangumiHasToken = false;
+          _bangumiTokenValid = false;
+          _bangumiUser = null;
+        });
+      }
+      return;
+    }
+    try {
+      final api = BangumiApi();
+      final user = await api.fetchSelf(accessToken: token);
+      if (mounted) {
+        setState(() {
+          _bangumiHasToken = true;
+          _bangumiTokenValid = true;
+          _bangumiUser = user;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _bangumiHasToken = true;
+          _bangumiTokenValid = false;
+          _bangumiUser = null;
+        });
+      }
     }
   }
 
@@ -88,20 +111,6 @@ class _SettingsPageState extends State<SettingsPage> {
             isError ? Theme.of(context).colorScheme.error : null,
       ),
     );
-  }
-
-  Future<void> _autoSaveBangumiCredentials() async {
-    final appSecretInput = _appSecretController.text.trim();
-    final appSecret = appSecretInput.isNotEmpty
-        ? appSecretInput
-        : _appSecretInMemory;
-    _appSecretInMemory = appSecret;
-    try {
-      await _storage.saveBangumiCredentials(
-        appId: _appIdController.text.trim(),
-        appSecret: appSecret,
-      );
-    } catch (_) {}
   }
 
   Future<void> _autoSaveNotionSettings() async {
@@ -121,15 +130,6 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
-      final appSecretInput = _appSecretController.text.trim();
-      final appSecret = appSecretInput.isNotEmpty
-          ? appSecretInput
-          : _appSecretInMemory;
-      _appSecretInMemory = appSecret;
-      await _storage.saveBangumiCredentials(
-        appId: _appIdController.text.trim(),
-        appSecret: appSecret,
-      );
       await _storage.saveNotionSettings(
         notionToken: _notionTokenController.text.trim(),
         notionDatabaseId: _notionDbController.text.trim(),
@@ -157,47 +157,120 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _authorize() async {
+    if (!BangumiOAuthConfig.isConfigured) {
+      await _showBangumiConfigMissingDialog();
+      return;
+    }
     setState(() {
       _saving = true;
+      _bangumiLoading = true;
       _errorMessage = null;
       _successMessage = null;
     });
 
     try {
-      final appId = _appIdController.text.trim();
-      final appSecretInput = _appSecretController.text.trim();
-      final appSecret = appSecretInput.isNotEmpty ? appSecretInput : _appSecretInMemory;
-      if (appId.isEmpty || appSecret.isEmpty) {
-        throw Exception('请先填写 Bangumi AppID 与 App Secret');
-      }
-      _appSecretInMemory = appSecret;
-      await _storage.saveBangumiCredentials(
-        appId: appId,
-        appSecret: appSecret,
-      );
-      final token = await _oauth.authorize(
-        appId: appId,
-        appSecret: appSecret,
-      );
-      await _storage.saveBangumiAccessToken(token);
-      _accessTokenController.text = token;
+      final result = await _oauth.authorize();
       if (mounted) {
         setState(() {
-          _successMessage = 'Bangumi Access Token 已更新';
+          _successMessage = 'Bangumi 授权成功';
+          _bangumiHasToken = true;
+          _bangumiTokenValid = result.isTokenValid;
+          _bangumiUser = result.user;
         });
-        _showSnackBar('Bangumi Access Token 已更新');
+        _showSnackBar('Bangumi 授权成功');
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (mounted) {
         setState(() {
           _errorMessage = '授权失败，请稍后重试';
         });
         _showSnackBar('授权失败，请稍后重试', isError: true);
+        await showDialog(
+          context: context,
+          builder: (context) => ErrorDetailDialog(
+            error: error,
+            stackTrace: stackTrace,
+          ),
+        );
       }
     } finally {
       if (mounted) {
         setState(() {
           _saving = false;
+          _bangumiLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showBangumiConfigMissingDialog() async {
+    if (!mounted) {
+      return;
+    }
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Bangumi 授权配置缺失'),
+        content: Text(
+          '${BangumiOAuthConfig.missingMessage}\n'
+          '请在环境变量/打包参数中添加这两个，或联系开发人员重新打包。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await launchUrl(
+                Uri.parse('https://bgm.tv/oauth/clients'),
+                mode: LaunchMode.externalApplication,
+              );
+            },
+            child: const Text('前往 Bangumi 开发者平台'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _logoutBangumi() async {
+    setState(() {
+      _saving = true;
+      _bangumiLoading = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+
+    try {
+      await _oauth.logout();
+      if (mounted) {
+        setState(() {
+          _bangumiHasToken = false;
+          _bangumiTokenValid = false;
+          _bangumiUser = null;
+          _successMessage = '已退出 Bangumi 授权';
+        });
+        _showSnackBar('已退出 Bangumi 授权');
+      }
+    } catch (error, stackTrace) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = '退出失败，请稍后重试';
+        });
+        await showDialog(
+          context: context,
+          builder: (context) => ErrorDetailDialog(
+            error: error,
+            stackTrace: stackTrace,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _bangumiLoading = false;
         });
       }
     }
@@ -246,9 +319,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    _appIdController.dispose();
-    _appSecretController.dispose();
-    _accessTokenController.dispose();
     _notionTokenController.dispose();
     _notionDbController.dispose();
     super.dispose();
@@ -265,51 +335,10 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 _sectionTitle('Bangumi 设置'),
-                TextField(
-                  controller: _appIdController,
-                  decoration: InputDecoration(
-                    labelText: 'Bangumi AppID',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: TextButton.icon(
-                        onPressed: () => launchUrl(Uri.parse('https://bgm.tv/dev/app')),
-                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                        label: const Text('去配置'),
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          foregroundColor: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                    helperText: '前往 Bangumi 开发者后台创建应用并获取 ID',
-                  ),
-                  onChanged: (_) => _autoSaveBangumiCredentials(),
-                ),
+                _buildBangumiStatusCard(),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _appSecretController,
-                  decoration: const InputDecoration(
-                    labelText: 'Bangumi App Secret',
-                    border: OutlineInputBorder(),
-                    helperText: '将安全保存，可留空以保持已保存的密钥',
-                  ),
-                  obscureText: true,
-                  onChanged: (_) => _autoSaveBangumiCredentials(),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _accessTokenController,
-                  decoration: const InputDecoration(
-                    labelText: 'Bangumi Access Token',
-                    border: OutlineInputBorder(),
-                  ),
-                  readOnly: true,
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 8),
                 Text(
-                  'Access Token 无需手动填写，会在授权成功后自动写入并安全保存。',
+                  '点击授权将打开系统浏览器，完成登录后会回调到本地 http://localhost:8080/auth/callback。',
                   style: TextStyle(color: Theme.of(context).colorScheme.outline),
                 ),
                 const SizedBox(height: 12),
@@ -318,9 +347,23 @@ class _SettingsPageState extends State<SettingsPage> {
                     Expanded(
                       child: FilledButton.icon(
                         onPressed: _saving ? null : _authorize,
-                        icon: const Icon(Icons.lock_open),
-                        label: const Text('授权并获取 Token'),
+                        icon: _bangumiLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.lock_open),
+                        label: const Text('登录/授权'),
                       ),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed: (_saving || !_bangumiHasToken)
+                          ? null
+                          : _logoutBangumi,
+                      icon: const Icon(Icons.logout),
+                      label: const Text('登出'),
                     ),
                   ],
                 ),
@@ -397,17 +440,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 _sectionTitle('OAuth 回调配置'),
                 _buildCopyableTile(
                   context,
-                  label: 'Windows 回调地址',
-                  value: 'http://localhost:61390',
-                ),
-                _buildCopyableTile(
-                  context,
-                  label: '其它平台回调地址',
-                  value: 'bangumi-importer://oauth2redirect',
+                  label: '桌面端回调地址',
+                  value: 'http://localhost:8080/auth/callback',
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '请在 Bangumi 开发者后台添加回调（Windows 需允许回环地址）。',
+                  '请在 Bangumi 开发者后台登记该回调地址，授权时会通过本地回调接收 code。',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
@@ -463,6 +501,60 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBangumiStatusCard() {
+    final hasToken = _bangumiHasToken;
+    final userLabel = _bangumiUser == null
+        ? '未获取到用户信息'
+        : (_bangumiUser!.nickname.isNotEmpty ? _bangumiUser!.nickname : '已登录');
+    final statusText = hasToken
+        ? (_bangumiTokenValid ? '已登录' : 'Token 无效或已过期')
+        : '未登录';
+    final statusColor = _bangumiTokenValid
+        ? Colors.green
+        : (hasToken ? Colors.orange : Colors.grey);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.account_circle, color: statusColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  statusText,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: statusColor,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  userLabel,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _bangumiLoading ? null : _refreshBangumiStatus,
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('刷新'),
+          ),
+        ],
       ),
     );
   }

@@ -17,6 +17,7 @@ class BangumiApi {
   static const int _maxKeywordLength = 50;
   static const int _staffPageLimit = 50;
   static const int _staffMaxItems = 200;
+  static const Duration _selfTimeout = Duration(seconds: 10);
 
   String _mapBangumiError(String action, http.Response response) {
     switch (response.statusCode) {
@@ -45,6 +46,23 @@ class BangumiApi {
       headers['Authorization'] = 'Bearer $accessToken';
     }
     return headers;
+  }
+
+  Future<BangumiUser> fetchSelf({required String accessToken}) async {
+    final uri = Uri.parse('$_baseUrl/v0/me');
+    final response = await _client
+        .get(
+          uri,
+          headers: _buildHeaders(accessToken: accessToken),
+        )
+        .timeout(_selfTimeout);
+
+    if (response.statusCode != 200) {
+      throw Exception(_mapBangumiError('获取用户信息', response));
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return BangumiUser.fromJson(data);
   }
 
   Future<List<BangumiSearchItem>> search({

@@ -5,8 +5,6 @@ import '../models/mapping_config.dart';
 import '../models/notion_models.dart';
 
 class SettingsKeys {
-  static const bangumiAppId = 'bangumiAppId';
-  static const bangumiAppSecret = 'bangumiAppSecret';
   static const bangumiAccessToken = 'bangumiAccessToken';
   static const bangumiRedirectPort = 'bangumiRedirectPort';
   static const notionToken = 'notionToken';
@@ -20,22 +18,6 @@ class SettingsStorage {
   Future<SharedPreferences> get _prefs async => SharedPreferences.getInstance();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
-  Future<void> saveBangumiCredentials({
-    required String appId,
-    required String appSecret,
-  }) async {
-    final prefs = await _prefs;
-    await prefs.setString(SettingsKeys.bangumiAppId, appId);
-    if (appSecret.isEmpty) {
-      await _secureStorage.delete(key: SettingsKeys.bangumiAppSecret);
-    } else {
-      await _secureStorage.write(
-        key: SettingsKeys.bangumiAppSecret,
-        value: appSecret,
-      );
-    }
-  }
-
   Future<void> saveBangumiRedirectPort(String port) async {
     final prefs = await _prefs;
     await prefs.setString(SettingsKeys.bangumiRedirectPort, port);
@@ -46,6 +28,10 @@ class SettingsStorage {
       key: SettingsKeys.bangumiAccessToken,
       value: token,
     );
+  }
+
+  Future<void> clearBangumiAccessToken() async {
+    await _secureStorage.delete(key: SettingsKeys.bangumiAccessToken);
   }
 
   Future<void> saveNotionSettings({
@@ -103,9 +89,6 @@ class SettingsStorage {
   Future<Map<String, String>> loadAll() async {
     final prefs = await _prefs;
     return {
-      SettingsKeys.bangumiAppId: prefs.getString(SettingsKeys.bangumiAppId) ?? '',
-      SettingsKeys.bangumiAppSecret:
-          await _secureStorage.read(key: SettingsKeys.bangumiAppSecret) ?? '',
       SettingsKeys.bangumiAccessToken:
           await _secureStorage.read(key: SettingsKeys.bangumiAccessToken) ?? '',
       SettingsKeys.bangumiRedirectPort:

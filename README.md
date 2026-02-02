@@ -37,28 +37,27 @@
 
 ## 配置（必须）
 
-项目使用 [`flutter_dotenv`](pubspec.yaml:40) 从 `.env` 读取第三方凭据；请按以下步骤配置：
+Bangumi OAuth 的 `clientId/clientSecret` 改为通过 **编译期** `--dart-define` 注入（避免硬编码到仓库），Notion 仍沿用 `.env`。
 
 1. 复制示例文件：
 
    - 将 [`.env.example`](.env.example:1) 复制为 `.env`
 
-2. 填写 `.env`：
-
-   **Bangumi OAuth（必填）**
-
-   - `BANGUMI_APP_ID`
-   - `BANGUMI_APP_SECRET`
+2. 填写 `.env`（仅 Notion）：
 
    **Notion（必填）**
 
    - `NOTION_TOKEN`
    - `NOTION_DATABASE_ID`
 
-3. Bangumi 回调地址（必须在后台注册）：
+3. 通过 `--dart-define` 注入 Bangumi OAuth（编译期注入）：
 
-   - Windows 固定回调：`http://localhost:61390`
-   - 非 Windows 回调：`bangumi-importer://oauth2redirect`
+   - `BANGUMI_CLIENT_ID`（必填）
+   - `BANGUMI_CLIENT_SECRET`（必填）
+
+4. Bangumi 回调地址（必须在后台注册）：
+
+   - `http://localhost:8080/auth/callback`
 
 > `.env` 已被 [`.gitignore`](.gitignore:46) 忽略，避免误提交。
 
@@ -66,7 +65,27 @@
 
 ```bash
 flutter pub get
-flutter run
+
+# Windows / macOS / Linux（运行）
+flutter run --dart-define=BANGUMI_CLIENT_ID=xxx --dart-define=BANGUMI_CLIENT_SECRET=yyy
+
+# Windows / macOS / Linux（构建，示例以 Windows 为例）
+flutter build windows --dart-define=BANGUMI_CLIENT_ID=xxx --dart-define=BANGUMI_CLIENT_SECRET=yyy
+```
+
+也可以先设置 OS 环境变量后使用脚本构建（脚本会自动拼接 `--dart-define`）：
+
+```bash
+# Windows（设置后需重开终端生效）
+setx BANGUMI_CLIENT_ID "xxx"
+setx BANGUMI_CLIENT_SECRET "yyy"
+
+# 使用脚本构建（示例）
+dart run tool/build.dart --platform windows --release
+```
+
+脚本支持的平台：`windows|macos|linux|android|ios|web`，可选 `--release/--debug`。
+当 `BANGUMI_CLIENT_ID/BANGUMI_CLIENT_SECRET` 为空时脚本仍会构建，但会输出 WARNING，提示授权不可用且需重新打包注入。
 ```
 
 其他常用命令：
