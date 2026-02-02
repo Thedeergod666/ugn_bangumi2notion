@@ -599,12 +599,6 @@ class NotionApi {
       };
     }
 
-    // 确保简介 (Page Content) 映射的属性名不会出现在 properties 中
-    // 因为它映射的是正文 Block，而不是数据库属性
-    if (config.content.isNotEmpty) {
-      properties.remove(config.content);
-    }
-
     final Map<String, dynamic> body = {
       'properties': properties,
     };
@@ -629,29 +623,6 @@ class NotionApi {
           'image': {
             'type': 'external',
             'external': {'url': detail.imageUrl}
-          }
-        });
-      }
-
-      // 如果没有显式映射到“正文”，但 content 被映射到了其他属性且启用了，则不再重复添加到正文
-      // 除非 content 显式映射到了“正文” (已经在 bodyBlocks 中了)
-      if (config.content.isNotEmpty &&
-          config.content != '正文' &&
-          (enabledFields == null || enabledFields.contains('content')) &&
-          detail.summary.isNotEmpty) {
-        // 如果 content 映射的是一个非空属性，之前 addProperty 会把它加入 properties
-        // 这里我们要保持向后兼容：如果 content 被映射了，默认也加入正文？
-        // 原逻辑是只要 config.content 不为空就加入正文。
-        children.add({
-          'object': 'block',
-          'type': 'paragraph',
-          'paragraph': {
-            'rich_text': [
-              {
-                'type': 'text',
-                'text': {'content': detail.summary}
-              }
-            ]
           }
         });
       }

@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:html/parser.dart' show parse;
 
 import '../models/bangumi_models.dart';
 
@@ -13,27 +12,44 @@ class BangumiApi {
   final http.Client _client;
 
   static const _baseUrl = 'https://api.bgm.tv';
+  static const _nextBaseUrl = 'https://next.bgm.tv/p1';
   static const Duration _timeout = Duration(seconds: 12);
   static const int _maxKeywordLength = 50;
+  static const int _staffPageLimit = 50;
+  static const int _staffMaxItems = 200;
 
   String _mapBangumiError(String action, http.Response response) {
     switch (response.statusCode) {
       case 401:
       case 403:
         return '$action失败：权限不足或凭证无效';
+      case 404:
+        return '$action失败：资源不存在';
       case 429:
         return '$action失败：请求过于频繁，请稍后重试';
       default:
         if (response.statusCode >= 500) {
           return '$action失败：Bangumi 服务异常';
         }
-        return '$action失败：请求异常';
+        return '$action失败：请求异常 (${response.statusCode})';
     }
+  }
+
+  Map<String, String> _buildHeaders({String? accessToken}) {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'User-Agent': 'FlutterUTools/1.0.0 (https://github.com/yourusername/flutter_utools)', // TODO: Update User-Agent
+    };
+    if (accessToken != null && accessToken.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+    return headers;
   }
 
   Future<List<BangumiSearchItem>> search({
     required String keyword,
-    required String accessToken,
+    String? accessToken,
   }) async {
     final normalizedKeyword = keyword.trim();
     final limitedKeyword = normalizedKeyword.length > _maxKeywordLength
@@ -46,15 +62,12 @@ class BangumiApi {
     final response = await _client
         .post(
           uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $accessToken',
-          },
+          headers: _buildHeaders(accessToken: accessToken),
           body: jsonEncode({
             'keyword': limitedKeyword,
             'sort': 'match',
             'filter': {
-              'type': [2],
+              'type': [2], // 2 = 动画
             },
           }),
         )
@@ -74,15 +87,39 @@ class BangumiApi {
 
   Future<BangumiSubjectDetail> fetchDetail({
     required int subjectId,
-    required String accessToken,
+    String? accessToken,
   }) async {
+    // 并行获取番剧基本信息和制作人员信息
+    final subjectFuture = _fetchSubjectBase(subjectId, accessToken);
+    final staffFuture = _fetchStaff(subjectId);
+
+    try {
+      final results = await Future.wait([subjectFuture, staffFuture]);
+      var detail = results[0] as BangumiSubjectDetail;
+      final staffResponse = results[1] as StaffResponse?;
+
+      // 如果成功获取到制作人员信息，合并到详情中
+      if (staffResponse != null && staffResponse.data.isNotEmpty) {
+        detail = _enrichDetailWithStaff(detail, staffResponse.data);
+      }
+
+      return detail;
+    } catch (e) {
+      // 如果并行请求失败，尝试至少返回基本信息
+      try {
+        return await subjectFuture;
+      } catch (e) {
+        rethrow;
+      }
+    }
+  }
+
+  Future<BangumiSubjectDetail> _fetchSubjectBase(int subjectId, String? accessToken) async {
     final uri = Uri.parse('$_baseUrl/v0/subjects/$subjectId');
     final response = await _client
         .get(
           uri,
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-          },
+          headers: _buildHeaders(accessToken: accessToken),
         )
         .timeout(_timeout);
 
@@ -94,20 +131,274 @@ class BangumiApi {
     return BangumiSubjectDetail.fromJson(data);
   }
 
+  Future<StaffResponse?> _fetchStaff(int subjectId) async {
+    try {
+      final allStaff = <BangumiStaff>[];
+      int offset = 0;
+      const limit = _staffPageLimit; // 使用分页获取所有 staff，避免单次 limit 过大出错
+      int? total;
+
+      while (true) {
+        final uri = Uri.parse(
+            '$_nextBaseUrl/subjects/$subjectId/staffs/persons?limit=$limit&offset=$offset');
+        final response = await _client
+            .get(
+              uri,
+              headers: _buildHeaders(), // p1 API 读取无需 Token
+            )
+            .timeout(_timeout);
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final pageResponse = StaffResponse.fromJson(data);
+          total ??= pageResponse.total > 0 ? pageResponse.total : null;
+
+          if (pageResponse.data.isEmpty) {
+            break;
+          }
+
+          allStaff.addAll(pageResponse.data);
+
+          if (total != null && allStaff.length >= total) {
+            break;
+          }
+
+          if (allStaff.length >= _staffMaxItems) {
+            debugPrint(
+                '[BangumiApi] fetchStaff reached max cap $_staffMaxItems for subject $subjectId');
+            break;
+          }
+
+          offset += limit;
+        } else {
+          debugPrint(
+              '[BangumiApi] fetchStaff error: ${response.statusCode} at offset $offset');
+          break;
+        }
+      }
+
+      if (allStaff.isNotEmpty) {
+        return StaffResponse(
+          total: allStaff.length,
+          limit: allStaff.length,
+          offset: 0,
+          data: allStaff,
+        );
+      }
+    } catch (e) {
+      debugPrint('[BangumiApi] fetchStaff failed: $e');
+    }
+    return null;
+  }
+
+  BangumiSubjectDetail _enrichDetailWithStaff(
+      BangumiSubjectDetail detail, List<BangumiStaff> staffList) {
+    // 提取各类职位的人员
+    final normalized = {
+      '动画制作': <String>{},
+      '导演': <String>{},
+      '脚本': <String>{},
+      '分镜': <String>{},
+    };
+    final studios = <String>{};
+    // 回退：标准化失败时，仍保留原始职位，便于 UI 展示/发现同义词
+    final Map<String, Set<String>> rawJobBuckets = {};
+
+    // debug 模式一次性采样日志：前 N 条 staff 的 job 原始值与标准化结果
+    // 目的：方便发现新同义词/字段变化；release 不输出。
+    final bool shouldLogSample = kDebugMode && staffList.isNotEmpty;
+    int logged = 0;
+    const int logLimit = 12;
+
+    for (final staff in staffList) {
+      final jobs = staff.jobs ?? [];
+      final name = staff.nameCn ?? staff.name;
+
+      if (jobs.isEmpty) continue;
+
+      for (final job in jobs) {
+        final normalizedKey = _normalizeStaffJob(job);
+
+        if (shouldLogSample && logged < logLimit) {
+          debugPrint(
+              '[BangumiApi] staff sample subject=${detail.id} name=$name job="$job" => ${normalizedKey ?? "(unmapped)"}');
+          logged++;
+        }
+
+        if (normalizedKey != null) {
+          normalized[normalizedKey]?.add(name);
+        } else {
+          if (!_isStudioJob(job)) {
+            rawJobBuckets.putIfAbsent(job, () => <String>{}).add(name);
+          }
+        }
+        if (_isStudioJob(job)) {
+          studios.add(name);
+        }
+      }
+    }
+
+    final directors = normalized['导演']?.toList() ?? [];
+    final scripts = normalized['脚本']?.toList() ?? [];
+    final storyboards = normalized['分镜']?.toList() ?? [];
+    final productions = normalized['动画制作']?.toList() ?? [];
+
+    // 更新 infoboxMap (UI 使用此 Map 显示)
+    final newInfoboxMap = Map<String, String>.from(detail.infoboxMap);
+    
+    void updateField(String key, List<String> values) {
+      if (values.isNotEmpty) {
+        // 如果 API 返回的数据更全，优先使用（这里简单地覆盖或追加）
+        // 策略：如果原数据没有，直接写入。如果原数据有，合并去重。
+        final existing = newInfoboxMap[key]?.split('、') ?? [];
+        final merged = {...existing, ...values}.join('、');
+        newInfoboxMap[key] = merged;
+      }
+    }
+
+    updateField('导演', directors);
+    updateField('脚本', scripts);
+    updateField('分镜', storyboards);
+    updateField('动画制作', productions);
+    // 制作会社有时也叫制作
+    if (studios.isNotEmpty) {
+      updateField('制作', studios.toList());
+    }
+
+    // 将未标准化命中的职位也写入 infoboxMap（做上限，避免过度膨胀）
+    if (rawJobBuckets.isNotEmpty) {
+      final keys = rawJobBuckets.keys.toList()..sort();
+      for (final key in keys.take(30)) {
+        updateField(key, rawJobBuckets[key]!.toList());
+      }
+    }
+
+    // 同时更新字段
+    return detail.copyWith(
+      director: directors.isNotEmpty ? directors.join('、') : detail.director,
+      script: scripts.isNotEmpty ? scripts.join('、') : detail.script,
+      storyboard: storyboards.isNotEmpty ? storyboards.join('、') : detail.storyboard,
+      animationProduction: productions.isNotEmpty ? productions.join('、') : detail.animationProduction,
+      studio: studios.isNotEmpty ? studios.join('、') : detail.studio,
+      infoboxMap: newInfoboxMap,
+    );
+  }
+
+  String? _normalizeStaffJob(String job) {
+    var normalized = job.trim();
+    if (normalized.isEmpty) return null;
+
+    // 统一常见分隔符/空白，避免因为格式差异导致 contains 匹配失败
+    normalized = normalized
+        .replaceAll('：', ':')
+        .replaceAll('／', '/')
+        .replaceAll(RegExp(r'\s+'), ' ');
+    final lower = normalized.toLowerCase();
+
+    if (_isLikelyDirectorJob(normalized, lower)) {
+      return '导演';
+    }
+
+    if (_matchesAny(lower, const [
+      'script',
+      'screenplay',
+      'series composition',
+      'series compose',
+      '脚本',
+      '剧本',
+      '系列构成',
+      '構成',
+      'シリーズ構成',
+    ])) {
+      return '脚本';
+    }
+
+    if (_matchesAny(lower, const [
+      'storyboard',
+      '分镜',
+      '分鏡',
+      '絵コンテ',
+      'コンテ',
+      // 注意：项目里历史上出现过“绘コンテ”这种混用写法
+      '绘コンテ',
+      '绘コンテ',
+      '绘コンテ',
+      '绘コン테',
+    ])) {
+      return '分镜';
+    }
+
+    if (_matchesAny(lower, const [
+      'animation work',
+      'animation production',
+      'animation',
+      '动画制作',
+      'アニメーション制作',
+      // 常见等价：岗位里会直接写 studio
+      'studio',
+    ])) {
+      return '动画制作';
+    }
+
+    return null;
+  }
+
+  bool _matchesAny(String text, List<String> keywords) {
+    return keywords.any((keyword) => text.contains(keyword.toLowerCase()));
+  }
+
+  bool _isLikelyDirectorJob(String normalized, String lower) {
+    final compact = normalized.replaceAll(RegExp(r'\s+'), '');
+    const cnExact = {
+      '导演',
+      '总导演',
+      '系列导演',
+      '监督',
+      '監督',
+    };
+    const enExact = {
+      'director',
+      'director/direction',
+      'chief director',
+      'series director',
+    };
+
+    if (cnExact.contains(compact)) {
+      return true;
+    }
+
+    if (enExact.contains(lower)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  bool _isStudioJob(String job) {
+    final normalized = job.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    if (normalized == '制作' || normalized == '制作会社') return true;
+    if (normalized.contains('制作会社') ||
+        normalized.contains('制作') ||
+        normalized.contains('studio')) {
+      return true;
+    }
+    return false;
+  }
+
   Future<List<BangumiComment>> fetchSubjectComments({
     required int subjectId,
-    required String accessToken,
+    String? accessToken,
+    int limit = 20,
+    int offset = 0,
   }) async {
     try {
-      // 这里的爬虫逻辑基于 https://bgm.tv/subject/$subjectId/comments
-      final uri = Uri.parse('https://bgm.tv/subject/$subjectId/comments');
+      // 使用 p1 API 获取评论
+      final uri = Uri.parse(
+          '$_nextBaseUrl/subjects/$subjectId/comments?limit=$limit&offset=$offset');
       final response = await _client.get(
         uri,
-        headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        },
+        headers: _buildHeaders(accessToken: accessToken),
       ).timeout(_timeout);
 
       if (response.statusCode != 200) {
@@ -116,81 +407,12 @@ class BangumiApi {
         return [];
       }
 
-      final document = parse(utf8.decode(response.bodyBytes));
-      final commentItems = document.querySelectorAll('#comment_box .item');
-      final List<BangumiComment> comments = [];
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final list = data['data'] as List<dynamic>? ?? [];
 
-      for (final item in commentItems) {
-        try {
-          // 解析头像
-          final avatarElement = item.querySelector('a.avatar');
-          String avatar = '';
-          if (avatarElement != null) {
-            final span = avatarElement.querySelector('span');
-            if (span != null) {
-              final style = span.attributes['style'] ?? '';
-              final match = RegExp(r"background-image:url\('([^']+)'\)").firstMatch(style);
-              if (match != null) {
-                avatar = match.group(1) ?? '';
-              }
-            }
-            if (avatar.isEmpty) {
-              final img = avatarElement.querySelector('img');
-              avatar = img?.attributes['src'] ?? '';
-            }
-          }
-          if (avatar.startsWith('//')) {
-            avatar = 'https:$avatar';
-          }
-
-          // 解析用户名
-          final userElement = item.querySelector('.text a');
-          final nickname = userElement?.text.trim() ?? 'Unknown';
-
-          // 解析评分
-          final starsElement = item.querySelector('.starsinfo');
-          int rate = 0;
-          if (starsElement != null) {
-            final classAttr = starsElement.attributes['class'] ?? '';
-            final match = RegExp(r'stars(\d+)').firstMatch(classAttr);
-            if (match != null) {
-              rate = int.tryParse(match.group(1) ?? '0') ?? 0;
-            }
-          }
-
-          // 解析日期和状态
-          final greyElements = item.querySelectorAll('.grey');
-          var updatedAt = greyElements.map((e) => e.text.trim()).join(' ');
-          if (updatedAt.startsWith('@ ')) {
-            updatedAt = updatedAt.substring(2);
-          }
-
-          // 解析评论内容
-          final textElement = item.querySelector('.text');
-          String commentText = '';
-          if (textElement != null) {
-            // 我们只需要 .text 下的直接文本或者是除了 meta 信息之外的内容
-            // 简单的做法是克隆节点，移除 meta 信息
-            final clone = textElement.clone(true);
-            // 移除 a 标签 (用户名) 和 span 标签 (评分) 以及 grey 标签 (日期)
-            clone.querySelectorAll('a').forEach((e) => e.remove());
-            clone.querySelectorAll('.starsinfo').forEach((e) => e.remove());
-            clone.querySelectorAll('.grey').forEach((e) => e.remove());
-            commentText = clone.text.trim();
-          }
-
-          comments.add(BangumiComment(
-            user: BangumiUser(nickname: nickname, avatar: avatar),
-            rate: rate,
-            updatedAt: updatedAt,
-            comment: commentText,
-          ));
-        } catch (e) {
-          debugPrint('[BangumiApi] Parsing individual comment failed: $e');
-        }
-      }
-
-      return comments;
+      return list
+          .map((e) => BangumiComment.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       debugPrint('[BangumiApi] fetchSubjectComments failed: $e');
       return [];

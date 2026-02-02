@@ -59,10 +59,8 @@ class _SearchPageState extends State<SearchPage> {
         throw Exception('请输入有效关键词');
       }
       final data = await _storage.loadAll();
-      final token = data[SettingsKeys.bangumiAccessToken] ?? '';
-      if (token.isEmpty) {
-        throw Exception('未设置 Bangumi Access Token，请先在设置页授权');
-      }
+      final token = data[SettingsKeys.bangumiAccessToken];
+      
       final items =
           await _api.search(keyword: limitedKeyword, accessToken: token);
       if (mounted) {

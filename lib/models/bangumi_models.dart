@@ -29,7 +29,7 @@ class BangumiSearchItem {
 }
 
 class BangumiSubjectDetail {
-  const BangumiSubjectDetail({
+  BangumiSubjectDetail({
     required this.id,
     required this.name,
     required this.nameCn,
@@ -58,11 +58,11 @@ class BangumiSubjectDetail {
   final String airDate;
   final int epsCount;
   final List<String> tags;
-  final String studio;
-  final String director;
-  final String script;
-  final String storyboard;
-  final String animationProduction;
+  String studio;
+  String director;
+  String script;
+  String storyboard;
+  String animationProduction;
   final double score;
   final int ratingTotal;
   final Map<String, int> ratingCount;
@@ -91,8 +91,8 @@ class BangumiSubjectDetail {
           .toList(),
       studio: _getFromInfoboxMap(infoboxMap, ['动画制作', '制作', '制作会社']),
       director: _getFromInfoboxMap(infoboxMap, ['导演', '監督']),
-      script: _getFromInfoboxMap(infoboxMap, ['脚本']),
-      storyboard: _getFromInfoboxMap(infoboxMap, ['分镜', '絵コンテ']),
+      script: _getFromInfoboxMap(infoboxMap, ['脚本', '剧本', '系列构成', '构成', 'シリーズ構成']),
+      storyboard: _getFromInfoboxMap(infoboxMap, ['分镜', '絵コンテ', 'コンテ']),
       animationProduction: _getFromInfoboxMap(infoboxMap, ['动画制作', 'アニメーション制作']),
       score: (rating?['score'] as num?)?.toDouble() ?? 0.0,
       ratingTotal: (rating?['total'] as num?)?.toInt() ?? 0,
@@ -146,6 +146,48 @@ class BangumiSubjectDetail {
     }
     return '';
   }
+
+  BangumiSubjectDetail copyWith({
+    int? id,
+    String? name,
+    String? nameCn,
+    String? summary,
+    String? imageUrl,
+    String? airDate,
+    int? epsCount,
+    List<String>? tags,
+    String? studio,
+    String? director,
+    String? script,
+    String? storyboard,
+    String? animationProduction,
+    double? score,
+    int? ratingTotal,
+    Map<String, int>? ratingCount,
+    int? rank,
+    Map<String, String>? infoboxMap,
+  }) {
+    return BangumiSubjectDetail(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      nameCn: nameCn ?? this.nameCn,
+      summary: summary ?? this.summary,
+      imageUrl: imageUrl ?? this.imageUrl,
+      airDate: airDate ?? this.airDate,
+      epsCount: epsCount ?? this.epsCount,
+      tags: tags ?? this.tags,
+      studio: studio ?? this.studio,
+      director: director ?? this.director,
+      script: script ?? this.script,
+      storyboard: storyboard ?? this.storyboard,
+      animationProduction: animationProduction ?? this.animationProduction,
+      score: score ?? this.score,
+      ratingTotal: ratingTotal ?? this.ratingTotal,
+      ratingCount: ratingCount ?? this.ratingCount,
+      rank: rank ?? this.rank,
+      infoboxMap: infoboxMap ?? this.infoboxMap,
+    );
+  }
 }
 
 class BangumiUser {
@@ -186,8 +228,120 @@ class BangumiComment {
     return BangumiComment(
       user: BangumiUser.fromJson(json['user'] as Map<String, dynamic>? ?? {}),
       rate: (json['rate'] as num?)?.toInt() ?? 0,
-      updatedAt: json['updated_at'] as String? ?? '',
-      comment: json['comment'] as String? ?? '',
+      updatedAt: json['created_at'] as String? ?? json['updated_at'] as String? ?? '',
+      comment: json['comment'] as String? ?? json['content'] as String? ?? '',
+    );
+  }
+}
+
+class BangumiStaff {
+  final int id;
+  final String name;
+  final String? nameCn;
+  final String? avatar;
+  final String? summary;
+  final List<String>? jobs;
+
+  BangumiStaff({
+    required this.id,
+    required this.name,
+    this.nameCn,
+    this.avatar,
+    this.summary,
+    this.jobs,
+  });
+
+  factory BangumiStaff.fromJson(Map<String, dynamic> json) {
+    // p1 API 返回结构：{ staff: {...}, positions: [...] }
+    // 旧结构（或其他接口）：{ id, name, name_cn, jobs/positions/... }
+    final staffJson = (json['staff'] is Map<String, dynamic>)
+        ? (json['staff'] as Map<String, dynamic>)
+        : json;
+
+    return BangumiStaff(
+      id: (staffJson['id'] as num?)?.toInt() ?? 0,
+      name: staffJson['name'] as String? ?? '',
+      // name_cn (v0) / nameCN (p1)
+      nameCn: (staffJson['name_cn'] as String?) ??
+          (staffJson['nameCN'] as String?) ??
+          (staffJson['nameCn'] as String?),
+      avatar: (staffJson['images'] is Map)
+          ? ((staffJson['images'] as Map)['medium'] as String?)
+          : null,
+      summary: staffJson['summary'] as String? ?? staffJson['info'] as String?,
+      jobs: _parseJobs(json),
+    );
+  }
+
+  static List<String>? _parseJobs(Map<String, dynamic> json) {
+    final rawJobs = json['jobs'] ??
+        json['positions'] ??
+        json['position'] ??
+        json['job'] ??
+        json['role'];
+    final parsed = _normalizeJobList(rawJobs);
+    return parsed.isEmpty ? null : parsed;
+  }
+
+  static List<String> _normalizeJobList(dynamic rawJobs) {
+    if (rawJobs == null) return [];
+    if (rawJobs is List) {
+      // p1 positions: [{ type: { cn/en/jp }, ... }]
+      final out = <String>[];
+      for (final e in rawJobs) {
+        if (e is Map) {
+          final type = e['type'];
+          if (type is Map) {
+            String pick(dynamic v) => (v is String) ? v.trim() : '';
+            final cn = pick(type['cn']);
+            final en = pick(type['en']);
+            final jp = pick(type['jp']);
+            final label = cn.isNotEmpty ? cn : (en.isNotEmpty ? en : jp);
+            if (label.isNotEmpty) out.add(label);
+            continue;
+          }
+        }
+        final s = e.toString().trim();
+        if (s.isNotEmpty) out.add(s);
+      }
+      return out;
+    }
+    if (rawJobs is String) {
+      return rawJobs
+          .split(RegExp(r'[、,/，;；|]|\\r?\\n'))
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    return [rawJobs.toString()];
+  }
+
+  @override
+  String toString() => 'BangumiStaff($nameCn, $name)';
+}
+
+class StaffResponse {
+  final int total;
+  final int limit;
+  final int offset;
+  final List<BangumiStaff> data;
+
+  StaffResponse({
+    required this.total,
+    required this.limit,
+    required this.offset,
+    required this.data,
+  });
+
+  factory StaffResponse.fromJson(Map<String, dynamic> json) {
+    return StaffResponse(
+      total: json['total'] as int? ?? 0,
+      limit: json['limit'] as int? ?? 20,
+      offset: json['offset'] as int? ?? 0,
+      data: (json['data'] as List<dynamic>?)
+              ?.map((e) => BangumiStaff.fromJson(e))
+              .toList() ??
+          [],
     );
   }
 }

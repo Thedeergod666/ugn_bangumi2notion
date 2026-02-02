@@ -324,20 +324,7 @@ class _MappingPageState extends State<MappingPage> {
                       },
                     ),
                     _buildMappingItem(
-                      '简介 (Rich Text)',
-                      _currentConfig.content,
-                      _currentConfig.contentEnabled,
-                      (val) {
-                        setState(() => _currentConfig =
-                            _currentConfig.copyWith(content: val));
-                      },
-                      (enabled) {
-                        setState(() => _currentConfig =
-                            _currentConfig.copyWith(contentEnabled: enabled));
-                      },
-                    ),
-                    _buildMappingItem(
-                      '描述 (Rich Text)',
+                      '简介/描述 (Summary)',
                       _currentConfig.description,
                       _currentConfig.descriptionEnabled,
                       (val) {

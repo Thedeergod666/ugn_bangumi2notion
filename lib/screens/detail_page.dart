@@ -41,10 +41,8 @@ class _DetailPageState extends State<DetailPage> {
   Future<void> _load() async {
     try {
       final data = await _storage.loadAll();
-      final token = data[SettingsKeys.bangumiAccessToken] ?? '';
-      if (token.isEmpty) {
-        throw Exception('未设置 Bangumi Access Token，请先在设置页授权');
-      }
+      final token = data[SettingsKeys.bangumiAccessToken];
+      // 不再强制要求 Token，支持未登录查看
       final detail = await _api.fetchDetail(
         subjectId: widget.subjectId,
         accessToken: token,
@@ -56,17 +54,17 @@ class _DetailPageState extends State<DetailPage> {
         });
       }
       _loadComments(token);
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = '加载失败，请稍后重试';
+          _errorMessage = '加载失败，请稍后重试: $e';
           _loading = false;
         });
       }
     }
   }
 
-  Future<void> _loadComments(String token) async {
+  Future<void> _loadComments(String? token) async {
     try {
       final comments = await _api.fetchSubjectComments(
         subjectId: widget.subjectId,
@@ -141,15 +139,12 @@ class _DetailPageState extends State<DetailPage> {
       'director': formatLabel('导演', mappingConfig?.director),
       'script': formatLabel('脚本', mappingConfig?.script),
       'storyboard': formatLabel('分镜', mappingConfig?.storyboard),
-      'content': formatLabel('简介', mappingConfig?.content),
-      'description': formatLabel('描述', mappingConfig?.description),
-      'coverUrl': '正文图片（URL）',
+      'description': formatLabel('简介/描述', mappingConfig?.description),
     };
 
     // 移除为空的字段（如果没有在 mappingConfig 中定义，说明该字段不可用）
     if (mappingConfig != null) {
       fieldLabels.removeWhere((key, value) {
-        if (key == 'coverUrl') return false;
         return value.trim().isEmpty;
       });
     }
@@ -170,14 +165,11 @@ class _DetailPageState extends State<DetailPage> {
       if (mappingConfig.directorEnabled) selectedFields.add('director');
       if (mappingConfig.scriptEnabled) selectedFields.add('script');
       if (mappingConfig.storyboardEnabled) selectedFields.add('storyboard');
-      if (mappingConfig.contentEnabled) selectedFields.add('content');
       if (mappingConfig.descriptionEnabled) selectedFields.add('description');
     } else {
       if (existingPageId == null) {
         // 新建模式默认全选
         selectedFields.addAll(fieldLabels.keys);
-        selectedFields.remove('coverUrl'); // 默认不勾选正文图片
-        selectedFields.remove('description');
       } else {
         // 更新模式默认勾选
         selectedFields.addAll(['score', 'link', 'bangumiId']);
@@ -1085,16 +1077,22 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Widget _buildSimplifiedInfoGrid(BangumiSubjectDetail detail) {
-    final simplifiedKeys = ['动画制作', '导演', '脚本', '分镜'];
     final items = <MapEntry<String, String>>[];
 
     // Bangumi ID should be at the top
     items.add(MapEntry('Bangumi ID', detail.id.toString()));
 
-    for (final key in simplifiedKeys) {
-      if (detail.infoboxMap.containsKey(key)) {
-        items.add(MapEntry(key, detail.infoboxMap[key]!));
-      }
+    if (detail.animationProduction.isNotEmpty) {
+      items.add(MapEntry('动画制作', detail.animationProduction));
+    }
+    if (detail.director.isNotEmpty) {
+      items.add(MapEntry('导演', detail.director));
+    }
+    if (detail.script.isNotEmpty) {
+      items.add(MapEntry('脚本', detail.script));
+    }
+    if (detail.storyboard.isNotEmpty) {
+      items.add(MapEntry('分镜', detail.storyboard));
     }
 
     return _buildInfoListContainer(items);
