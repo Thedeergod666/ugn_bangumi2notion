@@ -50,10 +50,10 @@ Bangumi OAuth 的 `clientId/clientSecret` 改为通过 **编译期** `--dart-def
    - `NOTION_TOKEN`
    - `NOTION_DATABASE_ID`
 
-3. 通过 `--dart-define` 注入 Bangumi OAuth（编译期注入）：
+3. 通过 `--dart-define` 注入 Bangumi OAuth（编译期注入，运行时会优先读取系统环境变量）：
 
    - `BANGUMI_CLIENT_ID`（必填）
-   - `BANGUMI_CLIENT_SECRET`（必填）
+   - `BANGUMI_CLIENT_SECRET`（可选，Bangumi 允许为空，但建议配置）
 
 4. Bangumi 回调地址（必须在后台注册）：
 
@@ -79,6 +79,14 @@ flutter build windows --dart-define=BANGUMI_CLIENT_ID=xxx --dart-define=BANGUMI_
 # Windows（设置后需重开终端生效）
 setx BANGUMI_CLIENT_ID "xxx"
 setx BANGUMI_CLIENT_SECRET "yyy"
+
+# macOS（写入当前登录会话）
+launchctl setenv BANGUMI_CLIENT_ID "xxx"
+launchctl setenv BANGUMI_CLIENT_SECRET "yyy"
+
+# Linux（写入 ~/.profile，需重新登录会话）
+echo 'export BANGUMI_CLIENT_ID="xxx"' >> ~/.profile
+echo 'export BANGUMI_CLIENT_SECRET="yyy"' >> ~/.profile
 
 # 使用脚本构建（示例）
 dart run tool/build.dart --platform windows --release

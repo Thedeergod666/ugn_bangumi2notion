@@ -46,9 +46,14 @@ void main(List<String> args) async {
     buildArgs.add('--dart-define=BANGUMI_CLIENT_SECRET=$clientSecret');
   }
 
+  final command = Platform.isWindows ? 'cmd' : 'flutter';
+  final commandArgs = Platform.isWindows
+      ? <String>['/c', 'flutter', ...buildArgs]
+      : buildArgs;
+
   final process = await Process.start(
-    'flutter',
-    buildArgs,
+    command,
+    commandArgs,
     mode: ProcessStartMode.inheritStdio,
   );
 

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -26,6 +28,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   final _notionTokenController = TextEditingController();
   final _notionDbController = TextEditingController();
+  final _bangumiClientIdController = TextEditingController();
+  final _bangumiClientSecretController = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
@@ -207,31 +211,184 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) {
       return;
     }
+    bool showEnvInputs = false;
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Bangumi 授权配置缺失'),
-        content: Text(
-          '${BangumiOAuthConfig.missingMessage}\n'
-          '请在环境变量/打包参数中添加这两个，或联系开发人员重新打包。',
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Bangumi 授权配置缺失'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${BangumiOAuthConfig.missingMessage}\n'
+                '请在环境变量/打包参数中添加这两个，或联系开发人员重新打包。\n'
+                '提示：写入环境变量后需要重新打包/重启会话才能生效。',
+              ),
+              if (showEnvInputs) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _bangumiClientIdController,
+                  decoration: const InputDecoration(
+                    labelText: 'BANGUMI_CLIENT_ID',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _bangumiClientSecretController,
+                  decoration: const InputDecoration(
+                    labelText: 'BANGUMI_CLIENT_SECRET',
+                    border: OutlineInputBorder(),
+                    helperText: '可选，Bangumi 允许为空，但仍建议填写',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () async {
+                    final clientId = _bangumiClientIdController.text.trim();
+                    final clientSecret =
+                        _bangumiClientSecretController.text.trim();
+                    if (clientId.isEmpty) {
+                      _showSnackBar('BANGUMI_CLIENT_ID 不能为空', isError: true);
+                      return;
+                    }
+                    try {
+                      await _applyBangumiEnvVariables(
+                        clientId: clientId,
+                        clientSecret: clientSecret,
+                      );
+                      if (mounted) {
+                        _showSnackBar(
+                          '已写入环境变量，需重新打包/重启会话后生效',
+                        );
+                      }
+                      if (context.mounted) {
+                        Navigator.of(context).pop();
+                      }
+                    } catch (error, stackTrace) {
+                      if (context.mounted) {
+                        await showDialog(
+                          context: context,
+                          builder: (context) => ErrorDetailDialog(
+                            error: error,
+                            stackTrace: stackTrace,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: const Text('确认添加环境变量'),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
+            ),
+            TextButton(
+              onPressed: () {
+                setDialogState(() {
+                  showEnvInputs = !showEnvInputs;
+                });
+              },
+              child: Text(showEnvInputs ? '收起添加环境变量' : '添加环境变量'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                await launchUrl(
+                  Uri.parse('https://bgm.tv/dev/app'),
+                  mode: LaunchMode.externalApplication,
+                );
+              },
+              child: const Text('前往 Bangumi 开发者平台'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await launchUrl(
-                Uri.parse('https://bgm.tv/oauth/clients'),
-                mode: LaunchMode.externalApplication,
-              );
-            },
-            child: const Text('前往 Bangumi 开发者平台'),
-          ),
-        ],
       ),
     );
+  }
+
+  Future<void> _applyBangumiEnvVariables({
+    required String clientId,
+    required String clientSecret,
+  }) async {
+    if (Platform.isWindows) {
+      final resultId = await Process.run(
+        'cmd',
+        ['/c', 'setx', 'BANGUMI_CLIENT_ID', clientId],
+      );
+      final resultSecret = await Process.run(
+        'cmd',
+        ['/c', 'setx', 'BANGUMI_CLIENT_SECRET', clientSecret],
+      );
+      if (resultId.exitCode != 0 || resultSecret.exitCode != 0) {
+        throw Exception('写入 Windows 环境变量失败');
+      }
+      return;
+    }
+
+    if (Platform.isMacOS) {
+      final resultId = await Process.run(
+        'launchctl',
+        ['setenv', 'BANGUMI_CLIENT_ID', clientId],
+      );
+      final resultSecret = await Process.run(
+        'launchctl',
+        ['setenv', 'BANGUMI_CLIENT_SECRET', clientSecret],
+      );
+      if (resultId.exitCode != 0 || resultSecret.exitCode != 0) {
+        throw Exception('写入 macOS 环境变量失败');
+      }
+      return;
+    }
+
+    if (Platform.isLinux) {
+      final home = Platform.environment['HOME'];
+      if (home == null || home.isEmpty) {
+        throw Exception('无法获取 HOME 目录，无法写入 ~/.profile');
+      }
+      final profile = File('$home/.profile');
+      final content = await profile.exists()
+          ? await profile.readAsString()
+          : '';
+      var updated = _upsertEnvLine(
+        content,
+        key: 'BANGUMI_CLIENT_ID',
+        value: clientId,
+      );
+      updated = _upsertEnvLine(
+        updated,
+        key: 'BANGUMI_CLIENT_SECRET',
+        value: clientSecret,
+      );
+      await profile.writeAsString(updated);
+      return;
+    }
+
+    throw Exception('当前平台不支持自动写入环境变量');
+  }
+
+  String _upsertEnvLine(
+    String content, {
+    required String key,
+    required String value,
+  }) {
+    final escapedValue = value.replaceAll('"', r'\"');
+    final line = 'export $key="$escapedValue"';
+    final pattern = '^export\\s+${RegExp.escape(key)}=.*';
+    final regex = RegExp(pattern, multiLine: true);
+    if (regex.hasMatch(content)) {
+      return content.replaceAll(regex, '$line\n');
+    }
+    if (content.isNotEmpty && !content.endsWith('\n')) {
+      content += '\n';
+    }
+    return '$content$line\n';
   }
 
   Future<void> _logoutBangumi() async {
@@ -321,6 +478,8 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _notionTokenController.dispose();
     _notionDbController.dispose();
+    _bangumiClientIdController.dispose();
+    _bangumiClientSecretController.dispose();
     super.dispose();
   }
 

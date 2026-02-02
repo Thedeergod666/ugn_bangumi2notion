@@ -40,8 +40,8 @@ class BangumiOAuth {
     }
 
     BangumiOAuthConfig.validate();
-    const appId = BangumiOAuthConfig.clientId;
-    const appSecret = BangumiOAuthConfig.clientSecret;
+    final appId = BangumiOAuthConfig.clientId;
+    final appSecret = BangumiOAuthConfig.clientSecret;
 
     final state = _buildState();
     final server = _LocalOAuthServer(expectedState: state);
