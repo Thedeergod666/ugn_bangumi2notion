@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'screens/recommendation_page.dart';
 import 'screens/search_page.dart';
 import 'screens/settings_page.dart';
 import 'screens/mapping_page.dart';
@@ -48,8 +49,10 @@ class MyApp extends StatelessWidget {
       case '/mapping':
         return _buildSlideRoute(const MappingPage(), settings);
       case '/search':
-      default:
         return _buildSlideRoute(const SearchPage(), settings);
+      case '/recommendation':
+      default:
+        return _buildSlideRoute(const RecommendationPage(), settings);
     }
   }
 
@@ -78,7 +81,7 @@ class MyApp extends StatelessWidget {
             ),
           ),
           themeMode: currentMode,
-          initialRoute: '/search',
+          initialRoute: '/recommendation',
           onGenerateRoute: _onGenerateRoute,
         );
       },

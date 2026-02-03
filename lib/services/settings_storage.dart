@@ -11,6 +11,7 @@ class SettingsKeys {
   static const notionDatabaseId = 'notionDatabaseId';
   static const themeMode = 'themeMode';
   static const mappingConfig = 'mappingConfig';
+  static const dailyRecommendationBindings = 'dailyRecommendationBindings';
   static const notionProperties = 'notionProperties';
 }
 
@@ -73,16 +74,48 @@ class SettingsStorage {
     await prefs.setString(SettingsKeys.mappingConfig, jsonEncode(config.toJson()));
   }
 
+  Future<void> saveDailyRecommendationBindings(
+    NotionDailyRecommendationBindings bindings,
+  ) async {
+    final prefs = await _prefs;
+    await prefs.setString(
+      SettingsKeys.dailyRecommendationBindings,
+      jsonEncode(bindings.toJson()),
+    );
+  }
+
   Future<MappingConfig> getMappingConfig() async {
     final prefs = await _prefs;
     final jsonStr = prefs.getString(SettingsKeys.mappingConfig);
     if (jsonStr == null || jsonStr.isEmpty) {
-      return MappingConfig();
+      final legacyBindings = await getDailyRecommendationBindings();
+      return MappingConfig(dailyRecommendationBindings: legacyBindings);
     }
     try {
-      return MappingConfig.fromJson(jsonDecode(jsonStr));
+      final config = MappingConfig.fromJson(jsonDecode(jsonStr));
+      final legacyBindings = await getDailyRecommendationBindings();
+      if (config.dailyRecommendationBindings.isEmpty) {
+        return config.copyWith(dailyRecommendationBindings: legacyBindings);
+      }
+      return config;
     } catch (_) {
-      return MappingConfig();
+      final legacyBindings = await getDailyRecommendationBindings();
+      return MappingConfig(dailyRecommendationBindings: legacyBindings);
+    }
+  }
+
+  Future<NotionDailyRecommendationBindings>
+      getDailyRecommendationBindings() async {
+    final prefs = await _prefs;
+    final jsonStr =
+        prefs.getString(SettingsKeys.dailyRecommendationBindings) ?? '';
+    if (jsonStr.isEmpty) {
+      return const NotionDailyRecommendationBindings();
+    }
+    try {
+      return NotionDailyRecommendationBindings.fromJson(jsonDecode(jsonStr));
+    } catch (_) {
+      return const NotionDailyRecommendationBindings();
     }
   }
 

@@ -26,28 +26,33 @@ class _NavigationShellState extends State<NavigationShell> {
 
   int _selectedIndex() {
     switch (widget.selectedRoute) {
+      case '/recommendation':
+        return 0;
       case '/mapping':
-        return 1;
-      case '/settings':
         return 2;
+      case '/settings':
+        return 3;
       case '/search':
       default:
-        return 0;
+        return 1;
     }
   }
 
   void _handleDestinationSelected(BuildContext context, int index) {
     String route;
     switch (index) {
-      case 1:
+      case 2:
         route = '/mapping';
         break;
-      case 2:
+      case 3:
         route = '/settings';
+        break;
+      case 1:
+        route = '/search';
         break;
       case 0:
       default:
-        route = '/search';
+        route = '/recommendation';
         break;
     }
     if (route == widget.selectedRoute) {
@@ -115,6 +120,10 @@ class _NavigationShellState extends State<NavigationShell> {
                           extended: isExtended,
                           groupAlignment: -1.0,
                           destinations: const [
+                            NavigationRailDestination(
+                              icon: Icon(Icons.recommend),
+                              label: Text('每日推荐'),
+                            ),
                             NavigationRailDestination(
                               icon: Icon(Icons.search),
                               label: Text('搜索'),

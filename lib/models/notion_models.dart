@@ -29,3 +29,33 @@ class NotionProperty {
   @override
   int get hashCode => name.hashCode ^ type.hashCode;
 }
+
+class DailyRecommendation {
+  final String title;
+  final double? yougnScore;
+  final DateTime? airDate;
+  final List<String> tags;
+  final String? type;
+  final String? shortReview;
+  final String? longReview;
+  final String? cover;
+  final String? contentCoverUrl;
+  final String? contentLongReview;
+  final String? bangumiId;
+  final String? subjectId;
+
+  const DailyRecommendation({
+    required this.title,
+    required this.yougnScore,
+    required this.airDate,
+    required this.tags,
+    required this.type,
+    required this.shortReview,
+    required this.longReview,
+    required this.cover,
+    this.contentCoverUrl,
+    this.contentLongReview,
+    required this.bangumiId,
+    required this.subjectId,
+  });
+}

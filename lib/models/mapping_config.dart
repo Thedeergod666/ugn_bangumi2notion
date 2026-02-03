@@ -27,6 +27,7 @@ class MappingConfig {
   final bool descriptionEnabled;
   final String idPropertyName;
   final String notionId;
+  final NotionDailyRecommendationBindings dailyRecommendationBindings;
 
   MappingConfig({
     this.title = '',
@@ -57,6 +58,8 @@ class MappingConfig {
     this.descriptionEnabled = true,
     this.idPropertyName = 'Bangumi ID',
     this.notionId = 'Notion ID',
+    this.dailyRecommendationBindings =
+        const NotionDailyRecommendationBindings(),
   });
 
   Map<String, dynamic> toJson() {
@@ -89,6 +92,7 @@ class MappingConfig {
       'descriptionEnabled': descriptionEnabled,
       'idPropertyName': idPropertyName,
       'notionId': notionId,
+      'dailyRecommendationBindings': dailyRecommendationBindings.toJson(),
     };
   }
 
@@ -122,6 +126,9 @@ class MappingConfig {
       descriptionEnabled: json['descriptionEnabled'] ?? true,
       idPropertyName: json['idPropertyName'] ?? 'Bangumi ID',
       notionId: json['notionId'] ?? 'Notion ID',
+      dailyRecommendationBindings: NotionDailyRecommendationBindings.fromJson(
+        json['dailyRecommendationBindings'] ?? {},
+      ),
     );
   }
 
@@ -154,6 +161,7 @@ class MappingConfig {
     bool? descriptionEnabled,
     String? idPropertyName,
     String? notionId,
+    NotionDailyRecommendationBindings? dailyRecommendationBindings,
   }) {
     return MappingConfig(
       title: title ?? this.title,
@@ -185,6 +193,111 @@ class MappingConfig {
       descriptionEnabled: descriptionEnabled ?? this.descriptionEnabled,
       idPropertyName: idPropertyName ?? this.idPropertyName,
       notionId: notionId ?? this.notionId,
+      dailyRecommendationBindings:
+          dailyRecommendationBindings ?? this.dailyRecommendationBindings,
+    );
+  }
+}
+
+class NotionDailyRecommendationBindings {
+  final String title;
+  final String yougnScore;
+  final String airDate;
+  final String tags;
+  final String type;
+  final String shortReview;
+  final String longReview;
+  final String cover;
+  final String? bangumiId;
+  final String? subjectId;
+
+  const NotionDailyRecommendationBindings({
+    this.title = '',
+    this.yougnScore = '',
+    this.airDate = '',
+    this.tags = '',
+    this.type = '',
+    this.shortReview = '',
+    this.longReview = '',
+    this.cover = '',
+    this.bangumiId,
+    this.subjectId,
+  });
+
+  bool get isEmpty {
+    return title.isEmpty &&
+        yougnScore.isEmpty &&
+        airDate.isEmpty &&
+        tags.isEmpty &&
+        type.isEmpty &&
+        shortReview.isEmpty &&
+        longReview.isEmpty &&
+        cover.isEmpty &&
+        (bangumiId == null || bangumiId!.isEmpty) &&
+        (subjectId == null || subjectId!.isEmpty);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'yougnScore': yougnScore,
+      'airDate': airDate,
+      'tags': tags,
+      'type': type,
+      'shortReview': shortReview,
+      'longReview': longReview,
+      'cover': cover,
+      'bangumiId': bangumiId,
+      'subjectId': subjectId,
+    };
+  }
+
+  factory NotionDailyRecommendationBindings.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    String? normalizeOptionalString(dynamic value) {
+      if (value == null) return null;
+      final text = value.toString();
+      return text.isEmpty ? null : text;
+    }
+
+    return NotionDailyRecommendationBindings(
+      title: json['title'] ?? '',
+      yougnScore: json['yougnScore'] ?? '',
+      airDate: json['airDate'] ?? '',
+      tags: json['tags'] ?? '',
+      type: json['type'] ?? '',
+      shortReview: json['shortReview'] ?? '',
+      longReview: json['longReview'] ?? '',
+      cover: json['cover'] ?? '',
+      bangumiId: normalizeOptionalString(json['bangumiId']),
+      subjectId: normalizeOptionalString(json['subjectId']),
+    );
+  }
+
+  NotionDailyRecommendationBindings copyWith({
+    String? title,
+    String? yougnScore,
+    String? airDate,
+    String? tags,
+    String? type,
+    String? shortReview,
+    String? longReview,
+    String? cover,
+    String? bangumiId,
+    String? subjectId,
+  }) {
+    return NotionDailyRecommendationBindings(
+      title: title ?? this.title,
+      yougnScore: yougnScore ?? this.yougnScore,
+      airDate: airDate ?? this.airDate,
+      tags: tags ?? this.tags,
+      type: type ?? this.type,
+      shortReview: shortReview ?? this.shortReview,
+      longReview: longReview ?? this.longReview,
+      cover: cover ?? this.cover,
+      bangumiId: bangumiId ?? this.bangumiId,
+      subjectId: subjectId ?? this.subjectId,
     );
   }
 }
