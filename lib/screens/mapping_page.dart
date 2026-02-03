@@ -495,6 +495,47 @@ class _MappingPageState extends State<MappingPage>
                 },
                 null,
               ),
+              const Divider(),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                child: Text(
+                  '放送页筛选/进度配置 (Calendar Config)',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+              _buildMappingItem(
+                '追番状态字段 (Select/Status)',
+                _currentConfig.watchingStatus,
+                true,
+                (val) {
+                  setState(() => _currentConfig =
+                      _currentConfig.copyWith(watchingStatus: val));
+                },
+                null,
+              ),
+              _buildTextInputItem(
+                '追番状态值 (例如：在看)',
+                _currentConfig.watchingStatusValue,
+                (val) {
+                  setState(() => _currentConfig =
+                      _currentConfig.copyWith(watchingStatusValue: val));
+                },
+              ),
+              _buildMappingItem(
+                '已追集数字段 (Number)',
+                _currentConfig.watchedEpisodes,
+                true,
+                (val) {
+                  setState(() => _currentConfig =
+                      _currentConfig.copyWith(watchedEpisodes: val));
+                },
+                null,
+              ),
               const SizedBox(height: 24),
             ],
           ),
@@ -625,6 +666,62 @@ class _MappingPageState extends State<MappingPage>
                   alignment: Alignment.centerRight,
                   child: dropdown,
                 ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTextInputItem(
+    String label,
+    String currentValue,
+    ValueChanged<String> onChanged,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 720;
+          final labelWidget = Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          );
+          final input = TextFormField(
+            initialValue: currentValue,
+            onChanged: onChanged,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+          );
+
+          if (isNarrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                labelWidget,
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: input,
+                ),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(
+                flex: 4,
+                child: labelWidget,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 5,
+                child: input,
               ),
             ],
           );

@@ -27,6 +27,9 @@ class MappingConfig {
   final bool descriptionEnabled;
   final String idPropertyName;
   final String notionId;
+  final String watchingStatus;
+  final String watchingStatusValue;
+  final String watchedEpisodes;
   final NotionDailyRecommendationBindings dailyRecommendationBindings;
 
   MappingConfig({
@@ -58,6 +61,9 @@ class MappingConfig {
     this.descriptionEnabled = true,
     this.idPropertyName = 'Bangumi ID',
     this.notionId = 'Notion ID',
+    this.watchingStatus = '',
+    this.watchingStatusValue = '',
+    this.watchedEpisodes = '',
     this.dailyRecommendationBindings =
         const NotionDailyRecommendationBindings(),
   });
@@ -92,6 +98,9 @@ class MappingConfig {
       'descriptionEnabled': descriptionEnabled,
       'idPropertyName': idPropertyName,
       'notionId': notionId,
+      'watchingStatus': watchingStatus,
+      'watchingStatusValue': watchingStatusValue,
+      'watchedEpisodes': watchedEpisodes,
       'dailyRecommendationBindings': dailyRecommendationBindings.toJson(),
     };
   }
@@ -126,6 +135,9 @@ class MappingConfig {
       descriptionEnabled: json['descriptionEnabled'] ?? true,
       idPropertyName: json['idPropertyName'] ?? 'Bangumi ID',
       notionId: json['notionId'] ?? 'Notion ID',
+      watchingStatus: json['watchingStatus'] ?? '',
+      watchingStatusValue: json['watchingStatusValue'] ?? '',
+      watchedEpisodes: json['watchedEpisodes'] ?? '',
       dailyRecommendationBindings: NotionDailyRecommendationBindings.fromJson(
         json['dailyRecommendationBindings'] ?? {},
       ),
@@ -161,6 +173,9 @@ class MappingConfig {
     bool? descriptionEnabled,
     String? idPropertyName,
     String? notionId,
+    String? watchingStatus,
+    String? watchingStatusValue,
+    String? watchedEpisodes,
     NotionDailyRecommendationBindings? dailyRecommendationBindings,
   }) {
     return MappingConfig(
@@ -193,6 +208,9 @@ class MappingConfig {
       descriptionEnabled: descriptionEnabled ?? this.descriptionEnabled,
       idPropertyName: idPropertyName ?? this.idPropertyName,
       notionId: notionId ?? this.notionId,
+      watchingStatus: watchingStatus ?? this.watchingStatus,
+      watchingStatusValue: watchingStatusValue ?? this.watchingStatusValue,
+      watchedEpisodes: watchedEpisodes ?? this.watchedEpisodes,
       dailyRecommendationBindings:
           dailyRecommendationBindings ?? this.dailyRecommendationBindings,
     );

@@ -86,6 +86,16 @@ class NotionApi {
     return null;
   }
 
+  int? _extractIntValue(Map<String, dynamic> property) {
+    final number = _extractNumberValue(property);
+    if (number != null) return number.round();
+    final text = _extractPlainText(property);
+    if (text == null || text.isEmpty) return null;
+    final match = RegExp(r'(\d+)').firstMatch(text);
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!);
+  }
+
   String? _extractPlainText(Map<String, dynamic> property) {
     if (property.containsKey('title')) {
       final List<dynamic>? title = property['title'];
@@ -301,6 +311,44 @@ class NotionApi {
     return _extractPlainText(property) ??
         _extractSelect(property) ??
         _extractUrl(property);
+  }
+
+  Map<String, String> _buildPropertyTypeMap(List<NotionProperty> properties) {
+    return {
+      for (final property in properties) property.name: property.type,
+    };
+  }
+
+  Map<String, dynamic>? _buildStatusFilter({
+    required String propertyName,
+    required String propertyType,
+    required String value,
+  }) {
+    if (propertyName.trim().isEmpty || value.trim().isEmpty) return null;
+    switch (propertyType) {
+      case 'status':
+        return {
+          'property': propertyName,
+          'status': {'equals': value},
+        };
+      case 'select':
+        return {
+          'property': propertyName,
+          'select': {'equals': value},
+        };
+      case 'multi_select':
+        return {
+          'property': propertyName,
+          'multi_select': {'contains': value},
+        };
+      case 'rich_text':
+      case 'title':
+        return {
+          'property': propertyName,
+          'rich_text': {'equals': value},
+        };
+    }
+    return null;
   }
 
   Future<void> testConnection({
@@ -828,6 +876,8 @@ class NotionApi {
     required String token,
     required String databaseId,
     required String propertyName,
+    String? statusPropertyName,
+    String? statusValue,
   }) async {
     final normalizedDatabaseId = _normalizePageId(databaseId);
     if (normalizedDatabaseId == null) {
@@ -838,17 +888,17 @@ class NotionApi {
     }
 
     String propertyType = 'number';
+    String statusPropertyType = '';
     try {
       final properties = await getDatabaseProperties(
         token: token,
         databaseId: normalizedDatabaseId,
       );
-      propertyType = properties
-          .firstWhere(
-            (p) => p.name == propertyName,
-            orElse: () => NotionProperty(name: propertyName, type: 'number'),
-          )
-          .type;
+      final typeMap = _buildPropertyTypeMap(properties);
+      propertyType = typeMap[propertyName] ?? 'number';
+      if (statusPropertyName != null && statusPropertyName.trim().isNotEmpty) {
+        statusPropertyType = typeMap[statusPropertyName] ?? '';
+      }
     } catch (e) {
       developer.log('Schema fetch failed in getBangumiIdSet: $e');
     }
@@ -860,11 +910,25 @@ class NotionApi {
     bool hasMore = true;
     int pageCount = 0;
 
+    final statusFilter = (statusPropertyName != null &&
+            statusValue != null &&
+            statusPropertyName.trim().isNotEmpty &&
+            statusValue.trim().isNotEmpty)
+        ? _buildStatusFilter(
+            propertyName: statusPropertyName,
+            propertyType: statusPropertyType,
+            value: statusValue.trim(),
+          )
+        : null;
+
     while (hasMore) {
       pageCount += 1;
       final body = <String, dynamic>{};
       if (nextCursor != null && nextCursor.isNotEmpty) {
         body['start_cursor'] = nextCursor;
+      }
+      if (statusFilter != null) {
+        body['filter'] = statusFilter;
       }
       final response = await http
           .post(
@@ -902,6 +966,132 @@ class NotionApi {
       'getBangumiIdSet done: pages=$pageCount ids=${ids.length}',
     );
     return ids;
+  }
+
+  Future<Map<int, int>> getBangumiProgressMap({
+    required String token,
+    required String databaseId,
+    required String idPropertyName,
+    String? watchedEpisodesProperty,
+    String? statusPropertyName,
+    String? statusValue,
+  }) async {
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
+    if (idPropertyName.trim().isEmpty) {
+      return <int, int>{};
+    }
+
+    String idPropertyType = 'number';
+    String watchedPropertyType = 'number';
+    String statusPropertyType = '';
+    try {
+      final properties = await getDatabaseProperties(
+        token: token,
+        databaseId: normalizedDatabaseId,
+      );
+      final typeMap = _buildPropertyTypeMap(properties);
+      idPropertyType = typeMap[idPropertyName] ?? 'number';
+      if (watchedEpisodesProperty != null &&
+          watchedEpisodesProperty.trim().isNotEmpty) {
+        watchedPropertyType = typeMap[watchedEpisodesProperty] ?? 'number';
+      }
+      if (statusPropertyName != null && statusPropertyName.trim().isNotEmpty) {
+        statusPropertyType = typeMap[statusPropertyName] ?? '';
+      }
+    } catch (e) {
+      developer.log('Schema fetch failed in getBangumiProgressMap: $e');
+    }
+
+    final url = Uri.parse(_baseUrl)
+        .replace(pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query']);
+    final progress = <int, int>{};
+    String? nextCursor;
+    bool hasMore = true;
+    int pageCount = 0;
+
+    final statusFilter = (statusPropertyName != null &&
+            statusValue != null &&
+            statusPropertyName.trim().isNotEmpty &&
+            statusValue.trim().isNotEmpty)
+        ? _buildStatusFilter(
+            propertyName: statusPropertyName,
+            propertyType: statusPropertyType,
+            value: statusValue.trim(),
+          )
+        : null;
+
+    while (hasMore) {
+      pageCount += 1;
+      final body = <String, dynamic>{};
+      if (nextCursor != null && nextCursor.isNotEmpty) {
+        body['start_cursor'] = nextCursor;
+      }
+      if (statusFilter != null) {
+        body['filter'] = statusFilter;
+      }
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Notion-Version': _notionVersion,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(_queryTimeout);
+
+      if (response.statusCode != 200) {
+        throw Exception(_mapNotionError('读取 Bangumi 追番进度', response));
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final results = data['results'] as List<dynamic>? ?? [];
+      for (final item in results) {
+        if (item is! Map<String, dynamic>) continue;
+        final properties = item['properties'] as Map<String, dynamic>? ?? {};
+        final idProperty = properties[idPropertyName] as Map<String, dynamic>?;
+        if (idProperty == null) continue;
+
+        int? id;
+        if (idPropertyType == 'number') {
+          final number = _extractNumberValue(idProperty);
+          id = number?.round();
+        } else {
+          final text = _extractPlainText(idProperty);
+          if (text != null && text.isNotEmpty) {
+            id = int.tryParse(text.replaceAll(RegExp(r'[^0-9]'), ''));
+          }
+        }
+
+        if (id == null || id <= 0) continue;
+        int watched = 0;
+        if (watchedEpisodesProperty != null &&
+            watchedEpisodesProperty.trim().isNotEmpty) {
+          final watchedProp =
+              properties[watchedEpisodesProperty] as Map<String, dynamic>?;
+          if (watchedProp != null) {
+            if (watchedPropertyType == 'number') {
+              watched = _extractIntValue(watchedProp) ?? 0;
+            } else {
+              watched = _extractIntValue(watchedProp) ?? 0;
+            }
+          }
+        }
+        progress[id] = watched;
+      }
+
+      hasMore = data['has_more'] == true;
+      nextCursor = data['next_cursor']?.toString();
+    }
+
+    developer.log(
+      'getBangumiProgressMap done: pages=$pageCount items=${progress.length}',
+    );
+    return progress;
   }
 
   Future<String?> findPageByUniqueId({

@@ -24,7 +24,11 @@ class _CalendarPageState extends State<CalendarPage> {
   String? _errorMessage;
   List<BangumiCalendarDay> _days = [];
   Set<int> _boundIds = {};
+  Map<int, int> _watchedEpisodes = {};
+  Map<int, List<BangumiCalendarItem>> _weekdayItems = {};
+  Map<int, int> _weekdayBoundCounts = {};
   bool _notionConfigured = false;
+  int _selectedWeekday = DateTime.now().weekday;
 
   @override
   void initState() {
@@ -53,22 +57,30 @@ class _CalendarPageState extends State<CalendarPage> {
       final notionPropertyName = _resolveBangumiIdProperty(mappingConfig);
 
       Set<int> boundIds = {};
+      Map<int, int> watchedEpisodes = {};
       bool notionReady = false;
       if (notionToken.isNotEmpty &&
           notionDbId.isNotEmpty &&
           notionPropertyName.isNotEmpty) {
         notionReady = true;
-        boundIds = await _notionApi.getBangumiIdSet(
+        watchedEpisodes = await _notionApi.getBangumiProgressMap(
           token: notionToken,
           databaseId: notionDbId,
-          propertyName: notionPropertyName,
+          idPropertyName: notionPropertyName,
+          watchedEpisodesProperty: mappingConfig.watchedEpisodes,
+          statusPropertyName: mappingConfig.watchingStatus,
+          statusValue: mappingConfig.watchingStatusValue,
         );
+        boundIds = watchedEpisodes.keys.toSet();
       }
 
       if (!mounted) return;
       setState(() {
         _days = filteredDays;
         _boundIds = boundIds;
+        _watchedEpisodes = watchedEpisodes;
+        _weekdayItems = _buildWeekdayItems(filteredDays, boundIds);
+        _weekdayBoundCounts = _buildWeekdayBoundCounts(filteredDays, boundIds);
         _notionConfigured = notionReady;
         _loading = false;
       });
@@ -96,6 +108,44 @@ class _CalendarPageState extends State<CalendarPage> {
       filtered.add(BangumiCalendarDay(weekday: day.weekday, items: items));
     }
     return filtered;
+  }
+
+  int _normalizeWeekdayId(int id) {
+    if (id == 0) return 7;
+    return id;
+  }
+
+  Map<int, List<BangumiCalendarItem>> _buildWeekdayItems(
+    List<BangumiCalendarDay> days,
+    Set<int> boundIds,
+  ) {
+    final result = <int, List<BangumiCalendarItem>>{};
+    for (final day in days) {
+      final items = [...day.items];
+      items.sort((a, b) {
+        final aBound = boundIds.contains(a.id);
+        final bBound = boundIds.contains(b.id);
+        if (aBound == bBound) return 0;
+        return aBound ? -1 : 1;
+      });
+      result[_normalizeWeekdayId(day.weekday.id)] = items;
+    }
+    return result;
+  }
+
+  Map<int, int> _buildWeekdayBoundCounts(
+    List<BangumiCalendarDay> days,
+    Set<int> boundIds,
+  ) {
+    final counts = <int, int>{};
+    for (final day in days) {
+      int count = 0;
+      for (final item in day.items) {
+        if (boundIds.contains(item.id)) count += 1;
+      }
+      counts[_normalizeWeekdayId(day.weekday.id)] = count;
+    }
+    return counts;
   }
 
   @override
@@ -139,20 +189,35 @@ class _CalendarPageState extends State<CalendarPage> {
       );
     }
 
+    final selectedDay = _days.firstWhere(
+      (day) => _normalizeWeekdayId(day.weekday.id) == _selectedWeekday,
+      orElse: () => const BangumiCalendarDay(
+        weekday: BangumiCalendarWeekday(id: 0, en: '', cn: '', ja: ''),
+        items: [],
+      ),
+    );
+    final selectedItems =
+        _weekdayItems[_selectedWeekday] ?? selectedDay.items;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         if (!_notionConfigured)
           _buildNoticeBanner(context),
-        for (final day in _days) ...[
-          _buildDayHeader(context, day.weekday),
+        _buildWeekdaySelector(context),
+        const SizedBox(height: 12),
+        if (selectedItems.isEmpty)
+          _buildEmptyDay(context)
+        else ...[
+          _buildDayHeader(context, selectedDay.weekday),
           const SizedBox(height: 8),
-          for (final item in day.items)
+          for (final item in selectedItems)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: _CalendarItemCard(
                 item: item,
                 isBound: _boundIds.contains(item.id),
+                watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -162,9 +227,58 @@ class _CalendarPageState extends State<CalendarPage> {
                 },
               ),
             ),
-          const SizedBox(height: 8),
         ],
       ],
+    );
+  }
+
+  Widget _buildEmptyDay(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+      ),
+      child: const Text('今天没有放送条目'),
+    );
+  }
+
+  Widget _buildWeekdaySelector(BuildContext context) {
+    const labels = <int, String>{
+      1: '周一',
+      2: '周二',
+      3: '周三',
+      4: '周四',
+      5: '周五',
+      6: '周六',
+      7: '周日',
+    };
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: labels.entries.map((entry) {
+          final isSelected = _selectedWeekday == entry.key;
+          final boundCount = _weekdayBoundCounts[entry.key] ?? 0;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: _WeekdayChipLabel(
+                label: entry.value,
+                count: boundCount,
+              ),
+              selected: isSelected,
+              onSelected: (_) {
+                setState(() {
+                  _selectedWeekday = entry.key;
+                });
+              },
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -260,24 +374,67 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 }
 
+class _WeekdayChipLabel extends StatelessWidget {
+  const _WeekdayChipLabel({
+    required this.label,
+    required this.count,
+  });
+
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final showBadge = count > 0;
+    final badgeColor = const Color(0xFF3DDC84);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label),
+        if (showBadge) ...[
+          const SizedBox(width: 6),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: badgeColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$count',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: badgeColor,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _CalendarItemCard extends StatelessWidget {
   const _CalendarItemCard({
     required this.item,
     required this.isBound,
+    required this.watchedEpisodes,
     required this.onTap,
   });
 
   final BangumiCalendarItem item;
   final bool isBound;
+  final int watchedEpisodes;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
     final airDate = item.airDate.isNotEmpty ? item.airDate : '待定';
-    final epsText = item.epsCount > 0
-        ? '全 $item.epsCount 集'
-        : (item.eps > 0 ? '预计 $item.eps 集' : '集数未知');
+    final latestText = item.eps > 0 ? item.eps.toString() : '-';
+    final totalText = item.epsCount > 0 ? item.epsCount.toString() : '-';
+    final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
     final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
@@ -341,7 +498,10 @@ class _CalendarItemCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text('放送开始：$airDate'),
                     const SizedBox(height: 4),
-                    Text(epsText, style: Theme.of(context).textTheme.bodySmall),
+                    Text(
+                      '已追 $watchedText / 已更 $latestText / 总共 $totalText',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                     if (item.summary.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
