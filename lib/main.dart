@@ -6,6 +6,7 @@ import 'screens/recommendation_page.dart';
 import 'screens/search_page.dart';
 import 'screens/settings_page.dart';
 import 'screens/mapping_page.dart';
+import 'screens/calendar_page.dart';
 import 'services/settings_storage.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
@@ -50,6 +51,8 @@ class MyApp extends StatelessWidget {
         return _buildSlideRoute(const MappingPage(), settings);
       case '/search':
         return _buildSlideRoute(const SearchPage(), settings);
+      case '/calendar':
+        return _buildSlideRoute(const CalendarPage(), settings);
       case '/recommendation':
       default:
         return _buildSlideRoute(const RecommendationPage(), settings);
@@ -81,7 +84,7 @@ class MyApp extends StatelessWidget {
             ),
           ),
           themeMode: currentMode,
-          initialRoute: '/recommendation',
+          initialRoute: '/calendar',
           onGenerateRoute: _onGenerateRoute,
         );
       },

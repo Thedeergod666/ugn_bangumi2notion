@@ -28,6 +28,97 @@ class BangumiSearchItem {
   }
 }
 
+class BangumiCalendarWeekday {
+  const BangumiCalendarWeekday({
+    required this.id,
+    required this.en,
+    required this.cn,
+    required this.ja,
+  });
+
+  final int id;
+  final String en;
+  final String cn;
+  final String ja;
+
+  factory BangumiCalendarWeekday.fromJson(Map<String, dynamic> json) {
+    return BangumiCalendarWeekday(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      en: json['en'] as String? ?? '',
+      cn: json['cn'] as String? ?? '',
+      ja: json['ja'] as String? ?? '',
+    );
+  }
+}
+
+class BangumiCalendarItem {
+  const BangumiCalendarItem({
+    required this.id,
+    required this.type,
+    required this.name,
+    required this.nameCn,
+    required this.summary,
+    required this.imageUrl,
+    required this.airDate,
+    required this.airWeekday,
+    required this.eps,
+    required this.epsCount,
+  });
+
+  final int id;
+  final int type;
+  final String name;
+  final String nameCn;
+  final String summary;
+  final String imageUrl;
+  final String airDate;
+  final int airWeekday;
+  final int eps;
+  final int epsCount;
+
+  factory BangumiCalendarItem.fromJson(Map<String, dynamic> json) {
+    final images = json['images'] as Map<String, dynamic>?;
+    return BangumiCalendarItem(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      type: (json['type'] as num?)?.toInt() ?? 0,
+      name: json['name'] as String? ?? '',
+      nameCn: json['name_cn'] as String? ?? '',
+      summary: json['summary'] as String? ?? '',
+      imageUrl: images?['medium'] as String? ??
+          images?['common'] as String? ??
+          images?['small'] as String? ??
+          '',
+      airDate: json['air_date'] as String? ?? '',
+      airWeekday: (json['air_weekday'] as num?)?.toInt() ?? 0,
+      eps: (json['eps'] as num?)?.toInt() ?? 0,
+      epsCount: (json['eps_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class BangumiCalendarDay {
+  const BangumiCalendarDay({
+    required this.weekday,
+    required this.items,
+  });
+
+  final BangumiCalendarWeekday weekday;
+  final List<BangumiCalendarItem> items;
+
+  factory BangumiCalendarDay.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'] as List<dynamic>? ?? [];
+    return BangumiCalendarDay(
+      weekday: BangumiCalendarWeekday.fromJson(
+        json['weekday'] as Map<String, dynamic>? ?? {},
+      ),
+      items: rawItems
+          .whereType<Map<String, dynamic>>()
+          .map(BangumiCalendarItem.fromJson)
+          .toList(),
+    );
+  }
+}
+
 class BangumiSubjectDetail {
   BangumiSubjectDetail({
     required this.id,

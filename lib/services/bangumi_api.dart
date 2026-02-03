@@ -18,6 +18,7 @@ class BangumiApi {
   static const int _staffPageLimit = 50;
   static const int _staffMaxItems = 200;
   static const Duration _selfTimeout = Duration(seconds: 10);
+  static const int _logTextLimit = 200;
 
   String _mapBangumiError(String action, http.Response response) {
     switch (response.statusCode) {
@@ -103,6 +104,26 @@ class BangumiApi {
         .toList();
   }
 
+  Future<List<BangumiCalendarDay>> fetchCalendar() async {
+    final uri = Uri.parse('$_baseUrl/calendar');
+    final response = await _client
+        .get(
+          uri,
+          headers: _buildHeaders(),
+        )
+        .timeout(_timeout);
+
+    if (response.statusCode != 200) {
+      throw Exception(_mapBangumiError('Bangumi 放送列表', response));
+    }
+
+    final data = jsonDecode(response.body) as List<dynamic>? ?? [];
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map(BangumiCalendarDay.fromJson)
+        .toList();
+  }
+
   Future<BangumiSubjectDetail> fetchDetail({
     required int subjectId,
     String? accessToken,
@@ -121,6 +142,19 @@ class BangumiApi {
         detail = _enrichDetailWithStaff(detail, staffResponse.data);
       }
 
+      if (kDebugMode) {
+        String clip(String value) {
+          final trimmed = value.trim();
+          if (trimmed.length <= _logTextLimit) return trimmed;
+          return '${trimmed.substring(0, _logTextLimit)}…';
+        }
+
+        debugPrint(
+          '[DailyReco][Bangumi] detail id=${detail.id} '
+          'title="${clip(detail.nameCn.isNotEmpty ? detail.nameCn : detail.name)}" '
+          'score=${detail.score.toStringAsFixed(1)} year=${detail.airDate.split('-').first}',
+        );
+      }
       return detail;
     } catch (e) {
       // 如果并行请求失败，尝试至少返回基本信息

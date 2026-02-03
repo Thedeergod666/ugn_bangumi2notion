@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/mapping_config.dart';
 import '../models/notion_models.dart';
@@ -8,6 +11,16 @@ import '../services/notion_api.dart';
 import '../services/settings_storage.dart';
 import '../widgets/error_detail_dialog.dart';
 import '../widgets/navigation_shell.dart';
+
+class _DailyCacheData {
+  final List<DailyRecommendation> candidates;
+  final int index;
+
+  const _DailyCacheData({
+    required this.candidates,
+    required this.index,
+  });
+}
 
 class RecommendationPage extends StatefulWidget {
   const RecommendationPage({super.key});
@@ -18,12 +31,15 @@ class RecommendationPage extends StatefulWidget {
 
 class _RecommendationPageState extends State<RecommendationPage> {
   static const double _minScore = 6.5;
+  static const int _logTextLimit = 200;
 
   final NotionApi _notionApi = NotionApi();
   final SettingsStorage _settingsStorage = SettingsStorage();
 
   bool _loading = true;
   DailyRecommendation? _recommendation;
+  List<DailyRecommendation> _dailyCandidates = [];
+  int _dailyIndex = 0;
   String? _errorMessage;
   String? _emptyMessage;
   String? _configurationMessage;
@@ -42,6 +58,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
       setState(() {
         _loading = true;
         _recommendation = null;
+        _dailyCandidates = [];
+        _dailyIndex = 0;
         _errorMessage = null;
         _emptyMessage = null;
         _configurationMessage = null;
@@ -52,6 +70,30 @@ class _RecommendationPageState extends State<RecommendationPage> {
     }
 
     try {
+      final cached = await _loadDailyCache();
+      if (cached != null) {
+        if (kDebugMode) {
+          debugPrint('[DailyReco] cache hit');
+        }
+        if (!mounted) return;
+        final current = cached.candidates.isNotEmpty
+            ? cached.candidates[cached.index]
+            : null;
+        setState(() {
+          _dailyCandidates = cached.candidates;
+          _dailyIndex = cached.index;
+          _recommendation = current;
+          _loading = false;
+          _emptyMessage = (cached.candidates.isEmpty || current?.title.isEmpty == true)
+              ? '暂无 ${_minScore.toStringAsFixed(1)}+ 条目'
+              : null;
+        });
+        return;
+      }
+
+      if (kDebugMode) {
+        debugPrint('[DailyReco] cache miss');
+      }
       final settings = await _settingsStorage.loadAll();
       final token = settings[SettingsKeys.notionToken] ?? '';
       final databaseId = settings[SettingsKeys.notionDatabaseId] ?? '';
@@ -76,18 +118,26 @@ class _RecommendationPageState extends State<RecommendationPage> {
         return;
       }
 
-      final recommendation = await _notionApi.getDailyRecommendation(
+      final candidates = await _notionApi.getDailyRecommendationCandidates(
         token: token,
         databaseId: databaseId,
         bindings: bindings,
         minScore: _minScore,
       );
 
+      final pickedIndex = candidates.isEmpty ? 0 : Random().nextInt(candidates.length);
+      await _saveDailyCache(
+        candidates: candidates,
+        index: pickedIndex,
+      );
+
       if (!mounted) return;
       setState(() {
-        _recommendation = recommendation;
+        _dailyCandidates = candidates;
+        _dailyIndex = pickedIndex;
+        _recommendation = candidates.isNotEmpty ? candidates[pickedIndex] : null;
         _loading = false;
-        if (recommendation == null) {
+        if (candidates.isEmpty) {
           _emptyMessage = '暂无 ${_minScore.toStringAsFixed(1)}+ 条目';
         }
       });
@@ -104,6 +154,100 @@ class _RecommendationPageState extends State<RecommendationPage> {
       });
       _showErrorSnackBar(error, stackTrace);
     }
+  }
+
+  String _buildTodayKey() {
+    final now = DateTime.now();
+    final y = now.year.toString().padLeft(4, '0');
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  String _clipLog(String? value) {
+    if (value == null) return '';
+    final trimmed = value.trim();
+    if (trimmed.length <= _logTextLimit) return trimmed;
+    return '${trimmed.substring(0, _logTextLimit)}…';
+  }
+
+  Future<_DailyCacheData?> _loadDailyCache() async {
+    final today = _buildTodayKey();
+    final cachedDate = await _settingsStorage.getDailyRecommendationCacheDate();
+    final payload = await _settingsStorage.getDailyRecommendationCachePayload();
+    if (cachedDate == null || payload == null || payload.isEmpty) {
+      return null;
+    }
+    if (cachedDate != today) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map<String, dynamic>) return null;
+      if (decoded['candidates'] is List) {
+        final rawList = decoded['candidates'] as List;
+        final candidates = rawList
+            .whereType<Map<String, dynamic>>()
+            .map(DailyRecommendation.fromJson)
+            .toList();
+        var index = int.tryParse(decoded['index']?.toString() ?? '') ?? 0;
+        if (index < 0) index = 0;
+        if (index >= candidates.length && candidates.isNotEmpty) {
+          index = 0;
+        }
+        if (kDebugMode) {
+          final currentTitle = candidates.isNotEmpty ? candidates[index].title : '';
+          final currentScore = candidates.isNotEmpty
+              ? candidates[index].yougnScore?.toStringAsFixed(1) ?? '-'
+              : '-';
+          debugPrint(
+            '[DailyReco] cache payload candidates=${candidates.length} '
+            'index=$index title="${_clipLog(currentTitle)}" score=$currentScore',
+          );
+        }
+        return _DailyCacheData(candidates: candidates, index: index);
+      }
+      final recommendation = DailyRecommendation.fromJson(decoded);
+      if (kDebugMode) {
+        debugPrint(
+          '[DailyReco] cache payload title="${_clipLog(recommendation.title)}" '
+          'score=${recommendation.yougnScore?.toStringAsFixed(1) ?? "-"}',
+        );
+      }
+      return _DailyCacheData(candidates: [recommendation], index: 0);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _saveDailyCache({
+    required List<DailyRecommendation> candidates,
+    required int index,
+  }) async {
+    final payload = jsonEncode({
+      'version': 2,
+      'index': index,
+      'candidates': candidates.map((item) => item.toJson()).toList(),
+    });
+    await _settingsStorage.saveDailyRecommendationCache(
+      date: _buildTodayKey(),
+      payload: payload,
+    );
+  }
+
+  Future<void> _nextRecommendation() async {
+    if (_dailyCandidates.length <= 1) return;
+    final nextIndex = (_dailyIndex + 1) % _dailyCandidates.length;
+    if (kDebugMode) {
+      debugPrint('[DailyReco] next index=$nextIndex');
+    }
+    if (!mounted) return;
+    setState(() {
+      _dailyIndex = nextIndex;
+      _recommendation = _dailyCandidates[nextIndex];
+    });
+    await _saveDailyCache(candidates: _dailyCandidates, index: _dailyIndex);
   }
 
   NotionDailyRecommendationBindings _resolveBindings(
@@ -219,7 +363,11 @@ class _RecommendationPageState extends State<RecommendationPage> {
         icon: Icons.inbox_outlined,
         title: _emptyMessage!,
         actionLabel: '再换一部',
-        onAction: _loading ? null : () => _loadRecommendation(),
+        onAction: _loading
+            ? null
+            : () => _dailyCandidates.isNotEmpty
+                ? _nextRecommendation()
+                : _loadRecommendation(),
       );
     }
 
@@ -230,7 +378,11 @@ class _RecommendationPageState extends State<RecommendationPage> {
         icon: Icons.inbox_outlined,
         title: '暂无推荐内容',
         actionLabel: '再换一部',
-        onAction: _loading ? null : () => _loadRecommendation(),
+        onAction: _loading
+            ? null
+            : () => _dailyCandidates.isNotEmpty
+                ? _nextRecommendation()
+                : _loadRecommendation(),
       );
     }
 
@@ -316,7 +468,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
               ),
               const Spacer(),
               FilledButton.icon(
-                onPressed: _loading ? null : () => _loadRecommendation(),
+                onPressed: _loading ? null : () => _nextRecommendation(),
                 icon: const Icon(Icons.shuffle),
                 label: const Text('换一部'),
               ),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/bangumi_models.dart';
 import '../services/bangumi_api.dart';
@@ -16,6 +17,7 @@ class NotionApi {
   static const double defaultYougnScoreThreshold = 6.5;
   static const int _dailyRecommendationMaxQueryItems = 200;
   static const int _dailyRecommendationTargetItems = 50;
+  static const int _logTextLimit = 200;
 
   String? _normalizePageId(String input) {
     final trimmed = input.trim();
@@ -468,6 +470,18 @@ class NotionApi {
       'elapsed=${totalSw.elapsedMilliseconds}ms',
     );
 
+    if (kDebugMode) {
+      final ids = results
+          .whereType<Map<String, dynamic>>()
+          .map((item) => item['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+      final sampleIds = ids.take(5).map((id) => id.length > 8 ? id.substring(0, 8) : id).toList();
+      developer.log(
+        '[DailyReco][Notion] results=${results.length} pageIds=${sampleIds.join(",")}',
+      );
+    }
+
     if (results.isEmpty) {
       return null;
     }
@@ -546,6 +560,24 @@ class NotionApi {
       subjectId: subjectId,
     );
 
+    if (kDebugMode) {
+      String clip(String? value) {
+        if (value == null) return '';
+        final trimmed = value.trim();
+        if (trimmed.length <= _logTextLimit) return trimmed;
+        return '${trimmed.substring(0, _logTextLimit)}…';
+      }
+
+      final tags = readTags(bindings.tags);
+      developer.log(
+        '[DailyReco][Notion] pick title="${clip(title)}" '
+        'score=${score.toStringAsFixed(1)} '
+        'pageId=${pageId != null ? (pageId.length > 8 ? pageId.substring(0, 8) : pageId) : ""} '
+        'bangumiId=${clip(bangumiId)} subjectId=${clip(subjectId)} '
+        'type=${clip(readSelect(bindings.type))} tags=${tags.take(6).join("/")}',
+      );
+    }
+
     developer.log(
       'getDailyRecommendation total elapsed=${totalSw.elapsedMilliseconds}ms',
     );
@@ -564,6 +596,312 @@ class NotionApi {
       bangumiId: bangumiId,
       subjectId: subjectId,
     );
+  }
+
+  Future<List<DailyRecommendation>> getDailyRecommendationCandidates({
+    required String token,
+    required String databaseId,
+    required NotionDailyRecommendationBindings bindings,
+    double minScore = defaultYougnScoreThreshold,
+  }) async {
+    final totalSw = Stopwatch()..start();
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
+    if (bindings.yougnScore.isEmpty) {
+      throw Exception('未配置悠gn评分映射字段');
+    }
+
+    final url = Uri.parse(_baseUrl)
+        .replace(pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query']);
+
+    String? yougnScoreType;
+    try {
+      final properties = await getDatabaseProperties(
+        token: token,
+        databaseId: normalizedDatabaseId,
+      );
+      yougnScoreType = properties
+          .firstWhere(
+            (p) => p.name == bindings.yougnScore,
+            orElse: () => NotionProperty(name: bindings.yougnScore, type: ''),
+          )
+          .type;
+    } catch (e) {
+      developer.log('Schema fetch failed in getDailyRecommendationCandidates: $e');
+    }
+
+    final useNumberFilter = yougnScoreType == 'number';
+    List<dynamic> results = [];
+    String? nextCursor;
+    bool hasMore = true;
+
+    int pageCount = 0;
+    while (hasMore && results.length < _dailyRecommendationMaxQueryItems) {
+      pageCount += 1;
+      final pageSw = Stopwatch()..start();
+      final body = <String, dynamic>{};
+      if (useNumberFilter) {
+        body['filter'] = {
+          'property': bindings.yougnScore,
+          'number': {
+            'greater_than_or_equal_to': minScore,
+          },
+        };
+      }
+      if (nextCursor != null && nextCursor.isNotEmpty) {
+        body['start_cursor'] = nextCursor;
+      }
+      final requestBody = jsonEncode(body);
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Notion-Version': _notionVersion,
+              'Content-Type': 'application/json',
+            },
+            body: requestBody,
+          )
+          .timeout(_queryTimeout);
+
+      developer.log(
+        'Notion databases.query page $pageCount finished in '
+        '${pageSw.elapsedMilliseconds}ms (status=${response.statusCode})',
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(_mapNotionError('获取每日推荐', response));
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final pageResults = data['results'] as List<dynamic>;
+      results.addAll(pageResults);
+      hasMore = data['has_more'] == true;
+      nextCursor = data['next_cursor']?.toString();
+      if (useNumberFilter && results.length >= _dailyRecommendationTargetItems) {
+        hasMore = false;
+      }
+    }
+
+    if (!useNumberFilter) {
+      results = results.where((item) {
+        if (item is! Map<String, dynamic>) return false;
+        final properties = item['properties'] as Map<String, dynamic>? ?? {};
+        final scoreProperty = properties[bindings.yougnScore] as Map<String, dynamic>?;
+        if (scoreProperty == null) return false;
+        final rawText = _extractPlainText(scoreProperty);
+        final score = _parseScoreFromText(rawText);
+        return score != null && score >= minScore;
+      }).toList();
+    }
+
+    developer.log(
+      'getDailyRecommendationCandidates query done: pages=$pageCount, results=${results.length}, '
+      'elapsed=${totalSw.elapsedMilliseconds}ms',
+    );
+
+    if (kDebugMode) {
+      final ids = results
+          .whereType<Map<String, dynamic>>()
+          .map((item) => item['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+      final sampleIds = ids.take(5).map((id) => id.length > 8 ? id.substring(0, 8) : id).toList();
+      developer.log(
+        '[DailyReco][Notion] candidates=${results.length} pageIds=${sampleIds.join(",")}',
+      );
+    }
+
+    if (results.isEmpty) {
+      return [];
+    }
+
+    String? readText(Map<String, dynamic> properties, String key) {
+      if (key.isEmpty) return null;
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return null;
+      return _extractFallbackText(property);
+    }
+
+    double? readNumber(Map<String, dynamic> properties, String key) {
+      if (key.isEmpty) return null;
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return null;
+      return _extractNumberValue(property);
+    }
+
+    double? readScoreFallback(Map<String, dynamic> properties, String key) {
+      if (key.isEmpty) return null;
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return null;
+      return _parseScoreFromText(_extractPlainText(property));
+    }
+
+    DateTime? readDate(Map<String, dynamic> properties, String key) {
+      if (key.isEmpty) return null;
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return null;
+      return _extractDate(property);
+    }
+
+    List<String> readTags(Map<String, dynamic> properties, String key) {
+      if (key.isEmpty) return [];
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return [];
+      return _extractMultiSelect(property);
+    }
+
+    String? readSelect(Map<String, dynamic> properties, String key) {
+      if (key.isEmpty) return null;
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return null;
+      return _extractSelect(property) ?? _extractPlainText(property);
+    }
+
+    final Map<String, String?> coverCache = {};
+    final candidates = <DailyRecommendation>[];
+    for (final item in results) {
+      if (item is! Map<String, dynamic>) continue;
+      final properties = item['properties'] as Map<String, dynamic>? ?? {};
+      final title = readText(properties, bindings.title) ?? '';
+      if (title.isEmpty) continue;
+
+      final score = readNumber(properties, bindings.yougnScore) ??
+          readScoreFallback(properties, bindings.yougnScore);
+      if (score == null) continue;
+
+      final bangumiId = readText(properties, bindings.bangumiId ?? '');
+      final subjectId = readText(properties, bindings.subjectId ?? '');
+      final coverKey = (subjectId?.trim().isNotEmpty == true)
+          ? subjectId!.trim()
+          : (bangumiId?.trim().isNotEmpty == true ? bangumiId!.trim() : '');
+      String? cover = coverKey.isNotEmpty ? coverCache[coverKey] : null;
+      if (coverKey.isNotEmpty && cover == null) {
+        cover = await _resolveBangumiCover(
+          bangumiId: bangumiId,
+          subjectId: subjectId,
+        );
+        coverCache[coverKey] = cover;
+      }
+
+      candidates.add(
+        DailyRecommendation(
+          title: title,
+          yougnScore: score,
+          airDate: readDate(properties, bindings.airDate),
+          tags: readTags(properties, bindings.tags),
+          type: readSelect(properties, bindings.type),
+          shortReview: readText(properties, bindings.shortReview),
+          longReview: readText(properties, bindings.longReview),
+          cover: cover,
+          contentCoverUrl: null,
+          contentLongReview: null,
+          bangumiId: bangumiId,
+          subjectId: subjectId,
+        ),
+      );
+    }
+
+    developer.log(
+      'getDailyRecommendationCandidates total elapsed=${totalSw.elapsedMilliseconds}ms',
+    );
+
+    return candidates;
+  }
+
+  int? _extractBangumiIdFromProperty(
+    Map<String, dynamic> property,
+    String propertyType,
+  ) {
+    if (propertyType == 'number') {
+      final number = _extractNumberValue(property);
+      return number?.round();
+    }
+    final text = _extractPlainText(property);
+    if (text == null || text.isEmpty) return null;
+    return int.tryParse(text.replaceAll(RegExp(r'[^0-9]'), ''));
+  }
+
+  Future<Set<int>> getBangumiIdSet({
+    required String token,
+    required String databaseId,
+    required String propertyName,
+  }) async {
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
+    if (propertyName.trim().isEmpty) {
+      return <int>{};
+    }
+
+    String propertyType = 'number';
+    try {
+      final properties = await getDatabaseProperties(
+        token: token,
+        databaseId: normalizedDatabaseId,
+      );
+      propertyType = properties
+          .firstWhere(
+            (p) => p.name == propertyName,
+            orElse: () => NotionProperty(name: propertyName, type: 'number'),
+          )
+          .type;
+    } catch (e) {
+      developer.log('Schema fetch failed in getBangumiIdSet: $e');
+    }
+
+    final url = Uri.parse(_baseUrl)
+        .replace(pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query']);
+    final ids = <int>{};
+    String? nextCursor;
+    bool hasMore = true;
+    int pageCount = 0;
+
+    while (hasMore) {
+      pageCount += 1;
+      final body = <String, dynamic>{};
+      if (nextCursor != null && nextCursor.isNotEmpty) {
+        body['start_cursor'] = nextCursor;
+      }
+      final response = await http
+          .post(
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Notion-Version': _notionVersion,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(_queryTimeout);
+
+      if (response.statusCode != 200) {
+        throw Exception(_mapNotionError('读取 Bangumi ID 列表', response));
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final results = data['results'] as List<dynamic>? ?? [];
+      for (final item in results) {
+        if (item is! Map<String, dynamic>) continue;
+        final properties = item['properties'] as Map<String, dynamic>? ?? {};
+        final property = properties[propertyName] as Map<String, dynamic>?;
+        if (property == null) continue;
+        final id = _extractBangumiIdFromProperty(property, propertyType);
+        if (id != null && id > 0) {
+          ids.add(id);
+        }
+      }
+      hasMore = data['has_more'] == true;
+      nextCursor = data['next_cursor']?.toString();
+    }
+
+    developer.log(
+      'getBangumiIdSet done: pages=$pageCount ids=${ids.length}',
+    );
+    return ids;
   }
 
   Future<String?> findPageByUniqueId({

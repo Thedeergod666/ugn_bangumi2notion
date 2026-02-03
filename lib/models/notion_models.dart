@@ -58,4 +58,45 @@ class DailyRecommendation {
     required this.bangumiId,
     required this.subjectId,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'yougnScore': yougnScore,
+      'airDate': airDate?.toIso8601String(),
+      'tags': tags,
+      'type': type,
+      'shortReview': shortReview,
+      'longReview': longReview,
+      'cover': cover,
+      'contentCoverUrl': contentCoverUrl,
+      'contentLongReview': contentLongReview,
+      'bangumiId': bangumiId,
+      'subjectId': subjectId,
+    };
+  }
+
+  factory DailyRecommendation.fromJson(Map<String, dynamic> json) {
+    final tagsRaw = json['tags'];
+    final tags = tagsRaw is List
+        ? tagsRaw.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList()
+        : <String>[];
+    final airDateText = json['airDate']?.toString();
+    return DailyRecommendation(
+      title: json['title']?.toString() ?? '',
+      yougnScore: (json['yougnScore'] as num?)?.toDouble(),
+      airDate: airDateText != null && airDateText.isNotEmpty
+          ? DateTime.tryParse(airDateText)
+          : null,
+      tags: tags,
+      type: json['type']?.toString(),
+      shortReview: json['shortReview']?.toString(),
+      longReview: json['longReview']?.toString(),
+      cover: json['cover']?.toString(),
+      contentCoverUrl: json['contentCoverUrl']?.toString(),
+      contentLongReview: json['contentLongReview']?.toString(),
+      bangumiId: json['bangumiId']?.toString(),
+      subjectId: json['subjectId']?.toString(),
+    );
+  }
 }

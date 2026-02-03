@@ -45,6 +45,7 @@ app.*.map.json
 
 /bangumi-api
 
+.roomodes
 # Environment variables and secrets
 .env
 .env.*

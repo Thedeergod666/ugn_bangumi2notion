@@ -13,6 +13,8 @@ class SettingsKeys {
   static const mappingConfig = 'mappingConfig';
   static const dailyRecommendationBindings = 'dailyRecommendationBindings';
   static const notionProperties = 'notionProperties';
+  static const dailyRecommendationDate = 'dailyRecommendationDate';
+  static const dailyRecommendationPayload = 'dailyRecommendationPayload';
 }
 
 class SettingsStorage {
@@ -72,6 +74,31 @@ class SettingsStorage {
   Future<void> saveMappingConfig(MappingConfig config) async {
     final prefs = await _prefs;
     await prefs.setString(SettingsKeys.mappingConfig, jsonEncode(config.toJson()));
+  }
+
+  Future<void> saveDailyRecommendationCache({
+    required String date,
+    required String payload,
+  }) async {
+    final prefs = await _prefs;
+    await prefs.setString(SettingsKeys.dailyRecommendationDate, date);
+    await prefs.setString(SettingsKeys.dailyRecommendationPayload, payload);
+  }
+
+  Future<String?> getDailyRecommendationCacheDate() async {
+    final prefs = await _prefs;
+    return prefs.getString(SettingsKeys.dailyRecommendationDate);
+  }
+
+  Future<String?> getDailyRecommendationCachePayload() async {
+    final prefs = await _prefs;
+    return prefs.getString(SettingsKeys.dailyRecommendationPayload);
+  }
+
+  Future<void> clearDailyRecommendationCache() async {
+    final prefs = await _prefs;
+    await prefs.remove(SettingsKeys.dailyRecommendationDate);
+    await prefs.remove(SettingsKeys.dailyRecommendationPayload);
   }
 
   Future<void> saveDailyRecommendationBindings(
