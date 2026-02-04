@@ -31,6 +31,7 @@ class _CalendarPageState extends State<CalendarPage> {
   Map<int, int> _watchedEpisodes = {};
   Map<int, List<BangumiCalendarItem>> _weekdayItems = {};
   Map<int, int> _weekdayBoundCounts = {};
+  List<BangumiCalendarItem> _boundItems = [];
   bool _notionConfigured = false;
   int _selectedWeekday = DateTime.now().weekday;
 
@@ -51,6 +52,7 @@ class _CalendarPageState extends State<CalendarPage> {
       _errorMessage = null;
       _days = [];
       _boundIds = {};
+      _boundItems = [];
       _notionConfigured = false;
     });
 
@@ -88,6 +90,7 @@ class _CalendarPageState extends State<CalendarPage> {
         _watchedEpisodes = watchedEpisodes;
         _weekdayItems = _buildWeekdayItems(filteredDays, boundIds);
         _weekdayBoundCounts = _buildWeekdayBoundCounts(filteredDays, boundIds);
+        _boundItems = _buildBoundItems(filteredDays, boundIds);
         _notionConfigured = notionReady;
         _loading = false;
       });
@@ -155,6 +158,30 @@ class _CalendarPageState extends State<CalendarPage> {
     return counts;
   }
 
+  List<BangumiCalendarItem> _buildBoundItems(
+    List<BangumiCalendarDay> days,
+    Set<int> boundIds,
+  ) {
+    final result = <BangumiCalendarItem>[];
+    final seen = <int>{};
+    for (final day in days) {
+      for (final item in day.items) {
+        if (!boundIds.contains(item.id)) continue;
+        if (seen.add(item.id)) {
+          result.add(item);
+        }
+      }
+    }
+    return result;
+  }
+
+  DateTime _nextDateForWeekday(int weekday, DateTime now) {
+    final base = DateTime(now.year, now.month, now.day);
+    int diff = weekday - now.weekday;
+    if (diff < 0) diff += 7;
+    return base.add(Duration(days: diff));
+  }
+
   @override
   Widget build(BuildContext context) {
     return NavigationShell(
@@ -209,6 +236,10 @@ class _CalendarPageState extends State<CalendarPage> {
       padding: const EdgeInsets.all(16),
       children: [
         if (!_notionConfigured) _buildNoticeBanner(context),
+        if (_notionConfigured) ...[
+          _buildBoundSection(context),
+          const SizedBox(height: 12),
+        ],
         _buildWeekdaySelector(context),
         const SizedBox(height: 12),
         if (selectedItems.isEmpty)
@@ -261,18 +292,23 @@ class _CalendarPageState extends State<CalendarPage> {
       6: '周六',
       7: '周日',
     };
+    final now = DateTime.now();
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: labels.entries.map((entry) {
           final isSelected = _selectedWeekday == entry.key;
           final boundCount = _weekdayBoundCounts[entry.key] ?? 0;
+          final date = _nextDateForWeekday(entry.key, now);
+          final dateLabel = '${date.month}月${date.day}日';
+          final label = entry.key == now.weekday ? '今天' : entry.value;
           return Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ChoiceChip(
               label: _WeekdayChipLabel(
-                label: entry.value,
+                label: label,
                 count: boundCount,
+                dateLabel: dateLabel,
               ),
               selected: isSelected,
               onSelected: (_) {
@@ -313,6 +349,49 @@ class _CalendarPageState extends State<CalendarPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBoundSection(BuildContext context) {
+    final now = DateTime.now();
+    final dateLabel = '${now.year}-${now.month}-${now.day}';
+    final hasBound = _boundItems.isNotEmpty;
+    final headerText = hasBound ? '$dateLabel · 已追' : dateLabel;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              headerText,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Divider(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+          ],
+        ),
+        if (hasBound) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 112,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _boundItems.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final item = _boundItems[index];
+                return _BoundBangumiCard(item: item);
+              },
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -384,39 +463,98 @@ class _WeekdayChipLabel extends StatelessWidget {
   const _WeekdayChipLabel({
     required this.label,
     required this.count,
+    required this.dateLabel,
   });
 
   final String label;
   final int count;
+  final String dateLabel;
 
   @override
   Widget build(BuildContext context) {
     final showBadge = count > 0;
     final badgeColor = Theme.of(context).colorScheme.primary;
-    return Row(
+    return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label),
-        if (showBadge) ...[
-          const SizedBox(width: 6),
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: badgeColor,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '$count',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        Text(
+          dateLabel,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label),
+            if (showBadge) ...[
+              const SizedBox(width: 6),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
                   color: badgeColor,
-                  fontWeight: FontWeight.w600,
+                  shape: BoxShape.circle,
                 ),
-          ),
-        ],
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$count',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: badgeColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
+          ],
+        ),
       ],
+    );
+  }
+}
+
+class _BoundBangumiCard extends StatelessWidget {
+  const _BoundBangumiCard({required this.item});
+
+  final BangumiCalendarItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
+    return SizedBox(
+      width: 220,
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+            width: 0.8,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: [
+              _CoverImage(url: item.imageUrl),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
