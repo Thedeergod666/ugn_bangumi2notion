@@ -188,6 +188,13 @@ class BangumiApi {
     }
   }
 
+  Future<BangumiSubjectDetail> fetchSubjectBase({
+    required int subjectId,
+    String? accessToken,
+  }) async {
+    return _fetchSubjectBase(subjectId, accessToken);
+  }
+
   Future<BangumiSubjectDetail> _fetchSubjectBase(
       int subjectId, String? accessToken) async {
     final uri = Uri.parse('$_baseUrl/v0/subjects/$subjectId');

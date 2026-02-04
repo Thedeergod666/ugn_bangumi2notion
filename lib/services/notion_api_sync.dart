@@ -231,6 +231,160 @@ extension NotionApiSync on NotionApi {
     return progress;
   }
 
+  Future<Map<int, BangumiProgressInfo>> getBangumiProgressInfo({
+    required String token,
+    required String databaseId,
+    required String idPropertyName,
+    String? watchedEpisodesProperty,
+    String? yougnScoreProperty,
+    String? statusPropertyName,
+    String? statusValue,
+  }) async {
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 鏃犳晥');
+    }
+    if (idPropertyName.trim().isEmpty) {
+      return <int, BangumiProgressInfo>{};
+    }
+
+    String idPropertyType = 'number';
+    String watchedPropertyType = 'number';
+    String yougnScoreType = '';
+    String statusPropertyType = '';
+    try {
+      final properties = await getDatabaseProperties(
+        token: token,
+        databaseId: normalizedDatabaseId,
+      );
+      final typeMap = _buildPropertyTypeMap(properties);
+      idPropertyType = typeMap[idPropertyName] ?? 'number';
+      if (watchedEpisodesProperty != null &&
+          watchedEpisodesProperty.trim().isNotEmpty) {
+        watchedPropertyType = typeMap[watchedEpisodesProperty] ?? 'number';
+      }
+      if (yougnScoreProperty != null && yougnScoreProperty.trim().isNotEmpty) {
+        yougnScoreType = typeMap[yougnScoreProperty] ?? '';
+      }
+      if (statusPropertyName != null && statusPropertyName.trim().isNotEmpty) {
+        statusPropertyType = typeMap[statusPropertyName] ?? '';
+      }
+    } catch (e) {
+      _logger.debug('Schema fetch failed in getBangumiProgressInfo: $e');
+    }
+
+    final url = Uri.parse(NotionApi._baseUrl).replace(
+        pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query']);
+    final progress = <int, BangumiProgressInfo>{};
+    String? nextCursor;
+    bool hasMore = true;
+    int pageCount = 0;
+
+    final statusFilter = (statusPropertyName != null &&
+            statusValue != null &&
+            statusPropertyName.trim().isNotEmpty &&
+            statusValue.trim().isNotEmpty)
+        ? _buildStatusFilter(
+            propertyName: statusPropertyName,
+            propertyType: statusPropertyType,
+            value: statusValue.trim(),
+          )
+        : null;
+
+    while (hasMore) {
+      pageCount += 1;
+      final body = <String, dynamic>{};
+      if (nextCursor != null && nextCursor.isNotEmpty) {
+        body['start_cursor'] = nextCursor;
+      }
+      if (statusFilter != null) {
+        body['filter'] = statusFilter;
+      }
+      final response = await sendWithRetry(
+        logger: _logger,
+        label: 'Notion post',
+        request: () => _client
+            .post(
+              url,
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Notion-Version': NotionApi._notionVersion,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(NotionApi._queryTimeout),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(_mapNotionError('璇诲彇 Bangumi 杩界暘杩涘害', response));
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final results = data['results'] as List<dynamic>? ?? [];
+      for (final item in results) {
+        if (item is! Map<String, dynamic>) continue;
+        final properties = item['properties'] as Map<String, dynamic>? ?? {};
+        final idProperty = properties[idPropertyName] as Map<String, dynamic>?;
+        if (idProperty == null) continue;
+
+        int? id;
+        if (idPropertyType == 'number') {
+          final number = _extractNumberValue(idProperty);
+          id = number?.round();
+        } else {
+          final text = _extractPlainText(idProperty);
+          if (text != null && text.isNotEmpty) {
+            id = int.tryParse(text.replaceAll(RegExp(r'[^0-9]'), ''));
+          }
+        }
+
+        if (id == null || id <= 0) continue;
+        int watched = 0;
+        if (watchedEpisodesProperty != null &&
+            watchedEpisodesProperty.trim().isNotEmpty) {
+          final watchedProp =
+              properties[watchedEpisodesProperty] as Map<String, dynamic>?;
+          if (watchedProp != null) {
+            if (watchedPropertyType == 'number') {
+              watched = _extractIntValue(watchedProp) ?? 0;
+            } else {
+              watched = _extractIntValue(watchedProp) ?? 0;
+            }
+          }
+        }
+
+        double? yougnScore;
+        if (yougnScoreProperty != null &&
+            yougnScoreProperty.trim().isNotEmpty) {
+          final scoreProp =
+              properties[yougnScoreProperty] as Map<String, dynamic>?;
+          if (scoreProp != null) {
+            if (yougnScoreType == 'number') {
+              yougnScore = _extractNumberValue(scoreProp);
+            } else {
+              yougnScore = _extractNumberValue(scoreProp) ??
+                  _parseScoreFromText(_extractPlainText(scoreProp));
+            }
+          }
+        }
+
+        progress[id] = BangumiProgressInfo(
+          watchedEpisodes: watched,
+          yougnScore: yougnScore,
+        );
+      }
+
+      hasMore = data['has_more'] == true;
+      nextCursor = data['next_cursor']?.toString();
+    }
+
+    _logger.debug(
+      'getBangumiProgressInfo done: pages=$pageCount items=${progress.length}',
+    );
+    return progress;
+  }
+
   Future<String?> findPageByUniqueId({
     required String token,
     required String databaseId,

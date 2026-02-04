@@ -29,6 +29,9 @@ class _CalendarPageState extends State<CalendarPage> {
   List<BangumiCalendarDay> _days = [];
   Set<int> _boundIds = {};
   Map<int, int> _watchedEpisodes = {};
+  Map<int, double?> _yougnScores = {};
+  Map<int, BangumiSubjectDetail> _detailCache = {};
+  final Set<int> _detailLoading = {};
   Map<int, List<BangumiCalendarItem>> _weekdayItems = {};
   Map<int, int> _weekdayBoundCounts = {};
   List<BangumiCalendarItem> _boundItems = [];
@@ -53,6 +56,10 @@ class _CalendarPageState extends State<CalendarPage> {
       _days = [];
       _boundIds = {};
       _boundItems = [];
+      _watchedEpisodes = {};
+      _yougnScores = {};
+      _detailCache = {};
+      _detailLoading.clear();
       _notionConfigured = false;
     });
 
@@ -65,22 +72,37 @@ class _CalendarPageState extends State<CalendarPage> {
       final mappingConfig = await _settingsStorage.getMappingConfig();
       final notionPropertyName = _resolveBangumiIdProperty(mappingConfig);
 
+      final dailyBindings = await _settingsStorage.getDailyRecommendationBindings();
+      final yougnScoreProperty = dailyBindings.yougnScore.isNotEmpty
+          ? dailyBindings.yougnScore
+          : mappingConfig.dailyRecommendationBindings.yougnScore;
+
       Set<int> boundIds = {};
       Map<int, int> watchedEpisodes = {};
+      Map<int, double?> yougnScores = {};
       bool notionReady = false;
       if (notionToken.isNotEmpty &&
           notionDbId.isNotEmpty &&
           notionPropertyName.isNotEmpty) {
         notionReady = true;
-        watchedEpisodes = await _notionApi.getBangumiProgressMap(
+        final progressMap = await _notionApi.getBangumiProgressInfo(
           token: notionToken,
           databaseId: notionDbId,
           idPropertyName: notionPropertyName,
           watchedEpisodesProperty: mappingConfig.watchedEpisodes,
+          yougnScoreProperty: yougnScoreProperty,
           statusPropertyName: mappingConfig.watchingStatus,
           statusValue: mappingConfig.watchingStatusValue,
         );
-        boundIds = watchedEpisodes.keys.toSet();
+        watchedEpisodes = {
+          for (final entry in progressMap.entries)
+            entry.key: entry.value.watchedEpisodes
+        };
+        yougnScores = {
+          for (final entry in progressMap.entries)
+            entry.key: entry.value.yougnScore
+        };
+        boundIds = progressMap.keys.toSet();
       }
 
       if (!mounted) return;
@@ -88,6 +110,7 @@ class _CalendarPageState extends State<CalendarPage> {
         _days = filteredDays;
         _boundIds = boundIds;
         _watchedEpisodes = watchedEpisodes;
+        _yougnScores = yougnScores;
         _weekdayItems = _buildWeekdayItems(filteredDays, boundIds);
         _weekdayBoundCounts = _buildWeekdayBoundCounts(filteredDays, boundIds);
         _boundItems = _buildBoundItems(filteredDays, boundIds);
@@ -182,6 +205,33 @@ class _CalendarPageState extends State<CalendarPage> {
     return base.add(Duration(days: diff));
   }
 
+  void _scheduleDetailLoad(int subjectId) {
+    if (_detailCache.containsKey(subjectId) ||
+        _detailLoading.contains(subjectId)) {
+      return;
+    }
+    _detailLoading.add(subjectId);
+    _loadDetail(subjectId);
+  }
+
+  Future<void> _loadDetail(int subjectId) async {
+    try {
+      final token = context.read<AppSettings>().bangumiAccessToken;
+      final detail = await _bangumiApi.fetchSubjectBase(
+        subjectId: subjectId,
+        accessToken: token.isEmpty ? null : token,
+      );
+      if (!mounted) return;
+      setState(() {
+        _detailCache[subjectId] = detail;
+      });
+    } catch (_) {
+      // Ignore detail fetch failures for list rendering.
+    } finally {
+      _detailLoading.remove(subjectId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return NavigationShell(
@@ -248,20 +298,26 @@ class _CalendarPageState extends State<CalendarPage> {
           _buildDayHeader(context, selectedDay.weekday),
           const SizedBox(height: 8),
           for (final item in selectedItems)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _CalendarItemCard(
-                item: item,
-                isBound: _boundIds.contains(item.id),
-                watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => DetailPage(subjectId: item.id),
-                    ),
-                  );
-                },
-              ),
+            Builder(
+              builder: (context) {
+                _scheduleDetailLoad(item.id);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _CalendarItemCard(
+                    item: item,
+                    detail: _detailCache[item.id],
+                    isBound: _boundIds.contains(item.id),
+                    watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => DetailPage(subjectId: item.id),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
         ],
       ],
@@ -379,14 +435,27 @@ class _CalendarPageState extends State<CalendarPage> {
         if (hasBound) ...[
           const SizedBox(height: 8),
           SizedBox(
-            height: 112,
+            height: 144,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: _boundItems.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final item = _boundItems[index];
-                return _BoundBangumiCard(item: item);
+            itemBuilder: (context, index) {
+              final item = _boundItems[index];
+              _scheduleDetailLoad(item.id);
+              return _BoundBangumiCard(
+                item: item,
+                watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
+                yougnScore: _yougnScores[item.id],
+                detail: _detailCache[item.id],
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => DetailPage(subjectId: item.id),
+                      ),
+                    );
+                  },
+                );
               },
             ),
           ),
@@ -516,42 +585,81 @@ class _WeekdayChipLabel extends StatelessWidget {
 }
 
 class _BoundBangumiCard extends StatelessWidget {
-  const _BoundBangumiCard({required this.item});
+  const _BoundBangumiCard({
+    required this.item,
+    required this.watchedEpisodes,
+    required this.yougnScore,
+    required this.detail,
+    required this.onTap,
+  });
 
   final BangumiCalendarItem item;
+  final int watchedEpisodes;
+  final double? yougnScore;
+  final BangumiSubjectDetail? detail;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
-    return SizedBox(
-      width: 220,
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-            width: 0.8,
+    final latestText = item.eps > 0 ? item.eps.toString() : '-';
+    final totalValue = detail?.epsCount ?? item.epsCount;
+    final totalText = totalValue > 0 ? totalValue.toString() : '-';
+    final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
+    return IntrinsicWidth(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 180, maxWidth: 280),
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+              width: 0.8,
+            ),
           ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Row(
-            children: [
-              _CoverImage(url: item.imageUrl),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _CoverImage(url: item.imageUrl),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (yougnScore != null)
+                            Text('悠GN ${yougnScore!.toStringAsFixed(1)}'),
+                          if (yougnScore != null) const SizedBox(height: 4),
+                          Text('已追 $watchedText'),
+                          const SizedBox(height: 4),
+                          Text('已更 $latestText'),
+                          const SizedBox(height: 4),
+                          Text('总共 $totalText'),
+                        ],
                       ),
-                ),
+                    ],
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -562,12 +670,14 @@ class _BoundBangumiCard extends StatelessWidget {
 class _CalendarItemCard extends StatelessWidget {
   const _CalendarItemCard({
     required this.item,
+    required this.detail,
     required this.isBound,
     required this.watchedEpisodes,
     required this.onTap,
   });
 
   final BangumiCalendarItem item;
+  final BangumiSubjectDetail? detail;
   final bool isBound;
   final int watchedEpisodes;
   final VoidCallback onTap;
@@ -577,9 +687,21 @@ class _CalendarItemCard extends StatelessWidget {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
     final airDate = item.airDate.isNotEmpty ? item.airDate : '待定';
     final latestText = item.eps > 0 ? item.eps.toString() : '-';
-    final totalText = item.epsCount > 0 ? item.epsCount.toString() : '-';
+    final totalValue = detail?.epsCount ?? item.epsCount;
+    final totalText = totalValue > 0 ? totalValue.toString() : '-';
     final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
     final colorScheme = Theme.of(context).colorScheme;
+    final score = detail?.score ?? 0;
+    final rank = detail?.rank;
+    final hasRating = score > 0 || (rank != null && rank > 0);
+    final tags = detail?.tags.take(10).toList() ?? <String>[];
+    final ratingStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: colorScheme.tertiary,
+          fontWeight: FontWeight.w600,
+        );
+    final rankStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: colorScheme.onSurfaceVariant,
+        );
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -640,12 +762,56 @@ class _CalendarItemCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
+                    if (hasRating) ...[
+                      Row(
+                        children: [
+                          if (score > 0)
+                            Text(
+                              'Bangumi ${score.toStringAsFixed(1)}',
+                              style: ratingStyle,
+                            ),
+                          if (score > 0 && rank != null && rank > 0)
+                            const SizedBox(width: 8),
+                          if (rank != null && rank > 0)
+                            Text(
+                              'Rank #$rank',
+                              style: rankStyle,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                     Text('放送开始：$airDate'),
-                    const SizedBox(height: 4),
-                    Text(
-                      '已追 $watchedText / 已更 $latestText / 总共 $totalText',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                    if (isBound) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '已追 $watchedText / 已更 $latestText / 总共 $totalText',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                    if (tags.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: tags.map((tag) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              tag,
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
                     if (item.summary.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(

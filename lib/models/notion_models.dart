@@ -103,3 +103,13 @@ class DailyRecommendation {
     );
   }
 }
+
+class BangumiProgressInfo {
+  final int watchedEpisodes;
+  final double? yougnScore;
+
+  const BangumiProgressInfo({
+    required this.watchedEpisodes,
+    this.yougnScore,
+  });
+}
