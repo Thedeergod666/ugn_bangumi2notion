@@ -1,5 +1,9 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../app/app_services.dart';
+import '../app/app_settings.dart';
 import '../models/bangumi_models.dart';
 import '../models/mapping_config.dart';
 import '../services/bangumi_api.dart';
@@ -16,8 +20,8 @@ class CalendarPage extends StatefulWidget {
 }
 
 class _CalendarPageState extends State<CalendarPage> {
-  final BangumiApi _bangumiApi = BangumiApi();
-  final NotionApi _notionApi = NotionApi();
+  late final BangumiApi _bangumiApi;
+  late final NotionApi _notionApi;
   final SettingsStorage _settingsStorage = SettingsStorage();
 
   bool _loading = true;
@@ -33,11 +37,15 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   void initState() {
     super.initState();
+    final services = context.read<AppServices>();
+    _bangumiApi = services.bangumiApi;
+    _notionApi = services.notionApi;
     _loadCalendar();
   }
 
   Future<void> _loadCalendar() async {
     if (!mounted) return;
+    final appSettings = context.read<AppSettings>();
     setState(() {
       _loading = true;
       _errorMessage = null;
@@ -50,9 +58,8 @@ class _CalendarPageState extends State<CalendarPage> {
       final calendar = await _bangumiApi.fetchCalendar();
       final filteredDays = _filterCalendarDays(calendar);
 
-      final settings = await _settingsStorage.loadAll();
-      final notionToken = settings[SettingsKeys.notionToken] ?? '';
-      final notionDbId = settings[SettingsKeys.notionDatabaseId] ?? '';
+      final notionToken = appSettings.notionToken;
+      final notionDbId = appSettings.notionDatabaseId;
       final mappingConfig = await _settingsStorage.getMappingConfig();
       final notionPropertyName = _resolveBangumiIdProperty(mappingConfig);
 
@@ -196,14 +203,12 @@ class _CalendarPageState extends State<CalendarPage> {
         items: [],
       ),
     );
-    final selectedItems =
-        _weekdayItems[_selectedWeekday] ?? selectedDay.items;
+    final selectedItems = _weekdayItems[_selectedWeekday] ?? selectedDay.items;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        if (!_notionConfigured)
-          _buildNoticeBanner(context),
+        if (!_notionConfigured) _buildNoticeBanner(context),
         _buildWeekdaySelector(context),
         const SizedBox(height: 12),
         if (selectedItems.isEmpty)
@@ -351,7 +356,8 @@ class _CalendarPageState extends State<CalendarPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 48, color: Theme.of(context).colorScheme.primary),
+              Icon(icon,
+                  size: 48, color: Theme.of(context).colorScheme.primary),
               const SizedBox(height: 16),
               Text(
                 title,
@@ -532,7 +538,8 @@ class _CoverImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    if (url.isEmpty) {
+
+    Widget buildFallback(IconData icon) {
       return Container(
         width: 72,
         height: 96,
@@ -540,24 +547,23 @@ class _CoverImage extends StatelessWidget {
           color: colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(Icons.image, size: 32),
+        child: Icon(icon, size: 32),
       );
     }
+
+    if (url.isEmpty) {
+      return buildFallback(Icons.image);
+    }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: Image.network(
-        url,
+      child: CachedNetworkImage(
+        imageUrl: url,
         width: 72,
         height: 96,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            width: 72,
-            height: 96,
-            color: colorScheme.surfaceContainerHighest,
-            child: const Icon(Icons.broken_image, size: 32),
-          );
-        },
+        placeholder: (_, __) => buildFallback(Icons.image),
+        errorWidget: (_, __, ___) => buildFallback(Icons.broken_image),
       ),
     );
   }

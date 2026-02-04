@@ -79,7 +79,10 @@ class DailyRecommendation {
   factory DailyRecommendation.fromJson(Map<String, dynamic> json) {
     final tagsRaw = json['tags'];
     final tags = tagsRaw is List
-        ? tagsRaw.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList()
+        ? tagsRaw
+            .map((e) => e?.toString() ?? '')
+            .where((e) => e.isNotEmpty)
+            .toList()
         : <String>[];
     final airDateText = json['airDate']?.toString();
     return DailyRecommendation(

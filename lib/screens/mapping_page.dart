@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../app/app_services.dart';
+import '../app/app_settings.dart';
 import '../models/mapping_config.dart';
 import '../services/notion_api.dart';
 import '../services/settings_storage.dart';
@@ -16,7 +20,7 @@ class MappingPage extends StatefulWidget {
 
 class _MappingPageState extends State<MappingPage>
     with SingleTickerProviderStateMixin {
-  final NotionApi _notionApi = NotionApi();
+  late final NotionApi _notionApi;
   final SettingsStorage _settingsStorage = SettingsStorage();
   final ScrollController _scrollController = ScrollController();
 
@@ -33,6 +37,7 @@ class _MappingPageState extends State<MappingPage>
   @override
   void initState() {
     super.initState();
+    _notionApi = context.read<AppServices>().notionApi;
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (_currentTabIndex != _tabController.index) {
@@ -54,9 +59,9 @@ class _MappingPageState extends State<MappingPage>
   Future<void> _loadData({bool forceRefresh = false}) async {
     setState(() => _isLoading = true);
     try {
-      final settings = await _settingsStorage.loadAll();
-      _notionToken = settings[SettingsKeys.notionToken] ?? '';
-      _notionDatabaseId = settings[SettingsKeys.notionDatabaseId] ?? '';
+      final settings = context.read<AppSettings>();
+      _notionToken = settings.notionToken;
+      _notionDatabaseId = settings.notionDatabaseId;
       _currentConfig = await _settingsStorage.getMappingConfig();
       _notionBindings = await _settingsStorage.getDailyRecommendationBindings();
 
@@ -242,9 +247,8 @@ class _MappingPageState extends State<MappingPage>
       builder: (context, constraints) {
         final maxWidth = constraints.maxWidth;
         const maxContentWidth = 980.0;
-        final contentWidth = maxWidth > maxContentWidth
-            ? maxContentWidth
-            : maxWidth;
+        final contentWidth =
+            maxWidth > maxContentWidth ? maxContentWidth : maxWidth;
 
         final content = ConstrainedBox(
           constraints: BoxConstraints.tightFor(width: contentWidth),
@@ -348,8 +352,8 @@ class _MappingPageState extends State<MappingPage>
                 _currentConfig.imageUrl,
                 _currentConfig.imageUrlEnabled,
                 (val) {
-                  setState(() => _currentConfig =
-                      _currentConfig.copyWith(imageUrl: val));
+                  setState(() =>
+                      _currentConfig = _currentConfig.copyWith(imageUrl: val));
                 },
                 (enabled) {
                   setState(() => _currentConfig =
@@ -361,8 +365,8 @@ class _MappingPageState extends State<MappingPage>
                 _currentConfig.bangumiId,
                 _currentConfig.bangumiIdEnabled,
                 (val) {
-                  setState(() => _currentConfig =
-                      _currentConfig.copyWith(bangumiId: val));
+                  setState(() =>
+                      _currentConfig = _currentConfig.copyWith(bangumiId: val));
                 },
                 (enabled) {
                   setState(() => _currentConfig =
@@ -404,9 +408,8 @@ class _MappingPageState extends State<MappingPage>
                       _currentConfig.copyWith(animationProduction: val));
                 },
                 (enabled) {
-                  setState(() => _currentConfig =
-                      _currentConfig.copyWith(
-                          animationProductionEnabled: enabled));
+                  setState(() => _currentConfig = _currentConfig.copyWith(
+                      animationProductionEnabled: enabled));
                 },
               ),
               _buildMappingItem(
@@ -427,8 +430,8 @@ class _MappingPageState extends State<MappingPage>
                 _currentConfig.script,
                 _currentConfig.scriptEnabled,
                 (val) {
-                  setState(() => _currentConfig =
-                      _currentConfig.copyWith(script: val));
+                  setState(() =>
+                      _currentConfig = _currentConfig.copyWith(script: val));
                 },
                 (enabled) {
                   setState(() => _currentConfig =
@@ -489,8 +492,8 @@ class _MappingPageState extends State<MappingPage>
                 _currentConfig.notionId,
                 true,
                 (val) {
-                  setState(() => _currentConfig =
-                      _currentConfig.copyWith(notionId: val));
+                  setState(() =>
+                      _currentConfig = _currentConfig.copyWith(notionId: val));
                 },
                 null,
               ),

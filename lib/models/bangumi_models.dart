@@ -173,25 +173,30 @@ class BangumiSubjectDetail {
       name: json['name'] as String? ?? '',
       nameCn: json['name_cn'] as String? ?? '',
       summary: json['summary'] as String? ?? '',
-      imageUrl: images?['large'] as String? ?? images?['medium'] as String? ?? '',
+      imageUrl:
+          images?['large'] as String? ?? images?['medium'] as String? ?? '',
       airDate: json['date'] as String? ?? '',
       epsCount: (json['eps'] as num?)?.toInt() ?? 0,
       tags: tagsJson
-          .map((tag) => tag is Map<String, dynamic> ? tag['name'] as String? : null)
+          .map((tag) =>
+              tag is Map<String, dynamic> ? tag['name'] as String? : null)
           .whereType<String>()
           .toList(),
       studio: _getFromInfoboxMap(infoboxMap, ['动画制作', '制作', '制作会社']),
       director: _getFromInfoboxMap(infoboxMap, ['导演', '監督']),
-      script: _getFromInfoboxMap(infoboxMap, ['脚本', '剧本', '系列构成', '构成', 'シリーズ構成']),
+      script:
+          _getFromInfoboxMap(infoboxMap, ['脚本', '剧本', '系列构成', '构成', 'シリーズ構成']),
       storyboard: _getFromInfoboxMap(infoboxMap, ['分镜', '絵コンテ', 'コンテ']),
-      animationProduction: _getFromInfoboxMap(infoboxMap, ['动画制作', 'アニメーション制作']),
+      animationProduction:
+          _getFromInfoboxMap(infoboxMap, ['动画制作', 'アニメーション制作']),
       score: (rating?['score'] as num?)?.toDouble() ?? 0.0,
       ratingTotal: (rating?['total'] as num?)?.toInt() ?? 0,
       ratingCount: (rating?['count'] as Map<String, dynamic>?)?.map(
             (key, value) => MapEntry(key, (value as num).toInt()),
           ) ??
           {},
-      rank: (json['rating']?['rank'] as num?)?.toInt() ?? (json['rank'] as num?)?.toInt(),
+      rank: (json['rating']?['rank'] as num?)?.toInt() ??
+          (json['rank'] as num?)?.toInt(),
       infoboxMap: infoboxMap,
     );
   }
@@ -319,7 +324,8 @@ class BangumiComment {
     return BangumiComment(
       user: BangumiUser.fromJson(json['user'] as Map<String, dynamic>? ?? {}),
       rate: (json['rate'] as num?)?.toInt() ?? 0,
-      updatedAt: json['created_at'] as String? ?? json['updated_at'] as String? ?? '',
+      updatedAt:
+          json['created_at'] as String? ?? json['updated_at'] as String? ?? '',
       comment: json['comment'] as String? ?? json['content'] as String? ?? '',
     );
   }

@@ -78,7 +78,8 @@ class KazumiTheme {
         style: FilledButton.styleFrom(
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -86,13 +87,15 @@ class KazumiTheme {
           shape: const StadiumBorder(),
           side: BorderSide(color: scheme.outlineVariant),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           shape: const StadiumBorder(),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       dividerTheme: DividerThemeData(
@@ -215,7 +218,8 @@ class KazumiTheme {
         style: FilledButton.styleFrom(
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -223,13 +227,15 @@ class KazumiTheme {
           shape: const StadiumBorder(),
           side: BorderSide(color: scheme.outlineVariant),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           shape: const StadiumBorder(),
-          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle:
+              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       dividerTheme: DividerThemeData(

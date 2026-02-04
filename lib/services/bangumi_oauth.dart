@@ -25,7 +25,8 @@ class BangumiOAuth {
   static const _redirectUri = BangumiOAuthConfig.redirectUri;
 
   bool _isDesktopPlatform() {
-    return !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    return !kIsWeb &&
+        (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
   }
 
   String _buildState() {
@@ -87,21 +88,19 @@ class BangumiOAuth {
     required String appId,
     required String appSecret,
   }) async {
-    final response = await _client
-        .post(
-          Uri.parse(_tokenUrl),
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: {
-            'grant_type': 'authorization_code',
-            'client_id': appId,
-            'client_secret': appSecret,
-            'code': code,
-            'redirect_uri': _redirectUri,
-          },
-        )
-        .timeout(const Duration(seconds: 12));
+    final response = await _client.post(
+      Uri.parse(_tokenUrl),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: {
+        'grant_type': 'authorization_code',
+        'client_id': appId,
+        'client_secret': appSecret,
+        'code': code,
+        'redirect_uri': _redirectUri,
+      },
+    ).timeout(const Duration(seconds: 12));
 
     if (response.statusCode != 200) {
       throw Exception('Bangumi 获取 Token 失败 (${response.statusCode})');
@@ -181,7 +180,8 @@ class _LocalOAuthServer {
       _port,
     );
     _server!.listen(_handleRequest);
-    debugPrint('[BangumiOAuth] local server started on http://localhost:$_port$_path');
+    debugPrint(
+        '[BangumiOAuth] local server started on http://localhost:$_port$_path');
   }
 
   Future<void> _handleRequest(HttpRequest request) async {
@@ -237,7 +237,8 @@ class _LocalOAuthServer {
     await request.response.close();
   }
 
-  Future<String> waitForCode({Duration timeout = const Duration(minutes: 5)}) async {
+  Future<String> waitForCode(
+      {Duration timeout = const Duration(minutes: 5)}) async {
     _codeCompleter = Completer<String>();
     try {
       return await _codeCompleter!.future.timeout(

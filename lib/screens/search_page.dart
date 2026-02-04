@@ -1,8 +1,11 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../app/app_services.dart';
+import '../app/app_settings.dart';
 import '../models/bangumi_models.dart';
 import '../services/bangumi_api.dart';
-import '../services/settings_storage.dart';
 import '../widgets/navigation_shell.dart';
 import 'detail_page.dart';
 
@@ -17,12 +20,17 @@ class _SearchPageState extends State<SearchPage> {
   static const int _maxKeywordLength = 50;
 
   final _controller = TextEditingController();
-  final _api = BangumiApi();
-  final _storage = SettingsStorage();
+  late final BangumiApi _api;
 
   List<BangumiSearchItem> _items = [];
   bool _loading = false;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = context.read<AppServices>().bangumiApi;
+  }
 
   @override
   void dispose() {
@@ -58,11 +66,12 @@ class _SearchPageState extends State<SearchPage> {
       if (limitedKeyword.isEmpty) {
         throw Exception('请输入有效关键词');
       }
-      final data = await _storage.loadAll();
-      final token = data[SettingsKeys.bangumiAccessToken];
-      
-      final items =
-          await _api.search(keyword: limitedKeyword, accessToken: token);
+      final token = context.read<AppSettings>().bangumiAccessToken;
+
+      final items = await _api.search(
+        keyword: limitedKeyword,
+        accessToken: token.isEmpty ? null : token,
+      );
       if (mounted) {
         setState(() {
           _items = items;
@@ -195,7 +204,7 @@ class _ResultCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                   image: item.imageUrl.isNotEmpty
                       ? DecorationImage(
-                          image: NetworkImage(item.imageUrl),
+                          image: CachedNetworkImageProvider(item.imageUrl),
                           fit: BoxFit.cover,
                         )
                       : null,
@@ -217,7 +226,7 @@ class _ResultCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text('放送开始：${item.airDate.isEmpty ? '-': item.airDate}'),
+                    Text('放送开始：${item.airDate.isEmpty ? '-' : item.airDate}'),
                     const SizedBox(height: 8),
                     Text(
                       item.summary.isEmpty ? '暂无简介' : item.summary,

@@ -1,14 +1,20 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../app/app_services.dart';
+import '../app/app_settings.dart';
 import '../models/bangumi_models.dart';
 import '../services/bangumi_api.dart';
 import '../services/settings_storage.dart';
 import '../services/notion_api.dart';
 import '../models/mapping_config.dart';
 import '../widgets/error_detail_dialog.dart';
+
+part 'detail_page_sections.dart';
+part 'detail_page_widgets.dart';
 
 class DetailPage extends StatefulWidget {
   const DetailPage({super.key, required this.subjectId});
@@ -19,33 +25,38 @@ class DetailPage extends StatefulWidget {
   State<DetailPage> createState() => _DetailPageState();
 }
 
-class _DetailPageState extends State<DetailPage> {
-  final _api = BangumiApi();
-  final _notionApi = NotionApi();
+class _DetailPageState extends State<DetailPage> with _DetailPageSections {
+  late final BangumiApi _api;
+  late final NotionApi _notionApi;
   final _storage = SettingsStorage();
 
   BangumiSubjectDetail? _detail;
+  @override
   List<BangumiComment> _comments = [];
   bool _loading = true;
+  @override
   bool _commentsLoading = true;
   bool _importing = false;
+  @override
   bool _isSummaryExpanded = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
+    final services = context.read<AppServices>();
+    _api = services.bangumiApi;
+    _notionApi = services.notionApi;
     _load();
   }
 
   Future<void> _load() async {
     try {
-      final data = await _storage.loadAll();
-      final token = data[SettingsKeys.bangumiAccessToken];
-      // 涓嶅啀寮哄埗瑕佹眰 Token锛屾敮鎸佹湭鐧诲綍鏌ョ湅
+      final token = context.read<AppSettings>().bangumiAccessToken;
+      // 不再强制要求 Token，支持未登录查看
       final detail = await _api.fetchDetail(
         subjectId: widget.subjectId,
-        accessToken: token,
+        accessToken: token.isEmpty ? null : token,
       );
       if (mounted) {
         setState(() {
@@ -57,18 +68,19 @@ class _DetailPageState extends State<DetailPage> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = '鍔犺浇澶辫触锛岃绋嶅悗閲嶈瘯: $e';
+          _errorMessage = '加载失败，请稍后重试: $e';
           _loading = false;
         });
       }
     }
   }
 
-  Future<void> _loadComments(String? token) async {
+  @override
+  Future<void> _loadComments(String token) async {
     try {
       final comments = await _api.fetchSubjectComments(
         subjectId: widget.subjectId,
-        accessToken: token,
+        accessToken: token.isEmpty ? null : token,
       );
       if (mounted) {
         setState(() {
@@ -93,9 +105,9 @@ class _DetailPageState extends State<DetailPage> {
     MappingConfig? mappingConfig;
 
     try {
-      final settings = await _storage.loadAll();
-      final token = settings[SettingsKeys.notionToken] ?? '';
-      final databaseId = settings[SettingsKeys.notionDatabaseId] ?? '';
+      final settings = context.read<AppSettings>();
+      final token = settings.notionToken;
+      final databaseId = settings.notionDatabaseId;
       mappingConfig = await _storage.getMappingConfig();
 
       if (token.isNotEmpty && databaseId.isNotEmpty) {
@@ -119,7 +131,7 @@ class _DetailPageState extends State<DetailPage> {
 
     String formatLabel(String bangumiLabel, String? notionLabel) {
       if (notionLabel == null || notionLabel.trim().isEmpty) return '';
-      // 绉婚櫎 Bangumi 灞炴€т腑鎷彿鍙婂叾鍚庨潰鐨勫唴瀹?
+      // 移除 Bangumi 灞炴€т腑鎷彿鍙婂叾鍚庨潰鐨勫唴瀹?
       final cleanBangumi =
           bangumiLabel.split('(').first.split('（').first.trim();
       // Notion 灞炴€у悕宸茬粡鏄竻娲楄繃鐨勶紝鐩存帴鎷兼帴
@@ -149,7 +161,7 @@ class _DetailPageState extends State<DetailPage> {
       });
     }
 
-    // 鍒濆閫夋嫨閫昏緫
+    // 初始选择逻辑
     final Set<String> selectedFields = {};
     if (mappingConfig != null) {
       if (mappingConfig.titleEnabled) selectedFields.add('title');
@@ -199,12 +211,12 @@ class _DetailPageState extends State<DetailPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 鍖哄煙 A: 鐩爣瀹氫綅
-                      _buildDialogSectionTitle('鐩爣瀹氫綅'),
+                      // 区域 A: 目标定位
+                      _buildDialogSectionTitle('目标定位'),
                       if (isUpdateMode)
                         ListTile(
-                          leading:
-                              const Icon(Icons.check_circle, color: Colors.green),
+                          leading: const Icon(Icons.check_circle,
+                              color: Colors.green),
                           title: const Text('已关联 Notion 页面'),
                           subtitle:
                               Text('ID: ${existingPageId.substring(0, 8)}...'),
@@ -222,7 +234,7 @@ class _DetailPageState extends State<DetailPage> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               RadioListTile<bool>(
-                                title: Text('鏂板缓椤甸潰'),
+                                title: Text('新建页面'),
                                 value: false,
                                 dense: true,
                               ),
@@ -273,15 +285,15 @@ class _DetailPageState extends State<DetailPage> {
                       ],
                       const Divider(),
 
-                      // 鍖哄煙 B: 瀛楁鏇存柊閫夋嫨
+                      // 区域 B: 字段更新选择
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
-                          _buildDialogSectionTitle('瀛楁鏇存柊閫夋嫨'),
+                          _buildDialogSectionTitle('字段更新选择'),
                           const SizedBox(width: 8),
                           const Text(
-                            'Bangumi灞炴€э紙Notion灞炴€э級',
+                            'Bangumi 字段名对应 Notion 字段名',
                             style: TextStyle(fontSize: 12, color: Colors.grey),
                           ),
                         ],
@@ -307,16 +319,17 @@ class _DetailPageState extends State<DetailPage> {
                       ),
                       const Divider(),
 
-                      // 鍖哄煙 C: 鏍囩閫夋嫨
-                      _buildDialogSectionTitle('鏍囩閫夋嫨 (Top 30)'),
+                      // 区域 C: 标签选择
+                      _buildDialogSectionTitle('标签选择 (Top 30)'),
                       if (topTags.isEmpty)
-                        const Text('鏆傛棤鏍囩',
+                        const Text('暂无标签',
                             style: TextStyle(fontSize: 12, color: Colors.grey))
                       else
                         AbsorbPointer(
                           absorbing: !selectedFields.contains('tags'),
                           child: Opacity(
-                            opacity: selectedFields.contains('tags') ? 1.0 : 0.5,
+                            opacity:
+                                selectedFields.contains('tags') ? 1.0 : 0.5,
                             child: Wrap(
                               spacing: 8,
                               runSpacing: 8,
@@ -345,7 +358,7 @@ class _DetailPageState extends State<DetailPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('鍙栨秷'),
+                  child: const Text('取消'),
                 ),
                 FilledButton(
                   onPressed: () {
@@ -358,7 +371,7 @@ class _DetailPageState extends State<DetailPage> {
                       'isBind': isBindMode,
                     });
                   },
-                  child: Text(isUpdateMode ? '纭鏇存柊' : '纭瀵煎叆'),
+                  child: Text(isUpdateMode ? '确认更新' : '确认导入'),
                 ),
               ],
             );
@@ -367,6 +380,10 @@ class _DetailPageState extends State<DetailPage> {
       },
     );
 
+    if (!mounted) {
+      return;
+    }
+
     if (result != null && mappingConfig != null) {
       final Set<String> fields = result['fields'];
       final Set<String> tags = result['tags'];
@@ -374,14 +391,14 @@ class _DetailPageState extends State<DetailPage> {
       final String? notionIdStr = result['notionId'];
       final String? existingPageIdResult = result['existingPageId'];
 
-      // 濡傛灉鏄粦瀹氭ā寮忥紝闇€瑕佹牴鎹?ID 鏌ユ壘椤甸潰
+      // 濡傛灉鏄粦瀹氭ā寮忥紝闇€瑕佹牴鎹?ID 查找页面
       String? targetPageId = existingPageIdResult;
       if (result['isBind'] == true) {
         setState(() => _importing = true);
         try {
-          final settings = await _storage.loadAll();
-          final token = settings[SettingsKeys.notionToken] ?? '';
-          final databaseId = settings[SettingsKeys.notionDatabaseId] ?? '';
+          final settings = context.read<AppSettings>();
+          final token = settings.notionToken;
+          final databaseId = settings.notionDatabaseId;
 
           if (bangumiIdStr != null && bangumiIdStr.isNotEmpty) {
             targetPageId = await _notionApi.findPageByProperty(
@@ -413,7 +430,7 @@ class _DetailPageState extends State<DetailPage> {
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('鏌ユ壘椤甸潰澶辫触: $e')),
+              SnackBar(content: Text('查找页面失败: $e')),
             );
           }
           setState(() => _importing = false);
@@ -451,9 +468,9 @@ class _DetailPageState extends State<DetailPage> {
     });
 
     try {
-      final settings = await _storage.loadAll();
-      final token = settings[SettingsKeys.notionToken] ?? '';
-      final databaseId = settings[SettingsKeys.notionDatabaseId] ?? '';
+      final settings = context.read<AppSettings>();
+      final token = settings.notionToken;
+      final databaseId = settings.notionDatabaseId;
 
       if (token.isEmpty || databaseId.isEmpty) {
         throw Exception('请先在设置页配置 Notion Token 和 Database ID');
@@ -497,7 +514,7 @@ class _DetailPageState extends State<DetailPage> {
       }
     } catch (e, stackTrace) {
       if (mounted) {
-        // 鎻愬彇寮傚父娑堟伅锛岀Щ闄?"Exception: " 鍓嶇紑
+        // 鎻愬彇寮傚父娑堟伅锛岀Щ闄?"Exception: " 前缀
         final errorMessage = e.toString().replaceAll('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -506,7 +523,7 @@ class _DetailPageState extends State<DetailPage> {
             backgroundColor: Theme.of(context).colorScheme.error,
             duration: const Duration(seconds: 5),
             action: SnackBarAction(
-              label: '鏌ョ湅璇︽儏',
+              label: '查看详情',
               textColor: Colors.white,
               onPressed: () {
                 showDialog(
@@ -556,7 +573,7 @@ class _DetailPageState extends State<DetailPage> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
                 const SizedBox(height: 24),
-                ElevatedButton(onPressed: _load, child: const Text('閲嶈瘯')),
+                ElevatedButton(onPressed: _load, child: const Text('重试')),
               ],
             ),
           ),
@@ -567,7 +584,7 @@ class _DetailPageState extends State<DetailPage> {
     if (_detail == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('鏆傛棤璇︽儏鏁版嵁')),
+        body: const Center(child: Text('暂无详情数据')),
       );
     }
 
@@ -768,10 +785,12 @@ class _DetailPageState extends State<DetailPage> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: colorScheme.primary.withValues(alpha: 0.12),
+                              color:
+                                  colorScheme.primary.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: colorScheme.primary.withValues(alpha: 0.4),
+                                color:
+                                    colorScheme.primary.withValues(alpha: 0.4),
                               ),
                             ),
                             child: Row(
@@ -811,454 +830,10 @@ class _DetailPageState extends State<DetailPage> {
       ),
       bottom: const TabBar(
         tabs: [
-          Tab(text: '姒傝堪'),
-          Tab(text: '鍒朵綔'),
-          Tab(text: '鍚愭Ы'),
+          Tab(text: '概述'),
+          Tab(text: '制作'),
+          Tab(text: '吐槽'),
         ],
-      ),
-    );
-  }
-
-  Widget _buildOverviewTab(BuildContext context, BangumiSubjectDetail detail) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionTitle(context, '简介'),
-          const SizedBox(height: 12),
-          InkWell(
-            onTap: () =>
-                setState(() => _isSummaryExpanded = !_isSummaryExpanded),
-            borderRadius: BorderRadius.circular(8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  detail.summary.isEmpty ? '暂无简介' : detail.summary,
-                  maxLines: _isSummaryExpanded ? null : 6,
-                  overflow: _isSummaryExpanded
-                      ? TextOverflow.visible
-                      : TextOverflow.ellipsis,
-                  style: textTheme.bodyMedium?.copyWith(
-                    height: 1.7,
-                    color: colorScheme.onSurfaceVariant,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                if (detail.summary.length > 100)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      _isSummaryExpanded ? '鏀惰捣' : '灞曞紑鍏ㄩ儴',
-                      style: TextStyle(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
-          _buildSectionTitle(context, '鍒朵綔浜哄憳'),
-          const SizedBox(height: 12),
-          _buildSimplifiedInfoGrid(detail),
-          const SizedBox(height: 32),
-          _buildSectionTitle(context, '鏍囩'),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: detail.tags.isEmpty
-                ? [const Chip(label: Text('鏆傛棤鏍囩'))]
-                : detail.tags
-                    .map((tag) => InkWell(
-                          onTap: () {
-                            Clipboard.setData(ClipboardData(text: tag));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('已复制标签: $tag'),
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerLow,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: colorScheme.outlineVariant,
-                              ),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: colorScheme.onSurface,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ))
-                    .toList(),
-          ),
-          const SizedBox(height: 100), // Bottom padding for FAB
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStaffTab(BuildContext context, BangumiSubjectDetail detail) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionTitle(context, '全制作人员'),
-          const SizedBox(height: 12),
-          _buildInfoGrid(detail),
-          const SizedBox(height: 100),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCommentsTab(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    if (_commentsLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_comments.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: () async {
-          final data = await _storage.loadAll();
-          final token = data[SettingsKeys.bangumiAccessToken] ?? '';
-          await _loadComments(token);
-        },
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: SizedBox(
-            height: 300,
-            child: Center(
-              child: Text('鏆傛棤鍚愭Ы', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        final data = await _storage.loadAll();
-        final token = data[SettingsKeys.bangumiAccessToken] ?? '';
-        await _loadComments(token);
-      },
-      child: ListView.separated(
-        padding: const EdgeInsets.all(20),
-        itemCount: _comments.length,
-        separatorBuilder: (context, index) =>
-            Divider(height: 32, color: colorScheme.outlineVariant),
-        itemBuilder: (context, index) {
-          final comment = _comments[index];
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundImage: comment.user.avatar.isNotEmpty
-                    ? NetworkImage(comment.user.avatar)
-                    : null,
-                child: comment.user.avatar.isEmpty
-                    ? const Icon(Icons.person, size: 18)
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          comment.user.nickname,
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          _formatTime(comment.updatedAt),
-                          style: textTheme.labelSmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    if (comment.rate > 0)
-                      Row(
-                        children: List.generate(5, (i) {
-                          return Icon(
-                            i < (comment.rate / 2).ceil()
-                                ? Icons.star
-                                : Icons.star_border,
-                            color: colorScheme.tertiary,
-                            size: 10,
-                          );
-                        }),
-                      ),
-                    const SizedBox(height: 8),
-                    Text(
-                      comment.comment,
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  String _formatTime(String time) {
-    try {
-      final dt = DateTime.parse(time);
-      final now = DateTime.now();
-      final diff = now.difference(dt);
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-      if (diff.inHours < 24) return '${diff.inHours}h ago';
-      if (diff.inDays < 7) return '${diff.inDays}d ago';
-      return '${dt.year}-${dt.month}-${dt.day}';
-    } catch (_) {
-      return time;
-    }
-  }
-
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return Row(
-      children: [
-        Container(
-          width: 4,
-          height: 18,
-          decoration: BoxDecoration(
-            color: colorScheme.primary,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          title,
-          style: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.4,
-            color: colorScheme.onSurface,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInfoGrid(BangumiSubjectDetail detail) {
-    // 杩囨护鎺変竴浜涗笉闇€瑕佸湪鍒朵綔浜哄憳鍒楄〃涓噸澶嶆樉绀虹殑瀛楁锛堝鏋滄湁鐨勮瘽锛?
-    final skipKeys = {
-      '中文名',
-      '别名',
-      '话数',
-      '放送开始',
-      '放送星期',
-      '官方网站',
-      '播放电视台',
-      '其他电视台',
-      'Copyright'
-    };
-
-    final items = detail.infoboxMap.entries
-        .where((e) => !skipKeys.contains(e.key))
-        .map((e) => MapEntry(e.key, e.value))
-        .toList();
-
-    // 纭繚 Bangumi ID 鎬绘槸鏄剧ず鍦ㄦ渶鍚?
-    items.add(MapEntry('Bangumi ID', detail.id.toString()));
-
-    return _buildInfoListContainer(items);
-  }
-
-  Widget _buildSimplifiedInfoGrid(BangumiSubjectDetail detail) {
-    final items = <MapEntry<String, String>>[];
-
-    // Bangumi ID should be at the top
-    items.add(MapEntry('Bangumi ID', detail.id.toString()));
-
-    if (detail.animationProduction.isNotEmpty) {
-      items.add(MapEntry('鍔ㄧ敾鍒朵綔', detail.animationProduction));
-    }
-    if (detail.director.isNotEmpty) {
-      items.add(MapEntry('瀵兼紨', detail.director));
-    }
-    if (detail.script.isNotEmpty) {
-      items.add(MapEntry('鑴氭湰', detail.script));
-    }
-    if (detail.storyboard.isNotEmpty) {
-      items.add(MapEntry('鍒嗛暅', detail.storyboard));
-    }
-
-    return _buildInfoListContainer(items);
-  }
-
-  Widget _buildInfoListContainer(List<MapEntry<String, String>> items) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: items.length,
-        separatorBuilder: (context, index) =>
-            Divider(height: 1, color: colorScheme.outlineVariant),
-        itemBuilder: (context, index) {
-          final item = items[index];
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                InkWell(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: item.value));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('已复制${item.key}: ${item.value}'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(4),
-                  child: SizedBox(
-                    width: 80,
-                    child: Text(
-                      item.key,
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SelectableText(
-                    item.value,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w400,
-                      fontSize: 13,
-                      color: colorScheme.onSurface,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class RatingChart extends StatelessWidget {
-  const RatingChart({
-    super.key,
-    required this.ratingCount,
-    required this.total,
-  });
-
-  final Map<String, int> ratingCount;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    if (total == 0) return const SizedBox.shrink();
-    final colorScheme = Theme.of(context).colorScheme;
-
-    // Bangumi ratings are 1-10
-    final counts = List.generate(10, (index) {
-      final key = (index + 1).toString();
-      return ratingCount[key] ?? 0;
-    });
-
-    final maxCount = counts.reduce((a, b) => a > b ? a : b);
-
-    return Container(
-      height: 180,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: List.generate(10, (index) {
-          // 1 star (left) to 10 stars (right)
-          final count = counts[index];
-          final ratio = maxCount == 0 ? 0.0 : count / maxCount;
-
-          return Expanded(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 2.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: FractionallySizedBox(
-                        heightFactor: ratio.clamp(0.05, 1.0),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: colorScheme.tertiary.withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                        fontSize: 14,
-                        color: colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }),
       ),
     );
   }

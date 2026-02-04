@@ -5,27 +5,46 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_utools/app/app_services.dart';
+import 'package:flutter_utools/app/app_settings.dart';
 import 'package:flutter_utools/main.dart';
+import 'package:flutter_utools/screens/calendar_page.dart';
 
 void main() {
-  testWidgets('App launches to recommendation page', (WidgetTester tester) async {
+  testWidgets('App launches to calendar page', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const MyApp());
+    final mockClient = MockClient((request) async {
+      if (request.url.toString().endsWith('/calendar')) {
+        return http.Response('[]', 200, headers: {
+          'content-type': 'application/json',
+        });
+      }
+      return http.Response('{}', 200, headers: {
+        'content-type': 'application/json',
+      });
+    });
+
+    final settings = AppSettings();
+    final services = AppServices(client: mockClient);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: settings),
+          Provider<AppServices>.value(value: services),
+        ],
+        child: const MyApp(),
+      ),
+    );
     await tester.pump();
 
-    expect(find.text('每日推荐'), findsWidgets);
-    expect(
-      find.byType(CircularProgressIndicator).evaluate().isNotEmpty ||
-          find
-              .text('请先在设置页面配置 Notion Token 和 Database ID')
-              .evaluate()
-              .isNotEmpty,
-      isTrue,
-    );
+    expect(find.byType(CalendarPage), findsOneWidget);
   });
 }

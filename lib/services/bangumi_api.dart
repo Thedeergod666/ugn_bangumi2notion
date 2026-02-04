@@ -1,15 +1,21 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/bangumi_models.dart';
+import 'http_retry.dart';
+import 'logging.dart';
 
 class BangumiApi {
-  BangumiApi({http.Client? client}) : _client = client ?? http.Client();
+  BangumiApi({http.Client? client, Logger? logger})
+      : _client = client ?? http.Client(),
+        _ownsClient = client == null,
+        _logger = logger ?? Logger();
 
   final http.Client _client;
+  final bool _ownsClient;
+  final Logger _logger;
 
   static const _baseUrl = 'https://api.bgm.tv';
   static const _nextBaseUrl = 'https://next.bgm.tv/p1';
@@ -19,6 +25,12 @@ class BangumiApi {
   static const int _staffMaxItems = 200;
   static const Duration _selfTimeout = Duration(seconds: 10);
   static const int _logTextLimit = 200;
+
+  void dispose() {
+    if (_ownsClient) {
+      _client.close();
+    }
+  }
 
   String _mapBangumiError(String action, http.Response response) {
     switch (response.statusCode) {
@@ -41,7 +53,8 @@ class BangumiApi {
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'User-Agent': 'FlutterUTools/1.0.0 (https://github.com/yourusername/flutter_utools)', // TODO: Update User-Agent
+      'User-Agent':
+          'FlutterUTools/1.0.0 (https://github.com/yourusername/flutter_utools)', // TODO: Update User-Agent
     };
     if (accessToken != null && accessToken.isNotEmpty) {
       headers['Authorization'] = 'Bearer $accessToken';
@@ -51,12 +64,16 @@ class BangumiApi {
 
   Future<BangumiUser> fetchSelf({required String accessToken}) async {
     final uri = Uri.parse('$_baseUrl/v0/me');
-    final response = await _client
-        .get(
-          uri,
-          headers: _buildHeaders(accessToken: accessToken),
-        )
-        .timeout(_selfTimeout);
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Bangumi fetchSelf',
+      request: () => _client
+          .get(
+            uri,
+            headers: _buildHeaders(accessToken: accessToken),
+          )
+          .timeout(_selfTimeout),
+    );
 
     if (response.statusCode != 200) {
       throw Exception(_mapBangumiError('获取用户信息', response));
@@ -78,19 +95,23 @@ class BangumiApi {
       throw Exception('关键词无效');
     }
     final uri = Uri.parse('$_baseUrl/v0/search/subjects');
-    final response = await _client
-        .post(
-          uri,
-          headers: _buildHeaders(accessToken: accessToken),
-          body: jsonEncode({
-            'keyword': limitedKeyword,
-            'sort': 'match',
-            'filter': {
-              'type': [2], // 2 = 动画
-            },
-          }),
-        )
-        .timeout(_timeout);
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Bangumi search',
+      request: () => _client
+          .post(
+            uri,
+            headers: _buildHeaders(accessToken: accessToken),
+            body: jsonEncode({
+              'keyword': limitedKeyword,
+              'sort': 'match',
+              'filter': {
+                'type': [2], // 2 = ??
+              },
+            }),
+          )
+          .timeout(_timeout),
+    );
 
     if (response.statusCode != 200) {
       throw Exception(_mapBangumiError('Bangumi 搜索', response));
@@ -106,12 +127,16 @@ class BangumiApi {
 
   Future<List<BangumiCalendarDay>> fetchCalendar() async {
     final uri = Uri.parse('$_baseUrl/calendar');
-    final response = await _client
-        .get(
-          uri,
-          headers: _buildHeaders(),
-        )
-        .timeout(_timeout);
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Bangumi calendar',
+      request: () => _client
+          .get(
+            uri,
+            headers: _buildHeaders(),
+          )
+          .timeout(_timeout),
+    );
 
     if (response.statusCode != 200) {
       throw Exception(_mapBangumiError('Bangumi 放送列表', response));
@@ -141,20 +166,17 @@ class BangumiApi {
       if (staffResponse != null && staffResponse.data.isNotEmpty) {
         detail = _enrichDetailWithStaff(detail, staffResponse.data);
       }
-
-      if (kDebugMode) {
-        String clip(String value) {
-          final trimmed = value.trim();
-          if (trimmed.length <= _logTextLimit) return trimmed;
-          return '${trimmed.substring(0, _logTextLimit)}…';
-        }
-
-        debugPrint(
-          '[DailyReco][Bangumi] detail id=${detail.id} '
-          'title="${clip(detail.nameCn.isNotEmpty ? detail.nameCn : detail.name)}" '
-          'score=${detail.score.toStringAsFixed(1)} year=${detail.airDate.split('-').first}',
-        );
+      String clip(String value) {
+        final trimmed = value.trim();
+        if (trimmed.length <= _logTextLimit) return trimmed;
+        return '${trimmed.substring(0, _logTextLimit)}…';
       }
+
+      _logger.debug(
+        '[DailyReco][Bangumi] detail id=${detail.id} '
+        'title="${clip(detail.nameCn.isNotEmpty ? detail.nameCn : detail.name)}" '
+        'score=${detail.score.toStringAsFixed(1)} year=${detail.airDate.split('-').first}',
+      );
       return detail;
     } catch (e) {
       // 如果并行请求失败，尝试至少返回基本信息
@@ -166,14 +188,19 @@ class BangumiApi {
     }
   }
 
-  Future<BangumiSubjectDetail> _fetchSubjectBase(int subjectId, String? accessToken) async {
+  Future<BangumiSubjectDetail> _fetchSubjectBase(
+      int subjectId, String? accessToken) async {
     final uri = Uri.parse('$_baseUrl/v0/subjects/$subjectId');
-    final response = await _client
-        .get(
-          uri,
-          headers: _buildHeaders(accessToken: accessToken),
-        )
-        .timeout(_timeout);
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Bangumi subject detail',
+      request: () => _client
+          .get(
+            uri,
+            headers: _buildHeaders(accessToken: accessToken),
+          )
+          .timeout(_timeout),
+    );
 
     if (response.statusCode != 200) {
       throw Exception(_mapBangumiError('Bangumi 详情', response));
@@ -193,12 +220,16 @@ class BangumiApi {
       while (true) {
         final uri = Uri.parse(
             '$_nextBaseUrl/subjects/$subjectId/staffs/persons?limit=$limit&offset=$offset');
-        final response = await _client
-            .get(
-              uri,
-              headers: _buildHeaders(), // p1 API 读取无需 Token
-            )
-            .timeout(_timeout);
+        final response = await sendWithRetry(
+          logger: _logger,
+          label: 'Bangumi staff',
+          request: () => _client
+              .get(
+                uri,
+                headers: _buildHeaders(), // p1 API ????? Token
+              )
+              .timeout(_timeout),
+        );
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -216,14 +247,14 @@ class BangumiApi {
           }
 
           if (allStaff.length >= _staffMaxItems) {
-            debugPrint(
+            _logger.info(
                 '[BangumiApi] fetchStaff reached max cap $_staffMaxItems for subject $subjectId');
             break;
           }
 
           offset += limit;
         } else {
-          debugPrint(
+          _logger.error(
               '[BangumiApi] fetchStaff error: ${response.statusCode} at offset $offset');
           break;
         }
@@ -238,7 +269,7 @@ class BangumiApi {
         );
       }
     } catch (e) {
-      debugPrint('[BangumiApi] fetchStaff failed: $e');
+      _logger.error('[BangumiApi] fetchStaff failed: $e');
     }
     return null;
   }
@@ -258,7 +289,8 @@ class BangumiApi {
 
     // debug 模式一次性采样日志：前 N 条 staff 的 job 原始值与标准化结果
     // 目的：方便发现新同义词/字段变化；release 不输出。
-    final bool shouldLogSample = kDebugMode && staffList.isNotEmpty;
+    final bool shouldLogSample =
+        _logger.level.index >= LogLevel.debug.index && staffList.isNotEmpty;
     int logged = 0;
     const int logLimit = 12;
 
@@ -272,7 +304,7 @@ class BangumiApi {
         final normalizedKey = _normalizeStaffJob(job);
 
         if (shouldLogSample && logged < logLimit) {
-          debugPrint(
+          _logger.debug(
               '[BangumiApi] staff sample subject=${detail.id} name=$name job="$job" => ${normalizedKey ?? "(unmapped)"}');
           logged++;
         }
@@ -297,7 +329,7 @@ class BangumiApi {
 
     // 更新 infoboxMap (UI 使用此 Map 显示)
     final newInfoboxMap = Map<String, String>.from(detail.infoboxMap);
-    
+
     void updateField(String key, List<String> values) {
       if (values.isNotEmpty) {
         // 如果 API 返回的数据更全，优先使用（这里简单地覆盖或追加）
@@ -329,8 +361,11 @@ class BangumiApi {
     return detail.copyWith(
       director: directors.isNotEmpty ? directors.join('、') : detail.director,
       script: scripts.isNotEmpty ? scripts.join('、') : detail.script,
-      storyboard: storyboards.isNotEmpty ? storyboards.join('、') : detail.storyboard,
-      animationProduction: productions.isNotEmpty ? productions.join('、') : detail.animationProduction,
+      storyboard:
+          storyboards.isNotEmpty ? storyboards.join('、') : detail.storyboard,
+      animationProduction: productions.isNotEmpty
+          ? productions.join('、')
+          : detail.animationProduction,
       studio: studios.isNotEmpty ? studios.join('、') : detail.studio,
       infoboxMap: newInfoboxMap,
     );
@@ -448,13 +483,19 @@ class BangumiApi {
       // 使用 p1 API 获取评论
       final uri = Uri.parse(
           '$_nextBaseUrl/subjects/$subjectId/comments?limit=$limit&offset=$offset');
-      final response = await _client.get(
-        uri,
-        headers: _buildHeaders(accessToken: accessToken),
-      ).timeout(_timeout);
+      final response = await sendWithRetry(
+        logger: _logger,
+        label: 'Bangumi comments',
+        request: () => _client
+            .get(
+              uri,
+              headers: _buildHeaders(accessToken: accessToken),
+            )
+            .timeout(_timeout),
+      );
 
       if (response.statusCode != 200) {
-        debugPrint(
+        _logger.error(
             '[BangumiApi] fetchSubjectComments error: ${response.statusCode} for $uri');
         return [];
       }
@@ -466,7 +507,7 @@ class BangumiApi {
           .map((e) => BangumiComment.fromJson(e as Map<String, dynamic>))
           .toList();
     } catch (e) {
-      debugPrint('[BangumiApi] fetchSubjectComments failed: $e');
+      _logger.error('[BangumiApi] fetchSubjectComments failed: $e');
       return [];
     }
   }

@@ -3,14 +3,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../app/app_services.dart';
+import '../app/app_settings.dart';
 import '../config/bangumi_oauth_config.dart';
 import '../models/bangumi_models.dart';
-import '../services/bangumi_api.dart';
 import '../services/bangumi_oauth.dart';
 import '../services/notion_api.dart';
-import '../services/settings_storage.dart';
 import '../widgets/error_detail_dialog.dart';
 import '../widgets/navigation_shell.dart';
 
@@ -22,9 +23,8 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final _storage = SettingsStorage();
-  final _oauth = BangumiOAuth();
-  final _notionApi = NotionApi();
+  late final BangumiOAuth _oauth;
+  late final NotionApi _notionApi;
 
   final _notionTokenController = TextEditingController();
   final _notionDbController = TextEditingController();
@@ -43,18 +43,21 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    final services = context.read<AppServices>();
+    _oauth = services.bangumiOAuth;
+    _notionApi = services.notionApi;
     _load();
   }
 
   Future<void> _load() async {
-    final data = await _storage.loadAll();
+    final appSettings = context.read<AppSettings>();
 
-    String notionToken = data[SettingsKeys.notionToken] ?? '';
+    String notionToken = appSettings.notionToken;
     if (notionToken.isEmpty) {
       notionToken = dotenv.env['NOTION_TOKEN'] ?? '';
     }
 
-    String notionDbId = data[SettingsKeys.notionDatabaseId] ?? '';
+    String notionDbId = appSettings.notionDatabaseId;
     if (notionDbId.isEmpty) {
       notionDbId = dotenv.env['NOTION_DATABASE_ID'] ?? '';
     }
@@ -72,8 +75,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _refreshBangumiStatus() async {
-    final token = await _oauth.getStoredAccessToken();
-    if (token == null || token.isEmpty) {
+    final token = context.read<AppSettings>().bangumiAccessToken;
+    if (token.isEmpty) {
       if (mounted) {
         setState(() {
           _bangumiHasToken = false;
@@ -84,7 +87,7 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
     try {
-      final api = BangumiApi();
+      final api = context.read<AppServices>().bangumiApi;
       final user = await api.fetchSelf(accessToken: token);
       if (mounted) {
         setState(() {
@@ -111,18 +114,17 @@ class _SettingsPageState extends State<SettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor:
-            isError ? Theme.of(context).colorScheme.error : null,
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
       ),
     );
   }
 
   Future<void> _autoSaveNotionSettings() async {
     try {
-      await _storage.saveNotionSettings(
-        notionToken: _notionTokenController.text.trim(),
-        notionDatabaseId: _notionDbController.text.trim(),
-      );
+      await context.read<AppSettings>().saveNotionSettings(
+            token: _notionTokenController.text.trim(),
+            databaseId: _notionDbController.text.trim(),
+          );
     } catch (_) {}
   }
 
@@ -134,10 +136,10 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
-      await _storage.saveNotionSettings(
-        notionToken: _notionTokenController.text.trim(),
-        notionDatabaseId: _notionDbController.text.trim(),
-      );
+      await context.read<AppSettings>().saveNotionSettings(
+            token: _notionTokenController.text.trim(),
+            databaseId: _notionDbController.text.trim(),
+          );
       if (mounted) {
         setState(() {
           _successMessage = '设置已保存';
@@ -174,6 +176,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
     try {
       final result = await _oauth.authorize();
+      if (!mounted) {
+        return;
+      }
+      await context
+          .read<AppSettings>()
+          .saveBangumiAccessToken(result.accessToken);
       if (mounted) {
         setState(() {
           _successMessage = 'Bangumi 授权成功';
@@ -353,9 +361,8 @@ class _SettingsPageState extends State<SettingsPage> {
         throw Exception('无法获取 HOME 目录，无法写入 ~/.profile');
       }
       final profile = File('$home/.profile');
-      final content = await profile.exists()
-          ? await profile.readAsString()
-          : '';
+      final content =
+          await profile.exists() ? await profile.readAsString() : '';
       var updated = _upsertEnvLine(
         content,
         key: 'BANGUMI_CLIENT_ID',
@@ -401,6 +408,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
     try {
       await _oauth.logout();
+      if (!mounted) {
+        return;
+      }
+      await context.read<AppSettings>().clearBangumiAccessToken();
       if (mounted) {
         setState(() {
           _bangumiHasToken = false;
@@ -432,6 +443,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     }
   }
+
   Future<void> _testNotionConnection() async {
     setState(() {
       _saving = true;
@@ -498,7 +510,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 12),
                 Text(
                   '点击授权将打开系统浏览器，完成登录后会回调到本地 http://localhost:8080/auth/callback。',
-                  style: TextStyle(color: Theme.of(context).colorScheme.outline),
+                  style:
+                      TextStyle(color: Theme.of(context).colorScheme.outline),
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -510,7 +523,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.lock_open),
                         label: const Text('登录/授权'),
@@ -536,16 +550,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     suffixIcon: Padding(
                       padding: const EdgeInsets.only(right: 8.0),
                       child: TextButton.icon(
-                        onPressed: () => launchUrl(Uri.parse('https://www.notion.so/my-integrations')),
+                        onPressed: () => launchUrl(
+                            Uri.parse('https://www.notion.so/my-integrations')),
                         icon: const Icon(Icons.key_rounded, size: 18),
                         label: const Text('获取'),
                         style: TextButton.styleFrom(
                           visualDensity: VisualDensity.compact,
-                          foregroundColor: Theme.of(context).colorScheme.primary,
+                          foregroundColor:
+                              Theme.of(context).colorScheme.primary,
                         ),
                       ),
                     ),
-                    helperText: '前往 Notion 开发者后台获取 Internal Integration Token，将安全保存',
+                    helperText:
+                        '前往 Notion 开发者后台获取 Internal Integration Token，将安全保存',
                   ),
                   obscureText: true,
                   onChanged: (_) => _autoSaveNotionSettings(),
@@ -654,7 +671,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 Icon(
                   Icons.copy_rounded,
                   size: 16,
-                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.7),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.7),
                 ),
               ],
             ),
@@ -669,9 +689,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final userLabel = _bangumiUser == null
         ? '未获取到用户信息'
         : (_bangumiUser!.nickname.isNotEmpty ? _bangumiUser!.nickname : '已登录');
-    final statusText = hasToken
-        ? (_bangumiTokenValid ? '已登录' : 'Token 无效或已过期')
-        : '未登录';
+    final statusText =
+        hasToken ? (_bangumiTokenValid ? '已登录' : 'Token 无效或已过期') : '未登录';
     final statusColor = _bangumiTokenValid
         ? Colors.green
         : (hasToken ? Colors.orange : Colors.grey);

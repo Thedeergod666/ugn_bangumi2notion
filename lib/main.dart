@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'theme/kazumi_theme.dart';
+import 'package:provider/provider.dart';
 
+import 'app/app_settings.dart';
+import 'app/app_services.dart';
 import 'screens/recommendation_page.dart';
 import 'screens/search_page.dart';
 import 'screens/settings_page.dart';
 import 'screens/mapping_page.dart';
 import 'screens/calendar_page.dart';
-import 'services/settings_storage.dart';
-
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
+import 'theme/kazumi_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,13 +18,22 @@ void main() async {
   } catch (_) {
     // .env file is optional
   }
-  final storage = SettingsStorage();
-  final savedMode = await storage.getThemeMode();
-  themeNotifier.value = ThemeMode.values.firstWhere(
-    (e) => e.name == savedMode,
-    orElse: () => ThemeMode.system,
+
+  final settings = AppSettings();
+  await settings.load();
+
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: settings),
+        Provider<AppServices>(
+          create: (_) => AppServices(),
+          dispose: (_, services) => services.dispose(),
+        ),
+      ],
+      child: const MyApp(),
+    ),
   );
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -61,19 +70,14 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (_, ThemeMode currentMode, __) {
-        return MaterialApp(
-          title: '悠gn助手',
-          theme: KazumiTheme.light(),
-          darkTheme: KazumiTheme.dark(),
-          themeMode: currentMode,
-          initialRoute: '/calendar',
-          onGenerateRoute: _onGenerateRoute,
-        );
-      },
+    final currentMode = context.watch<AppSettings>().themeMode;
+    return MaterialApp(
+      title: '悠gn助手',
+      theme: KazumiTheme.light(),
+      darkTheme: KazumiTheme.dark(),
+      themeMode: currentMode,
+      initialRoute: '/calendar',
+      onGenerateRoute: _onGenerateRoute,
     );
   }
 }
-

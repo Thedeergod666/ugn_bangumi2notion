@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../main.dart';
-import '../services/settings_storage.dart';
+import 'package:provider/provider.dart';
+
+import '../app/app_settings.dart';
 
 class NavigationShell extends StatefulWidget {
   const NavigationShell({
@@ -68,7 +69,8 @@ class _NavigationShellState extends State<NavigationShell> {
   }
 
   void _toggleTheme() async {
-    final currentMode = themeNotifier.value;
+    final settings = context.read<AppSettings>();
+    final currentMode = settings.themeMode;
     ThemeMode newMode;
     if (currentMode == ThemeMode.light) {
       newMode = ThemeMode.dark;
@@ -77,10 +79,10 @@ class _NavigationShellState extends State<NavigationShell> {
     } else {
       // 如果是系统模式，根据当前实际亮度切换
       final brightness = MediaQuery.of(context).platformBrightness;
-      newMode = brightness == Brightness.dark ? ThemeMode.light : ThemeMode.dark;
+      newMode =
+          brightness == Brightness.dark ? ThemeMode.light : ThemeMode.dark;
     }
-    themeNotifier.value = newMode;
-    await SettingsStorage().saveThemeMode(newMode.name);
+    await settings.setThemeMode(newMode);
   }
 
   @override
@@ -182,18 +184,18 @@ class _NavigationShellState extends State<NavigationShell> {
                             Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 12),
-                              child: ValueListenableBuilder<ThemeMode>(
-                                valueListenable: themeNotifier,
-                                builder: (context, mode, _) {
+                              child: Consumer<AppSettings>(
+                                builder: (context, settings, _) {
+                                  final mode = settings.themeMode;
                                   final isDark = mode == ThemeMode.dark ||
                                       (mode == ThemeMode.system &&
                                           MediaQuery.of(context)
                                                   .platformBrightness ==
                                               Brightness.dark);
-                                  final icon =
-                                      isDark ? Icons.light_mode : Icons.dark_mode;
-                                  final label =
-                                      isDark ? '浅色模式' : '深色模式';
+                                  final icon = isDark
+                                      ? Icons.light_mode
+                                      : Icons.dark_mode;
+                                  final label = isDark ? '浅色模式' : '深色模式';
 
                                   return isExtended
                                       ? TextButton.icon(

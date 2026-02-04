@@ -4,9 +4,12 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:provider/provider.dart';
 
 import '../models/mapping_config.dart';
 import '../models/notion_models.dart';
+import '../app/app_services.dart';
+import '../app/app_settings.dart';
 import '../services/notion_api.dart';
 import '../services/settings_storage.dart';
 import '../widgets/error_detail_dialog.dart';
@@ -33,7 +36,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
   static const double _minScore = 6.5;
   static const int _logTextLimit = 200;
 
-  final NotionApi _notionApi = NotionApi();
+  late final NotionApi _notionApi;
   final SettingsStorage _settingsStorage = SettingsStorage();
 
   bool _loading = true;
@@ -50,6 +53,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
   @override
   void initState() {
     super.initState();
+    _notionApi = context.read<AppServices>().notionApi;
     _loadRecommendation();
   }
 
@@ -70,6 +74,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     }
 
     try {
+      final appSettings = context.read<AppSettings>();
       final cached = await _loadDailyCache();
       if (cached != null) {
         if (kDebugMode) {
@@ -84,9 +89,10 @@ class _RecommendationPageState extends State<RecommendationPage> {
           _dailyIndex = cached.index;
           _recommendation = current;
           _loading = false;
-          _emptyMessage = (cached.candidates.isEmpty || current?.title.isEmpty == true)
-              ? '暂无 ${_minScore.toStringAsFixed(1)}+ 条目'
-              : null;
+          _emptyMessage =
+              (cached.candidates.isEmpty || current?.title.isEmpty == true)
+                  ? '暂无 ${_minScore.toStringAsFixed(1)}+ 条目'
+                  : null;
         });
         return;
       }
@@ -94,9 +100,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
       if (kDebugMode) {
         debugPrint('[DailyReco] cache miss');
       }
-      final settings = await _settingsStorage.loadAll();
-      final token = settings[SettingsKeys.notionToken] ?? '';
-      final databaseId = settings[SettingsKeys.notionDatabaseId] ?? '';
+      final token = appSettings.notionToken;
+      final databaseId = appSettings.notionDatabaseId;
 
       if (token.isEmpty || databaseId.isEmpty) {
         _setConfiguration(
@@ -107,10 +112,13 @@ class _RecommendationPageState extends State<RecommendationPage> {
       }
 
       final mappingConfig = await _settingsStorage.getMappingConfig();
-      final legacyBindings = await _settingsStorage.getDailyRecommendationBindings();
+      final legacyBindings =
+          await _settingsStorage.getDailyRecommendationBindings();
       final bindings = _resolveBindings(mappingConfig, legacyBindings);
 
-      if (bindings.isEmpty || bindings.yougnScore.isEmpty || bindings.title.isEmpty) {
+      if (bindings.isEmpty ||
+          bindings.yougnScore.isEmpty ||
+          bindings.title.isEmpty) {
         _setConfiguration(
           '请先在映射配置页面绑定每日推荐字段',
           '/mapping',
@@ -125,7 +133,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
         minScore: _minScore,
       );
 
-      final pickedIndex = candidates.isEmpty ? 0 : Random().nextInt(candidates.length);
+      final pickedIndex =
+          candidates.isEmpty ? 0 : Random().nextInt(candidates.length);
       await _saveDailyCache(
         candidates: candidates,
         index: pickedIndex,
@@ -135,7 +144,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
       setState(() {
         _dailyCandidates = candidates;
         _dailyIndex = pickedIndex;
-        _recommendation = candidates.isNotEmpty ? candidates[pickedIndex] : null;
+        _recommendation =
+            candidates.isNotEmpty ? candidates[pickedIndex] : null;
         _loading = false;
         if (candidates.isEmpty) {
           _emptyMessage = '暂无 ${_minScore.toStringAsFixed(1)}+ 条目';
@@ -146,9 +156,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
       final isTimeout = error is TimeoutException;
       setState(() {
         _loading = false;
-        _errorMessage = isTimeout
-            ? '网络较慢，点击换一部重试'
-            : '加载失败，请稍后重试';
+        _errorMessage = isTimeout ? '网络较慢，点击换一部重试' : '加载失败，请稍后重试';
         _error = error;
         _stackTrace = stackTrace;
       });
@@ -197,7 +205,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
           index = 0;
         }
         if (kDebugMode) {
-          final currentTitle = candidates.isNotEmpty ? candidates[index].title : '';
+          final currentTitle =
+              candidates.isNotEmpty ? candidates[index].title : '';
           final currentScore = candidates.isNotEmpty
               ? candidates[index].yougnScore?.toStringAsFixed(1) ?? '-'
               : '-';
@@ -406,7 +415,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 48, color: Theme.of(context).colorScheme.primary),
+              Icon(icon,
+                  size: 48, color: Theme.of(context).colorScheme.primary),
               const SizedBox(height: 16),
               Text(
                 title,
@@ -494,7 +504,9 @@ class _RecommendationPageState extends State<RecommendationPage> {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(width: 260, child: AspectRatio(aspectRatio: 3 / 4, child: cover)),
+                    SizedBox(
+                        width: 260,
+                        child: AspectRatio(aspectRatio: 3 / 4, child: cover)),
                     const SizedBox(width: 24),
                     Expanded(child: details),
                   ],
@@ -662,7 +674,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
             if (type.isNotEmpty)
               Chip(
                 label: Text(type),
-              backgroundColor: colorScheme.surfaceContainerLow,
+                backgroundColor: colorScheme.surfaceContainerLow,
                 side: BorderSide(color: colorScheme.outlineVariant),
               ),
           ],

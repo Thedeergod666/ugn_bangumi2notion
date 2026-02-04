@@ -20,10 +20,13 @@ class SettingsKeys {
 class SettingsStorage {
   Future<SharedPreferences> get _prefs async => SharedPreferences.getInstance();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  Map<String, String>? _cache;
 
   Future<void> saveBangumiRedirectPort(String port) async {
     final prefs = await _prefs;
     await prefs.setString(SettingsKeys.bangumiRedirectPort, port);
+    _cache ??= {};
+    _cache![SettingsKeys.bangumiRedirectPort] = port;
   }
 
   Future<void> saveBangumiAccessToken(String token) async {
@@ -31,10 +34,14 @@ class SettingsStorage {
       key: SettingsKeys.bangumiAccessToken,
       value: token,
     );
+    _cache ??= {};
+    _cache![SettingsKeys.bangumiAccessToken] = token;
   }
 
   Future<void> clearBangumiAccessToken() async {
     await _secureStorage.delete(key: SettingsKeys.bangumiAccessToken);
+    _cache ??= {};
+    _cache![SettingsKeys.bangumiAccessToken] = '';
   }
 
   Future<void> saveNotionSettings({
@@ -47,6 +54,9 @@ class SettingsStorage {
       value: notionToken,
     );
     await prefs.setString(SettingsKeys.notionDatabaseId, notionDatabaseId);
+    _cache ??= {};
+    _cache![SettingsKeys.notionToken] = notionToken;
+    _cache![SettingsKeys.notionDatabaseId] = notionDatabaseId;
   }
 
   Future<void> saveNotionProperties(List<NotionProperty> properties) async {
@@ -64,6 +74,8 @@ class SettingsStorage {
   Future<void> saveThemeMode(String mode) async {
     final prefs = await _prefs;
     await prefs.setString(SettingsKeys.themeMode, mode);
+    _cache ??= {};
+    _cache![SettingsKeys.themeMode] = mode;
   }
 
   Future<String> getThemeMode() async {
@@ -73,7 +85,8 @@ class SettingsStorage {
 
   Future<void> saveMappingConfig(MappingConfig config) async {
     final prefs = await _prefs;
-    await prefs.setString(SettingsKeys.mappingConfig, jsonEncode(config.toJson()));
+    await prefs.setString(
+        SettingsKeys.mappingConfig, jsonEncode(config.toJson()));
   }
 
   Future<void> saveDailyRecommendationCache({
@@ -146,9 +159,12 @@ class SettingsStorage {
     }
   }
 
-  Future<Map<String, String>> loadAll() async {
+  Future<Map<String, String>> loadAll({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cache != null) {
+      return Map<String, String>.from(_cache!);
+    }
     final prefs = await _prefs;
-    return {
+    final data = {
       SettingsKeys.bangumiAccessToken:
           await _secureStorage.read(key: SettingsKeys.bangumiAccessToken) ?? '',
       SettingsKeys.bangumiRedirectPort:
@@ -157,7 +173,10 @@ class SettingsStorage {
           await _secureStorage.read(key: SettingsKeys.notionToken) ?? '',
       SettingsKeys.notionDatabaseId:
           prefs.getString(SettingsKeys.notionDatabaseId) ?? '',
-      SettingsKeys.themeMode: prefs.getString(SettingsKeys.themeMode) ?? 'system',
+      SettingsKeys.themeMode:
+          prefs.getString(SettingsKeys.themeMode) ?? 'system',
     };
+    _cache = Map<String, String>.from(data);
+    return data;
   }
 }
