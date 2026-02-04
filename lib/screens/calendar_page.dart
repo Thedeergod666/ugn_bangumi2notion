@@ -236,8 +236,8 @@ class _CalendarPageState extends State<CalendarPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(12),
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: Theme.of(context).colorScheme.outlineVariant,
         ),
@@ -287,8 +287,8 @@ class _CalendarPageState extends State<CalendarPage> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: Theme.of(context).colorScheme.outlineVariant,
         ),
@@ -386,7 +386,7 @@ class _WeekdayChipLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showBadge = count > 0;
-    final badgeColor = const Color(0xFF3DDC84);
+    final badgeColor = Theme.of(context).colorScheme.primary;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -438,19 +438,19 @@ class _CalendarItemCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
-      elevation: 0,
+      clipBehavior: Clip.antiAlias,
       color: isBound
-          ? colorScheme.primaryContainer.withOpacity(0.3)
-          : colorScheme.surfaceContainerLowest,
+          ? colorScheme.primaryContainer.withValues(alpha: 0.35)
+          : colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         side: BorderSide(
           color: isBound ? colorScheme.primary : colorScheme.outlineVariant,
-          width: isBound ? 1.2 : 0.8,
+          width: isBound ? 1.1 : 0.8,
         ),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -484,10 +484,10 @@ class _CalendarItemCard extends StatelessWidget {
                               color: colorScheme.primary,
                               borderRadius: BorderRadius.circular(999),
                             ),
-                            child: const Text(
+                            child: Text(
                               '已绑定',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: colorScheme.onPrimary,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),

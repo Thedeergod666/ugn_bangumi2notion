@@ -632,18 +632,22 @@ class _RecommendationPageState extends State<RecommendationPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: colorScheme.primary,
+                color: colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.star, size: 16, color: Colors.white),
+                  Icon(
+                    Icons.star,
+                    size: 16,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     '悠gn评分 $scoreText',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: colorScheme.onPrimaryContainer,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -652,13 +656,13 @@ class _RecommendationPageState extends State<RecommendationPage> {
             ),
             Chip(
               label: Text('放送日期 $airDate'),
-              backgroundColor: colorScheme.surfaceContainerHighest,
+              backgroundColor: colorScheme.surfaceContainerLow,
               side: BorderSide(color: colorScheme.outlineVariant),
             ),
             if (type.isNotEmpty)
               Chip(
                 label: Text(type),
-                backgroundColor: colorScheme.surfaceContainerHighest,
+              backgroundColor: colorScheme.surfaceContainerLow,
                 side: BorderSide(color: colorScheme.outlineVariant),
               ),
           ],

@@ -1,4 +1,4 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -42,7 +42,7 @@ class _DetailPageState extends State<DetailPage> {
     try {
       final data = await _storage.loadAll();
       final token = data[SettingsKeys.bangumiAccessToken];
-      // 不再强制要求 Token，支持未登录查看
+      // 涓嶅啀寮哄埗瑕佹眰 Token锛屾敮鎸佹湭鐧诲綍鏌ョ湅
       final detail = await _api.fetchDetail(
         subjectId: widget.subjectId,
         accessToken: token,
@@ -57,7 +57,7 @@ class _DetailPageState extends State<DetailPage> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = '加载失败，请稍后重试: $e';
+          _errorMessage = '鍔犺浇澶辫触锛岃绋嶅悗閲嶈瘯: $e';
           _loading = false;
         });
       }
@@ -99,7 +99,7 @@ class _DetailPageState extends State<DetailPage> {
       mappingConfig = await _storage.getMappingConfig();
 
       if (token.isNotEmpty && databaseId.isNotEmpty) {
-        // 检查是否已存在
+        // 妫€鏌ユ槸鍚﹀凡瀛樺湪
         existingPageId = await _notionApi.findPageByBangumiId(
           token: token,
           databaseId: databaseId,
@@ -119,10 +119,10 @@ class _DetailPageState extends State<DetailPage> {
 
     String formatLabel(String bangumiLabel, String? notionLabel) {
       if (notionLabel == null || notionLabel.trim().isEmpty) return '';
-      // 移除 Bangumi 属性中括号及其后面的内容
+      // 绉婚櫎 Bangumi 灞炴€т腑鎷彿鍙婂叾鍚庨潰鐨勫唴瀹?
       final cleanBangumi =
           bangumiLabel.split('(').first.split('（').first.trim();
-      // Notion 属性名已经是清洗过的，直接拼接
+      // Notion 灞炴€у悕宸茬粡鏄竻娲楄繃鐨勶紝鐩存帴鎷兼帴
       return '$cleanBangumi（$notionLabel）';
     }
 
@@ -142,14 +142,14 @@ class _DetailPageState extends State<DetailPage> {
       'description': formatLabel('简介/描述', mappingConfig?.description),
     };
 
-    // 移除为空的字段（如果没有在 mappingConfig 中定义，说明该字段不可用）
+    // 绉婚櫎涓虹┖鐨勫瓧娈碉紙濡傛灉娌℃湁鍦?mappingConfig 涓畾涔夛紝璇存槑璇ュ瓧娈典笉鍙敤锛?
     if (mappingConfig != null) {
       fieldLabels.removeWhere((key, value) {
         return value.trim().isEmpty;
       });
     }
 
-    // 初始选择逻辑
+    // 鍒濆閫夋嫨閫昏緫
     final Set<String> selectedFields = {};
     if (mappingConfig != null) {
       if (mappingConfig.titleEnabled) selectedFields.add('title');
@@ -168,10 +168,10 @@ class _DetailPageState extends State<DetailPage> {
       if (mappingConfig.descriptionEnabled) selectedFields.add('description');
     } else {
       if (existingPageId == null) {
-        // 新建模式默认全选
+        // 鏂板缓妯″紡榛樿鍏ㄩ€?
         selectedFields.addAll(fieldLabels.keys);
       } else {
-        // 更新模式默认勾选
+        // 鏇存柊妯″紡榛樿鍕鹃€?
         selectedFields.addAll(['score', 'link', 'bangumiId']);
       }
     }
@@ -199,8 +199,8 @@ class _DetailPageState extends State<DetailPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 区域 A: 目标定位
-                      _buildDialogSectionTitle('目标定位'),
+                      // 鍖哄煙 A: 鐩爣瀹氫綅
+                      _buildDialogSectionTitle('鐩爣瀹氫綅'),
                       if (isUpdateMode)
                         ListTile(
                           leading:
@@ -222,7 +222,7 @@ class _DetailPageState extends State<DetailPage> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               RadioListTile<bool>(
-                                title: Text('新建页面'),
+                                title: Text('鏂板缓椤甸潰'),
                                 value: false,
                                 dense: true,
                               ),
@@ -273,15 +273,15 @@ class _DetailPageState extends State<DetailPage> {
                       ],
                       const Divider(),
 
-                      // 区域 B: 字段更新选择
+                      // 鍖哄煙 B: 瀛楁鏇存柊閫夋嫨
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
-                          _buildDialogSectionTitle('字段更新选择'),
+                          _buildDialogSectionTitle('瀛楁鏇存柊閫夋嫨'),
                           const SizedBox(width: 8),
                           const Text(
-                            'Bangumi属性（Notion属性）',
+                            'Bangumi灞炴€э紙Notion灞炴€э級',
                             style: TextStyle(fontSize: 12, color: Colors.grey),
                           ),
                         ],
@@ -307,10 +307,10 @@ class _DetailPageState extends State<DetailPage> {
                       ),
                       const Divider(),
 
-                      // 区域 C: 标签选择
-                      _buildDialogSectionTitle('标签选择 (Top 30)'),
+                      // 鍖哄煙 C: 鏍囩閫夋嫨
+                      _buildDialogSectionTitle('鏍囩閫夋嫨 (Top 30)'),
                       if (topTags.isEmpty)
-                        const Text('暂无标签',
+                        const Text('鏆傛棤鏍囩',
                             style: TextStyle(fontSize: 12, color: Colors.grey))
                       else
                         AbsorbPointer(
@@ -345,7 +345,7 @@ class _DetailPageState extends State<DetailPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('取消'),
+                  child: const Text('鍙栨秷'),
                 ),
                 FilledButton(
                   onPressed: () {
@@ -358,7 +358,7 @@ class _DetailPageState extends State<DetailPage> {
                       'isBind': isBindMode,
                     });
                   },
-                  child: Text(isUpdateMode ? '确认更新' : '确认导入'),
+                  child: Text(isUpdateMode ? '纭鏇存柊' : '纭瀵煎叆'),
                 ),
               ],
             );
@@ -374,7 +374,7 @@ class _DetailPageState extends State<DetailPage> {
       final String? notionIdStr = result['notionId'];
       final String? existingPageIdResult = result['existingPageId'];
 
-      // 如果是绑定模式，需要根据 ID 查找页面
+      // 濡傛灉鏄粦瀹氭ā寮忥紝闇€瑕佹牴鎹?ID 鏌ユ壘椤甸潰
       String? targetPageId = existingPageIdResult;
       if (result['isBind'] == true) {
         setState(() => _importing = true);
@@ -413,7 +413,7 @@ class _DetailPageState extends State<DetailPage> {
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('查找页面失败: $e')),
+              SnackBar(content: Text('鏌ユ壘椤甸潰澶辫触: $e')),
             );
           }
           setState(() => _importing = false);
@@ -459,7 +459,7 @@ class _DetailPageState extends State<DetailPage> {
         throw Exception('请先在设置页配置 Notion Token 和 Database ID');
       }
 
-      // 构造临时的 detail 对象，包含选中的标签
+      // 鏋勯€犱复鏃剁殑 detail 瀵硅薄锛屽寘鍚€変腑鐨勬爣绛?
       final detailToImport = BangumiSubjectDetail(
         id: _detail!.id,
         name: _detail!.name,
@@ -468,7 +468,7 @@ class _DetailPageState extends State<DetailPage> {
         imageUrl: _detail!.imageUrl,
         airDate: _detail!.airDate,
         epsCount: _detail!.epsCount,
-        tags: selectedTags ?? [], // 使用选中的标签
+        tags: selectedTags ?? [], // 浣跨敤閫変腑鐨勬爣绛?
         studio: _detail!.studio,
         director: _detail!.director,
         script: _detail!.script,
@@ -492,21 +492,21 @@ class _DetailPageState extends State<DetailPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('操作成功！')),
+          const SnackBar(content: Text('操作成功')),
         );
       }
     } catch (e, stackTrace) {
       if (mounted) {
-        // 提取异常消息，移除 "Exception: " 前缀
+        // 鎻愬彇寮傚父娑堟伅锛岀Щ闄?"Exception: " 鍓嶇紑
         final errorMessage = e.toString().replaceAll('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            // 显示具体的错误原因，而不是通用的“操作失败”
+            // 鏄剧ず鍏蜂綋鐨勯敊璇師鍥狅紝鑰屼笉鏄€氱敤鐨勨€滄搷浣滃け璐モ€?
             content: Text(errorMessage),
             backgroundColor: Theme.of(context).colorScheme.error,
             duration: const Duration(seconds: 5),
             action: SnackBarAction(
-              label: '查看详情',
+              label: '鏌ョ湅璇︽儏',
               textColor: Colors.white,
               onPressed: () {
                 showDialog(
@@ -556,7 +556,7 @@ class _DetailPageState extends State<DetailPage> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
                 const SizedBox(height: 24),
-                ElevatedButton(onPressed: _load, child: const Text('重试')),
+                ElevatedButton(onPressed: _load, child: const Text('閲嶈瘯')),
               ],
             ),
           ),
@@ -567,14 +567,14 @@ class _DetailPageState extends State<DetailPage> {
     if (_detail == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('暂无详情数据')),
+        body: const Center(child: Text('鏆傛棤璇︽儏鏁版嵁')),
       );
     }
 
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: const Color(0xFF121212), // Dark theme background
+        backgroundColor: Theme.of(context).colorScheme.surface,
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
@@ -594,10 +594,11 @@ class _DetailPageState extends State<DetailPage> {
             : FloatingActionButton.extended(
                 onPressed: _showImportConfirmDialog,
                 backgroundColor: Theme.of(context).colorScheme.primary,
-                icon:
-                    const Icon(Icons.auto_awesome_rounded, color: Colors.white),
-                label: const Text('导入到 Notion',
-                    style: TextStyle(color: Colors.white)),
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                icon: const Icon(Icons.auto_awesome_rounded),
+                label: Text('导入到 Notion',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary)),
               ),
       ),
     );
@@ -605,13 +606,16 @@ class _DetailPageState extends State<DetailPage> {
 
   Widget _buildSliverAppBar(BuildContext context, BangumiSubjectDetail detail) {
     final title = detail.nameCn.isNotEmpty ? detail.nameCn : detail.name;
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final ratingColor = colorScheme.tertiary;
     return SliverAppBar(
       expandedHeight: 380,
       pinned: true,
       stretch: true,
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: colorScheme.surface,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        icon: Icon(Icons.arrow_back, color: colorScheme.onSurface),
         onPressed: () => Navigator.pop(context),
       ),
       actions: const [],
@@ -639,8 +643,8 @@ class _DetailPageState extends State<DetailPage> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withValues(alpha: 0.3),
-                    const Color(0xFF121212),
+                    colorScheme.surface.withValues(alpha: 0.2),
+                    colorScheme.surface,
                   ],
                 ),
               ),
@@ -687,10 +691,9 @@ class _DetailPageState extends State<DetailPage> {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                          style: textTheme.titleLarge?.copyWith(
+                            color: colorScheme.onSurface,
+                            fontWeight: FontWeight.w700,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -698,16 +701,17 @@ class _DetailPageState extends State<DetailPage> {
                         const SizedBox(height: 8),
                         Text(
                           detail.airDate,
-                          style: const TextStyle(
-                              color: Colors.white70, fontSize: 12),
+                          style: textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Row(
                           children: [
                             Text(
                               detail.score.toStringAsFixed(1),
-                              style: const TextStyle(
-                                color: Colors.orangeAccent,
+                              style: TextStyle(
+                                color: ratingColor,
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -720,21 +724,31 @@ class _DetailPageState extends State<DetailPage> {
                                   children: List.generate(5, (index) {
                                     final rating = detail.score / 2;
                                     if (index < rating.floor()) {
-                                      return const Icon(Icons.star,
-                                          color: Colors.orangeAccent, size: 12);
+                                      return Icon(
+                                        Icons.star,
+                                        color: ratingColor,
+                                        size: 12,
+                                      );
                                     } else if (index < rating) {
-                                      return const Icon(Icons.star_half,
-                                          color: Colors.orangeAccent, size: 12);
+                                      return Icon(
+                                        Icons.star_half,
+                                        color: ratingColor,
+                                        size: 12,
+                                      );
                                     } else {
-                                      return const Icon(Icons.star_border,
-                                          color: Colors.orangeAccent, size: 12);
+                                      return Icon(
+                                        Icons.star_border,
+                                        color: ratingColor,
+                                        size: 12,
+                                      );
                                     }
                                   }),
                                 ),
                                 Text(
                                   'Rank #${detail.rank ?? "N/A"}',
-                                  style: const TextStyle(
-                                      color: Colors.white54, fontSize: 10),
+                                  style: textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ],
                             ),
@@ -754,22 +768,25 @@ class _DetailPageState extends State<DetailPage> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: Colors.blueAccent.withValues(alpha: 0.2),
+                              color: colorScheme.primary.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                  color: Colors.blueAccent
-                                      .withValues(alpha: 0.5)),
+                                color: colorScheme.primary.withValues(alpha: 0.4),
+                              ),
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.open_in_new,
-                                    color: Colors.blueAccent, size: 14),
-                                SizedBox(width: 6),
+                                Icon(
+                                  Icons.open_in_new,
+                                  color: colorScheme.primary,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 6),
                                 Text(
                                   'Bangumi',
                                   style: TextStyle(
-                                      color: Colors.blueAccent,
+                                      color: colorScheme.primary,
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold),
                                 ),
@@ -793,19 +810,18 @@ class _DetailPageState extends State<DetailPage> {
         ),
       ),
       bottom: const TabBar(
-        indicatorColor: Colors.blueAccent,
-        labelColor: Colors.blueAccent,
-        unselectedLabelColor: Colors.white70,
         tabs: [
-          Tab(text: '概述'),
-          Tab(text: '制作'),
-          Tab(text: '吐槽'),
+          Tab(text: '姒傝堪'),
+          Tab(text: '鍒朵綔'),
+          Tab(text: '鍚愭Ы'),
         ],
       ),
     );
   }
 
   Widget _buildOverviewTab(BuildContext context, BangumiSubjectDetail detail) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20.0),
       child: Column(
@@ -826,10 +842,9 @@ class _DetailPageState extends State<DetailPage> {
                   overflow: _isSummaryExpanded
                       ? TextOverflow.visible
                       : TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: textTheme.bodyMedium?.copyWith(
                     height: 1.7,
-                    color: Colors.white70,
-                    fontSize: 14,
+                    color: colorScheme.onSurfaceVariant,
                     letterSpacing: 0.3,
                   ),
                 ),
@@ -837,9 +852,9 @@ class _DetailPageState extends State<DetailPage> {
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      _isSummaryExpanded ? '收起' : '展开全部',
-                      style: const TextStyle(
-                        color: Colors.blueAccent,
+                      _isSummaryExpanded ? '鏀惰捣' : '灞曞紑鍏ㄩ儴',
+                      style: TextStyle(
+                        color: colorScheme.primary,
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
@@ -849,17 +864,17 @@ class _DetailPageState extends State<DetailPage> {
             ),
           ),
           const SizedBox(height: 32),
-          _buildSectionTitle(context, '制作人员'),
+          _buildSectionTitle(context, '鍒朵綔浜哄憳'),
           const SizedBox(height: 12),
           _buildSimplifiedInfoGrid(detail),
           const SizedBox(height: 32),
-          _buildSectionTitle(context, '标签'),
+          _buildSectionTitle(context, '鏍囩'),
           const SizedBox(height: 12),
           Wrap(
             spacing: 10,
             runSpacing: 10,
             children: detail.tags.isEmpty
-                ? [const Chip(label: Text('暂无标签'))]
+                ? [const Chip(label: Text('鏆傛棤鏍囩'))]
                 : detail.tags
                     .map((tag) => InkWell(
                           onTap: () {
@@ -876,15 +891,18 @@ class _DetailPageState extends State<DetailPage> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.1),
+                              color: colorScheme.surfaceContainerLow,
                               borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: colorScheme.outlineVariant,
+                              ),
                             ),
                             child: Text(
                               tag,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
+                                color: colorScheme.onSurface,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -913,6 +931,8 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Widget _buildCommentsTab(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     if (_commentsLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -924,12 +944,12 @@ class _DetailPageState extends State<DetailPage> {
           final token = data[SettingsKeys.bangumiAccessToken] ?? '';
           await _loadComments(token);
         },
-        child: const SingleChildScrollView(
-          physics: AlwaysScrollableScrollPhysics(),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: SizedBox(
             height: 300,
             child: Center(
-              child: Text('暂无吐槽', style: TextStyle(color: Colors.white54)),
+              child: Text('鏆傛棤鍚愭Ы', style: TextStyle(color: colorScheme.onSurfaceVariant)),
             ),
           ),
         ),
@@ -946,7 +966,7 @@ class _DetailPageState extends State<DetailPage> {
         padding: const EdgeInsets.all(20),
         itemCount: _comments.length,
         separatorBuilder: (context, index) =>
-            const Divider(height: 32, color: Colors.white10),
+            Divider(height: 32, color: colorScheme.outlineVariant),
         itemBuilder: (context, index) {
           final comment = _comments[index];
           return Row(
@@ -971,15 +991,16 @@ class _DetailPageState extends State<DetailPage> {
                       children: [
                         Text(
                           comment.user.nickname,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13),
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurface,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         Text(
                           _formatTime(comment.updatedAt),
-                          style: const TextStyle(
-                              color: Colors.white38, fontSize: 11),
+                          style: textTheme.labelSmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -991,7 +1012,7 @@ class _DetailPageState extends State<DetailPage> {
                             i < (comment.rate / 2).ceil()
                                 ? Icons.star
                                 : Icons.star_border,
-                            color: Colors.orangeAccent,
+                            color: colorScheme.tertiary,
                             size: 10,
                           );
                         }),
@@ -999,8 +1020,10 @@ class _DetailPageState extends State<DetailPage> {
                     const SizedBox(height: 8),
                     Text(
                       comment.comment,
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 13, height: 1.5),
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.5,
+                      ),
                     ),
                   ],
                 ),
@@ -1027,24 +1050,25 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Widget _buildSectionTitle(BuildContext context, String title) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Row(
       children: [
         Container(
           width: 4,
           height: 18,
           decoration: BoxDecoration(
-            color: Colors.blueAccent,
+            color: colorScheme.primary,
             borderRadius: BorderRadius.circular(2),
           ),
         ),
         const SizedBox(width: 10),
         Text(
           title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
-            color: Colors.white,
+          style: textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.4,
+            color: colorScheme.onSurface,
           ),
         ),
       ],
@@ -1052,7 +1076,7 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Widget _buildInfoGrid(BangumiSubjectDetail detail) {
-    // 过滤掉一些不需要在制作人员列表中重复显示的字段（如果有的话）
+    // 杩囨护鎺変竴浜涗笉闇€瑕佸湪鍒朵綔浜哄憳鍒楄〃涓噸澶嶆樉绀虹殑瀛楁锛堝鏋滄湁鐨勮瘽锛?
     final skipKeys = {
       '中文名',
       '别名',
@@ -1070,7 +1094,7 @@ class _DetailPageState extends State<DetailPage> {
         .map((e) => MapEntry(e.key, e.value))
         .toList();
 
-    // 确保 Bangumi ID 总是显示在最后
+    // 纭繚 Bangumi ID 鎬绘槸鏄剧ず鍦ㄦ渶鍚?
     items.add(MapEntry('Bangumi ID', detail.id.toString()));
 
     return _buildInfoListContainer(items);
@@ -1083,27 +1107,28 @@ class _DetailPageState extends State<DetailPage> {
     items.add(MapEntry('Bangumi ID', detail.id.toString()));
 
     if (detail.animationProduction.isNotEmpty) {
-      items.add(MapEntry('动画制作', detail.animationProduction));
+      items.add(MapEntry('鍔ㄧ敾鍒朵綔', detail.animationProduction));
     }
     if (detail.director.isNotEmpty) {
-      items.add(MapEntry('导演', detail.director));
+      items.add(MapEntry('瀵兼紨', detail.director));
     }
     if (detail.script.isNotEmpty) {
-      items.add(MapEntry('脚本', detail.script));
+      items.add(MapEntry('鑴氭湰', detail.script));
     }
     if (detail.storyboard.isNotEmpty) {
-      items.add(MapEntry('分镜', detail.storyboard));
+      items.add(MapEntry('鍒嗛暅', detail.storyboard));
     }
 
     return _buildInfoListContainer(items);
   }
 
   Widget _buildInfoListContainer(List<MapEntry<String, String>> items) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: ListView.separated(
         shrinkWrap: true,
@@ -1111,7 +1136,7 @@ class _DetailPageState extends State<DetailPage> {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: items.length,
         separatorBuilder: (context, index) =>
-            Divider(height: 1, color: Colors.white.withValues(alpha: 0.1)),
+            Divider(height: 1, color: colorScheme.outlineVariant),
         itemBuilder: (context, index) {
           final item = items[index];
           return Padding(
@@ -1124,7 +1149,7 @@ class _DetailPageState extends State<DetailPage> {
                     Clipboard.setData(ClipboardData(text: item.value));
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('已复制 ${item.key}: ${item.value}'),
+                        content: Text('已复制${item.key}: ${item.value}'),
                         duration: const Duration(seconds: 2),
                       ),
                     );
@@ -1134,8 +1159,8 @@ class _DetailPageState extends State<DetailPage> {
                     width: 80,
                     child: Text(
                       item.key,
-                      style: const TextStyle(
-                        color: Colors.white54,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.w500,
                         fontSize: 13,
                       ),
@@ -1146,10 +1171,10 @@ class _DetailPageState extends State<DetailPage> {
                 Expanded(
                   child: SelectableText(
                     item.value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w400,
                       fontSize: 13,
-                      color: Colors.white,
+                      color: colorScheme.onSurface,
                       height: 1.5,
                     ),
                   ),
@@ -1176,6 +1201,7 @@ class RatingChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (total == 0) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
 
     // Bangumi ratings are 1-10
     final counts = List.generate(10, (index) {
@@ -1189,7 +1215,7 @@ class RatingChart extends StatelessWidget {
       height: 180,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1213,7 +1239,7 @@ class RatingChart extends StatelessWidget {
                         heightFactor: ratio.clamp(0.05, 1.0),
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.orangeAccent.withValues(alpha: 0.7),
+                            color: colorScheme.tertiary.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -1223,9 +1249,9 @@ class RatingChart extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     '${index + 1}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white38,
+                        color: colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.bold),
                   ),
                 ],

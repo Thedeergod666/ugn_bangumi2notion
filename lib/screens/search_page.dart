@@ -106,8 +106,7 @@ class _SearchPageState extends State<SearchPage> {
                     controller: _controller,
                     decoration: const InputDecoration(
                       hintText: '输入番剧名称或关键字（最多 50 字）',
-                      border: OutlineInputBorder(),
-                      isDense: true,
+                      prefixIcon: Icon(Icons.search),
                     ),
                     onSubmitted: (_) => _search(),
                   ),
@@ -179,8 +178,7 @@ class _ResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
     return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,

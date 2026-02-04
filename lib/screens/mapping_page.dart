@@ -201,7 +201,6 @@ class _MappingPageState extends State<MappingPage>
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: TabBar(
               controller: _tabController,
-              labelColor: Theme.of(context).colorScheme.primary,
               tabs: const [
                 Tab(text: 'Bangumi 映射'),
                 Tab(text: 'Notion 映射'),

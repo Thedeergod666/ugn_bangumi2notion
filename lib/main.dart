@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'theme/kazumi_theme.dart';
 
 import 'screens/recommendation_page.dart';
 import 'screens/search_page.dart';
@@ -66,23 +66,8 @@ class MyApp extends StatelessWidget {
       builder: (_, ThemeMode currentMode, __) {
         return MaterialApp(
           title: '悠gn助手',
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF06B9FF),
-            ),
-            useMaterial3: true,
-            textTheme: GoogleFonts.notoSansScTextTheme(),
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF06B9FF),
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-            textTheme: GoogleFonts.notoSansScTextTheme(
-              ThemeData.dark().textTheme,
-            ),
-          ),
+          theme: KazumiTheme.light(),
+          darkTheme: KazumiTheme.dark(),
           themeMode: currentMode,
           initialRoute: '/calendar',
           onGenerateRoute: _onGenerateRoute,
