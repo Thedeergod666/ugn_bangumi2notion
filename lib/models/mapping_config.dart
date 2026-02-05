@@ -11,6 +11,8 @@ class MappingConfig {
   final bool bangumiIdEnabled;
   final String score;
   final bool scoreEnabled;
+  final String totalEpisodes;
+  final bool totalEpisodesEnabled;
   final String link;
   final bool linkEnabled;
   final String animationProduction;
@@ -45,6 +47,8 @@ class MappingConfig {
     this.bangumiIdEnabled = true,
     this.score = '',
     this.scoreEnabled = true,
+    this.totalEpisodes = '',
+    this.totalEpisodesEnabled = true,
     this.link = '',
     this.linkEnabled = true,
     this.animationProduction = '',
@@ -82,6 +86,8 @@ class MappingConfig {
       'bangumiIdEnabled': bangumiIdEnabled,
       'score': score,
       'scoreEnabled': scoreEnabled,
+      'totalEpisodes': totalEpisodes,
+      'totalEpisodesEnabled': totalEpisodesEnabled,
       'link': link,
       'linkEnabled': linkEnabled,
       'animationProduction': animationProduction,
@@ -119,6 +125,8 @@ class MappingConfig {
       bangumiIdEnabled: json['bangumiIdEnabled'] ?? true,
       score: json['score'] ?? '',
       scoreEnabled: json['scoreEnabled'] ?? true,
+      totalEpisodes: json['totalEpisodes'] ?? '',
+      totalEpisodesEnabled: json['totalEpisodesEnabled'] ?? true,
       link: json['link'] ?? '',
       linkEnabled: json['linkEnabled'] ?? true,
       animationProduction: json['animationProduction'] ?? '',
@@ -157,6 +165,8 @@ class MappingConfig {
     bool? bangumiIdEnabled,
     String? score,
     bool? scoreEnabled,
+    String? totalEpisodes,
+    bool? totalEpisodesEnabled,
     String? link,
     bool? linkEnabled,
     String? animationProduction,
@@ -191,6 +201,8 @@ class MappingConfig {
       bangumiIdEnabled: bangumiIdEnabled ?? this.bangumiIdEnabled,
       score: score ?? this.score,
       scoreEnabled: scoreEnabled ?? this.scoreEnabled,
+      totalEpisodes: totalEpisodes ?? this.totalEpisodes,
+      totalEpisodesEnabled: totalEpisodesEnabled ?? this.totalEpisodesEnabled,
       link: link ?? this.link,
       linkEnabled: linkEnabled ?? this.linkEnabled,
       animationProduction: animationProduction ?? this.animationProduction,

@@ -627,6 +627,67 @@ extension NotionApiSync on NotionApi {
     }
   }
 
+  Future<List<String>?> _getPageMultiSelectTags({
+    required String token,
+    required String pageId,
+    required String propertyName,
+  }) async {
+    final normalizedId = _normalizePageId(pageId);
+    if (normalizedId == null) {
+      throw Exception('Notion 页面 ID 无效');
+    }
+    if (propertyName.trim().isEmpty) return null;
+
+    final url = Uri.parse(NotionApi._baseUrl)
+        .replace(pathSegments: ['v1', 'pages', normalizedId]);
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Notion get page',
+      request: () => _client
+          .get(
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Notion-Version': NotionApi._notionVersion,
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(NotionApi._timeout),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_mapNotionError('读取页面', response));
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final properties = data['properties'] as Map<String, dynamic>? ?? {};
+    final property = properties[propertyName] as Map<String, dynamic>?;
+    if (property == null) return null;
+    final type = property['type']?.toString() ?? '';
+    if (type != 'multi_select') return null;
+    final raw = property['multi_select'];
+    if (raw is! List) return <String>[];
+    return raw
+        .map((tag) =>
+            tag is Map<String, dynamic> ? tag['name']?.toString() : null)
+        .whereType<String>()
+        .toList();
+  }
+
+  List<String> _mergeTags(List<String> existing, List<String> incoming) {
+    final merged = <String>[...existing];
+    final existingNormalized =
+        existing.map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toSet();
+    for (final tag in incoming) {
+      final trimmed = tag.trim();
+      if (trimmed.isEmpty) continue;
+      if (existingNormalized.add(trimmed)) {
+        merged.add(trimmed);
+      }
+    }
+    return merged;
+  }
+
   Future<void> createAnimePage({
     required String token,
     required String databaseId,
@@ -670,6 +731,26 @@ extension NotionApiSync on NotionApi {
     // 记录哪些字段被映射到了 Notion 的属性中
     final Set<String> mappedPropertyKeys = {};
     final List<Map<String, dynamic>> bodyBlocks = [];
+    final bool shouldWriteTags =
+        config.tags.isNotEmpty &&
+        (enabledFields == null || enabledFields.contains('tags'));
+    var tagsToWrite = detail.tags;
+    if (shouldWriteTags && targetPageId != null && detail.tags.isNotEmpty) {
+      try {
+        final existingTags = await _getPageMultiSelectTags(
+          token: token,
+          pageId: targetPageId,
+          propertyName: config.tags,
+        );
+        if (existingTags != null) {
+          tagsToWrite = _mergeTags(existingTags, detail.tags);
+        }
+      } catch (e) {
+        _logger.debug('读取 Notion 标签失败，跳过标签更新: $e');
+        tagsToWrite = <String>[];
+      }
+    }
+
 
     void addProperty(
         String fieldKey, String notionKey, dynamic value, String intendedType) {
@@ -814,10 +895,11 @@ extension NotionApiSync on NotionApi {
     }
 
     addProperty('airDate', config.airDate, detail.airDate, 'date');
-    addProperty('tags', config.tags, detail.tags, 'multi_select');
+    addProperty('tags', config.tags, tagsToWrite, 'multi_select');
     addProperty('imageUrl', config.imageUrl, detail.imageUrl, 'url');
     addProperty('bangumiId', config.bangumiId, detail.id, 'number');
     addProperty('score', config.score, detail.score, 'number');
+    addProperty('totalEpisodes', config.totalEpisodes, detail.epsCount, 'number');
     addProperty(
         'link', config.link, 'https://bgm.tv/subject/${detail.id}', 'url');
     addProperty('animationProduction', config.animationProduction,
@@ -836,6 +918,7 @@ extension NotionApiSync on NotionApi {
       config.imageUrl,
       config.bangumiId,
       config.score,
+      config.totalEpisodes,
       config.link,
       config.animationProduction,
       config.director,

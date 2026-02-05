@@ -145,6 +145,7 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
       'imageUrl': formatLabel('封面', mappingConfig?.imageUrl),
       'bangumiId': formatLabel('Bangumi ID', mappingConfig?.bangumiId),
       'score': formatLabel('评分', mappingConfig?.score),
+      'totalEpisodes': formatLabel('\u603b\u96c6\u6570', mappingConfig?.totalEpisodes),
       'link': formatLabel('链接', mappingConfig?.link),
       'animationProduction':
           formatLabel('动画制作', mappingConfig?.animationProduction),
@@ -170,6 +171,7 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
       if (mappingConfig.imageUrlEnabled) selectedFields.add('imageUrl');
       if (mappingConfig.bangumiIdEnabled) selectedFields.add('bangumiId');
       if (mappingConfig.scoreEnabled) selectedFields.add('score');
+      if (mappingConfig.totalEpisodesEnabled) selectedFields.add('totalEpisodes');
       if (mappingConfig.linkEnabled) selectedFields.add('link');
       if (mappingConfig.animationProductionEnabled) {
         selectedFields.add('animationProduction');

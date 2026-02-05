@@ -387,6 +387,19 @@ class _MappingPageState extends State<MappingPage>
                 },
               ),
               _buildMappingItem(
+                '\u603b\u96c6\u6570 (Number)',
+                _currentConfig.totalEpisodes,
+                _currentConfig.totalEpisodesEnabled,
+                (val) {
+                  setState(() => _currentConfig =
+                      _currentConfig.copyWith(totalEpisodes: val));
+                },
+                (enabled) {
+                  setState(() => _currentConfig =
+                      _currentConfig.copyWith(totalEpisodesEnabled: enabled));
+                },
+              ),
+              _buildMappingItem(
                 '链接 (Url)',
                 _currentConfig.link,
                 _currentConfig.linkEnabled,
