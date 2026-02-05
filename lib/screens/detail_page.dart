@@ -141,6 +141,7 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
     final Map<String, String> fieldLabels = {
       'title': formatLabel('标题', mappingConfig?.title),
       'airDate': formatLabel('放送开始', mappingConfig?.airDate),
+      'airDateRange': formatLabel('\u653e\u9001\u5f00\u59cb-\u542b\u7ed3\u675f', mappingConfig?.airDateRange),
       'tags': formatLabel('标签', mappingConfig?.tags),
       'imageUrl': formatLabel('封面', mappingConfig?.imageUrl),
       'bangumiId': formatLabel('Bangumi ID', mappingConfig?.bangumiId),
@@ -167,6 +168,7 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
     if (mappingConfig != null) {
       if (mappingConfig.titleEnabled) selectedFields.add('title');
       if (mappingConfig.airDateEnabled) selectedFields.add('airDate');
+      if (mappingConfig.airDateRangeEnabled) selectedFields.add('airDateRange');
       if (mappingConfig.tagsEnabled) selectedFields.add('tags');
       if (mappingConfig.imageUrlEnabled) selectedFields.add('imageUrl');
       if (mappingConfig.bangumiIdEnabled) selectedFields.add('bangumiId');

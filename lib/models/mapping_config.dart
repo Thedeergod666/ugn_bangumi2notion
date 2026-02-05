@@ -3,6 +3,8 @@ class MappingConfig {
   final bool titleEnabled;
   final String airDate;
   final bool airDateEnabled;
+  final String airDateRange;
+  final bool airDateRangeEnabled;
   final String tags;
   final bool tagsEnabled;
   final String imageUrl;
@@ -39,6 +41,8 @@ class MappingConfig {
     this.titleEnabled = true,
     this.airDate = '',
     this.airDateEnabled = true,
+    this.airDateRange = '',
+    this.airDateRangeEnabled = true,
     this.tags = '',
     this.tagsEnabled = true,
     this.imageUrl = '',
@@ -78,6 +82,8 @@ class MappingConfig {
       'titleEnabled': titleEnabled,
       'airDate': airDate,
       'airDateEnabled': airDateEnabled,
+      'airDateRange': airDateRange,
+      'airDateRangeEnabled': airDateRangeEnabled,
       'tags': tags,
       'tagsEnabled': tagsEnabled,
       'imageUrl': imageUrl,
@@ -117,6 +123,8 @@ class MappingConfig {
       titleEnabled: json['titleEnabled'] ?? true,
       airDate: json['airDate'] ?? '',
       airDateEnabled: json['airDateEnabled'] ?? true,
+      airDateRange: json['airDateRange'] ?? '',
+      airDateRangeEnabled: json['airDateRangeEnabled'] ?? true,
       tags: json['tags'] ?? '',
       tagsEnabled: json['tagsEnabled'] ?? true,
       imageUrl: json['imageUrl'] ?? '',
@@ -157,6 +165,8 @@ class MappingConfig {
     bool? titleEnabled,
     String? airDate,
     bool? airDateEnabled,
+    String? airDateRange,
+    bool? airDateRangeEnabled,
     String? tags,
     bool? tagsEnabled,
     String? imageUrl,
@@ -193,6 +203,8 @@ class MappingConfig {
       titleEnabled: titleEnabled ?? this.titleEnabled,
       airDate: airDate ?? this.airDate,
       airDateEnabled: airDateEnabled ?? this.airDateEnabled,
+      airDateRange: airDateRange ?? this.airDateRange,
+      airDateRangeEnabled: airDateRangeEnabled ?? this.airDateRangeEnabled,
       tags: tags ?? this.tags,
       tagsEnabled: tagsEnabled ?? this.tagsEnabled,
       imageUrl: imageUrl ?? this.imageUrl,

@@ -688,6 +688,84 @@ extension NotionApiSync on NotionApi {
     return merged;
   }
 
+  List<String> _extractDates(String raw) {
+    if (raw.trim().isEmpty) return <String>[];
+    final results = <String>[];
+    final seen = <String>{};
+    void addMatch(String year, String month, String day) {
+      final y = year.padLeft(4, '0');
+      final m = month.padLeft(2, '0');
+      final d = day.padLeft(2, '0');
+      final value = '$y-$m-$d';
+      if (seen.add(value)) {
+        results.add(value);
+      }
+    }
+    final iso = RegExp(r'(\d{4})[./-](\d{1,2})[./-](\d{1,2})');
+    for (final match in iso.allMatches(raw)) {
+      addMatch(match.group(1)!, match.group(2)!, match.group(3)!);
+    }
+    final cjk = RegExp('(\\d{4})\\u5e74(\\d{1,2})\\u6708(\\d{1,2})\\u65e5');
+    for (final match in cjk.allMatches(raw)) {
+      addMatch(match.group(1)!, match.group(2)!, match.group(3)!);
+    }
+    return results;
+  }
+
+  String? _extractFirstDate(String raw) {
+    final dates = _extractDates(raw);
+    return dates.isEmpty ? null : dates.first;
+  }
+
+  String? _normalizeDateString(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return _extractFirstDate(trimmed) ?? trimmed;
+  }
+
+  String? _findInfoboxValue(Map<String, String> map, List<String> keys) {
+    for (final key in keys) {
+      final exact = map[key];
+      if (exact != null && exact.trim().isNotEmpty) return exact;
+    }
+    for (final entry in map.entries) {
+      for (final key in keys) {
+        if (entry.key.contains(key) && entry.value.trim().isNotEmpty) {
+          return entry.value;
+        }
+      }
+    }
+    return null;
+  }
+
+  Map<String, String>? _buildAirDateRange(BangumiSubjectDetail detail) {
+    String? start = _normalizeDateString(detail.airDate);
+    String? end;
+    final endKeys = ['\u653e\u9001\u7ed3\u675f', '\u653e\u9001\u7d42\u4e86', '\u653e\u9001\u5b8c\u6bd5', '\u653e\u9001\u5b8c\u4e86', '\u64ad\u653e\u7ed3\u675f', '\u64ad\u51fa\u7ed3\u675f', '\u4e0a\u6620\u7ed3\u675f', '\u516c\u958b\u7d42\u4e86', '\u653e\u6620\u7d42\u4e86'];
+    final endValue = _findInfoboxValue(detail.infoboxMap, endKeys);
+    if (endValue != null) {
+      end = _extractFirstDate(endValue);
+    }
+    if (end == null) {
+      final rangeKeys = ['\u653e\u9001\u65e5\u671f', '\u653e\u9001\u5f00\u59cb', '\u653e\u9001\u958b\u59cb', '\u653e\u9001\u65e5', '\u64ad\u653e\u5f00\u59cb', '\u64ad\u51fa\u65e5\u671f', '\u4e0a\u6620\u65e5\u671f', '\u516c\u958b\u65e5'];
+      final rangeValue = _findInfoboxValue(detail.infoboxMap, rangeKeys);
+      if (rangeValue != null) {
+        final dates = _extractDates(rangeValue);
+        if (dates.isNotEmpty && (start == null || start.isEmpty)) {
+          start = dates.first;
+        }
+        if (dates.length >= 2) {
+          end = dates.last;
+        }
+      }
+    }
+    if (start == null || start.isEmpty) return null;
+    if (end != null && end == start) {
+      end = null;
+    }
+    return end == null ? {'start': start} : {'start': start, 'end': end};
+  }
+
   Future<void> createAnimePage({
     required String token,
     required String databaseId,
@@ -750,6 +828,8 @@ extension NotionApiSync on NotionApi {
         tagsToWrite = <String>[];
       }
     }
+    final airDateRange = _buildAirDateRange(detail);
+
 
 
     void addProperty(
@@ -843,7 +923,19 @@ extension NotionApiSync on NotionApi {
           }
           break;
         case 'date':
-          if (value.toString().isNotEmpty) {
+          if (value == null) break;
+          if (value is Map) {
+            final start = value['start']?.toString() ?? '';
+            final end = value['end']?.toString();
+            if (start.isNotEmpty) {
+              properties[notionKey] = {
+                'date': {
+                  'start': start,
+                  if (end != null && end.isNotEmpty) 'end': end,
+                }
+              };
+            }
+          } else if (value.toString().isNotEmpty) {
             properties[notionKey] = {
               'date': {'start': value.toString()}
             };
@@ -895,6 +987,7 @@ extension NotionApiSync on NotionApi {
     }
 
     addProperty('airDate', config.airDate, detail.airDate, 'date');
+    addProperty('airDateRange', config.airDateRange, airDateRange, 'date');
     addProperty('tags', config.tags, tagsToWrite, 'multi_select');
     addProperty('imageUrl', config.imageUrl, detail.imageUrl, 'url');
     addProperty('bangumiId', config.bangumiId, detail.id, 'number');
@@ -914,6 +1007,7 @@ extension NotionApiSync on NotionApi {
     // 如果用户在 Notion 数据库中创建了同名属性，尝试自动填充
     final knownMappedFields = {
       config.airDate,
+      config.airDateRange,
       config.tags,
       config.imageUrl,
       config.bangumiId,

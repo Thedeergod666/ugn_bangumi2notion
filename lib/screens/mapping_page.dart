@@ -335,6 +335,19 @@ class _MappingPageState extends State<MappingPage>
                 },
               ),
               _buildMappingItem(
+                '\u653e\u9001\u5f00\u59cb\uff08\u542b\u7ed3\u675f\uff09 (Date)',
+                _currentConfig.airDateRange,
+                _currentConfig.airDateRangeEnabled,
+                (val) {
+                  setState(() => _currentConfig =
+                      _currentConfig.copyWith(airDateRange: val));
+                },
+                (enabled) {
+                  setState(() => _currentConfig =
+                      _currentConfig.copyWith(airDateRangeEnabled: enabled));
+                },
+              ),
+              _buildMappingItem(
                 '标签 (Multi-select)',
                 _currentConfig.tags,
                 _currentConfig.tagsEnabled,
