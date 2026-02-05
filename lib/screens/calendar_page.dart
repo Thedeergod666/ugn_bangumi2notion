@@ -32,6 +32,8 @@ class _CalendarPageState extends State<CalendarPage> {
   Map<int, double?> _yougnScores = {};
   Map<int, BangumiSubjectDetail> _detailCache = {};
   final Set<int> _detailLoading = {};
+  Map<int, int> _latestEpisodeCache = {};
+  final Set<int> _latestEpisodeLoading = {};
   Map<int, List<BangumiCalendarItem>> _weekdayItems = {};
   Map<int, int> _weekdayBoundCounts = {};
   List<BangumiCalendarItem> _boundItems = [];
@@ -60,6 +62,8 @@ class _CalendarPageState extends State<CalendarPage> {
       _yougnScores = {};
       _detailCache = {};
       _detailLoading.clear();
+      _latestEpisodeCache = {};
+      _latestEpisodeLoading.clear();
       _notionConfigured = false;
     });
 
@@ -214,6 +218,36 @@ class _CalendarPageState extends State<CalendarPage> {
     _loadDetail(subjectId);
   }
 
+  void _scheduleLatestEpisodeLoad(int subjectId, int currentLatest) {
+    if (currentLatest > 0 ||
+        _latestEpisodeCache.containsKey(subjectId) ||
+        _latestEpisodeLoading.contains(subjectId)) {
+      return;
+    }
+    _latestEpisodeLoading.add(subjectId);
+    _loadLatestEpisode(subjectId);
+  }
+
+  Future<void> _loadLatestEpisode(int subjectId) async {
+    try {
+      final token = context.read<AppSettings>().bangumiAccessToken;
+      final latest = await _bangumiApi.fetchLatestEpisodeNumber(
+        subjectId: subjectId,
+        accessToken: token.isEmpty ? null : token,
+      );
+      if (!mounted) return;
+      if (latest > 0) {
+        setState(() {
+          _latestEpisodeCache[subjectId] = latest;
+        });
+      }
+    } catch (_) {
+      // Ignore latest episode fetch failures for list rendering.
+    } finally {
+      _latestEpisodeLoading.remove(subjectId);
+    }
+  }
+
   Future<void> _loadDetail(int subjectId) async {
     try {
       final token = context.read<AppSettings>().bangumiAccessToken;
@@ -301,6 +335,7 @@ class _CalendarPageState extends State<CalendarPage> {
             Builder(
               builder: (context) {
                 _scheduleDetailLoad(item.id);
+                _scheduleLatestEpisodeLoad(item.id, item.eps);
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _CalendarItemCard(
@@ -308,6 +343,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     detail: _detailCache[item.id],
                     isBound: _boundIds.contains(item.id),
                     watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
+                    latestEpisodes: _latestEpisodeCache[item.id] ?? 0,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -440,18 +476,20 @@ class _CalendarPageState extends State<CalendarPage> {
               scrollDirection: Axis.horizontal,
               itemCount: _boundItems.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final item = _boundItems[index];
-              _scheduleDetailLoad(item.id);
-              return _BoundBangumiCard(
-                item: item,
-                watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
-                yougnScore: _yougnScores[item.id],
-                detail: _detailCache[item.id],
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => DetailPage(subjectId: item.id),
+              itemBuilder: (context, index) {
+                final item = _boundItems[index];
+                _scheduleDetailLoad(item.id);
+                _scheduleLatestEpisodeLoad(item.id, item.eps);
+                return _BoundBangumiCard(
+                  item: item,
+                  watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
+                  yougnScore: _yougnScores[item.id],
+                  detail: _detailCache[item.id],
+                  latestEpisodes: _latestEpisodeCache[item.id] ?? 0,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => DetailPage(subjectId: item.id),
                       ),
                     );
                   },
@@ -590,6 +628,7 @@ class _BoundBangumiCard extends StatelessWidget {
     required this.watchedEpisodes,
     required this.yougnScore,
     required this.detail,
+    required this.latestEpisodes,
     required this.onTap,
   });
 
@@ -597,12 +636,14 @@ class _BoundBangumiCard extends StatelessWidget {
   final int watchedEpisodes;
   final double? yougnScore;
   final BangumiSubjectDetail? detail;
+  final int latestEpisodes;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
-    final latestText = item.eps > 0 ? item.eps.toString() : '-';
+    final latestValue = item.eps > 0 ? item.eps : latestEpisodes;
+    final latestText = latestValue > 0 ? latestValue.toString() : '-';
     final totalValue = detail?.epsCount ?? item.epsCount;
     final totalText = totalValue > 0 ? totalValue.toString() : '-';
     final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
@@ -673,6 +714,7 @@ class _CalendarItemCard extends StatelessWidget {
     required this.detail,
     required this.isBound,
     required this.watchedEpisodes,
+    required this.latestEpisodes,
     required this.onTap,
   });
 
@@ -680,13 +722,15 @@ class _CalendarItemCard extends StatelessWidget {
   final BangumiSubjectDetail? detail;
   final bool isBound;
   final int watchedEpisodes;
+  final int latestEpisodes;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
     final airDate = item.airDate.isNotEmpty ? item.airDate : '待定';
-    final latestText = item.eps > 0 ? item.eps.toString() : '-';
+    final latestValue = item.eps > 0 ? item.eps : latestEpisodes;
+    final latestText = latestValue > 0 ? latestValue.toString() : '-';
     final totalValue = detail?.epsCount ?? item.epsCount;
     final totalText = totalValue > 0 ? totalValue.toString() : '-';
     final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
@@ -782,13 +826,13 @@ class _CalendarItemCard extends StatelessWidget {
                       const SizedBox(height: 4),
                     ],
                     Text('放送开始：$airDate'),
-                    if (isBound) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '已追 $watchedText / 已更 $latestText / 总共 $totalText',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      isBound
+                          ? '\u5df2\u8ffd $watchedText / \u5df2\u66f4 $latestText / \u603b\u5171 $totalText'
+                          : '\u5df2\u66f4 $latestText / \u603b\u5171 $totalText',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                     if (tags.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Wrap(

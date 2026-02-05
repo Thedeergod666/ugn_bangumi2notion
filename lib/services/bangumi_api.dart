@@ -269,6 +269,51 @@ class BangumiApi {
     return episodes;
   }
 
+  Future<int> fetchLatestEpisodeNumber({
+    required int subjectId,
+    String? accessToken,
+  }) async {
+    final episodes = await fetchSubjectEpisodes(
+      subjectId: subjectId,
+      accessToken: accessToken,
+      type: 0,
+    );
+    if (episodes.isEmpty) return 0;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    int pickNumber(BangumiEpisode e) {
+      final value = e.ep > 0 ? e.ep : e.sort;
+      return value.round();
+    }
+
+    final dated = <BangumiEpisode>[];
+    for (final episode in episodes) {
+      final raw = episode.airDate.trim();
+      if (raw.isEmpty) continue;
+      final parsed = DateTime.tryParse(raw);
+      if (parsed == null) continue;
+      if (!parsed.isAfter(today)) {
+        dated.add(episode);
+      }
+    }
+
+    List<BangumiEpisode> candidates = dated;
+    if (candidates.isEmpty) {
+      candidates = episodes
+          .where((e) => e.airDate.trim().isNotEmpty)
+          .toList();
+    }
+    if (candidates.isEmpty) return 0;
+
+    final best = candidates.reduce((a, b) {
+      final av = pickNumber(a);
+      final bv = pickNumber(b);
+      return av >= bv ? a : b;
+    });
+    return pickNumber(best);
+  }
+
   Future<String?> fetchLastEpisodeAirDate({
     required int subjectId,
     int? totalEpisodes,

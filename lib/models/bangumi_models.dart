@@ -78,9 +78,20 @@ class BangumiCalendarItem {
 
   factory BangumiCalendarItem.fromJson(Map<String, dynamic> json) {
     final images = json['images'] as Map<String, dynamic>?;
+    int parseInt(dynamic value) {
+      if (value is num) return value.toInt();
+      if (value is String) {
+        final trimmed = value.trim();
+        if (trimmed.isEmpty) return 0;
+        return int.tryParse(trimmed) ??
+            double.tryParse(trimmed)?.round() ??
+            0;
+      }
+      return 0;
+    }
     return BangumiCalendarItem(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      type: (json['type'] as num?)?.toInt() ?? 0,
+      id: parseInt(json['id']),
+      type: parseInt(json['type']),
       name: json['name'] as String? ?? '',
       nameCn: json['name_cn'] as String? ?? '',
       summary: json['summary'] as String? ?? '',
@@ -89,9 +100,9 @@ class BangumiCalendarItem {
           images?['small'] as String? ??
           '',
       airDate: json['air_date'] as String? ?? '',
-      airWeekday: (json['air_weekday'] as num?)?.toInt() ?? 0,
-      eps: (json['eps'] as num?)?.toInt() ?? 0,
-      epsCount: (json['eps_count'] as num?)?.toInt() ?? 0,
+      airWeekday: parseInt(json['air_weekday']),
+      eps: parseInt(json['eps']),
+      epsCount: parseInt(json['eps_count']),
     );
   }
 }

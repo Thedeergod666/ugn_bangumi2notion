@@ -291,14 +291,36 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
 
                       // 区域 B: 字段更新选择
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           _buildDialogSectionTitle('字段更新选择'),
                           const SizedBox(width: 8),
                           const Text(
                             'Bangumi 字段名对应 Notion 字段名',
                             style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: fieldLabels.isEmpty
+                                ? null
+                                : () {
+                                    setDialogState(() {
+                                      final bool allSelected =
+                                          selectedFields.length ==
+                                              fieldLabels.length;
+                                      if (allSelected) {
+                                        selectedFields.clear();
+                                      } else {
+                                        selectedFields.addAll(fieldLabels.keys);
+                                      }
+                                    });
+                                  },
+                            child: Text(
+                              selectedFields.length == fieldLabels.length &&
+                                      fieldLabels.isNotEmpty
+                                  ? '取消全选'
+                                  : '全选',
+                            ),
                           ),
                         ],
                       ),
@@ -324,7 +346,36 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                       const Divider(),
 
                       // 区域 C: 标签选择
-                      _buildDialogSectionTitle('标签选择 (Top 30)'),
+                      Row(
+                        children: [
+                          _buildDialogSectionTitle('标签选择 (Top 30)'),
+                          const Spacer(),
+                          TextButton(
+                            onPressed:
+                                selectedFields.contains('tags') &&
+                                        topTags.isNotEmpty
+                                    ? () {
+                                        setDialogState(() {
+                                          final bool allSelected =
+                                              selectedTags.length ==
+                                                  topTags.length;
+                                          if (allSelected) {
+                                            selectedTags.clear();
+                                          } else {
+                                            selectedTags.addAll(topTags);
+                                          }
+                                        });
+                                      }
+                                    : null,
+                            child: Text(
+                              selectedTags.length == topTags.length &&
+                                      topTags.isNotEmpty
+                                  ? '取消全选'
+                                  : '全选',
+                            ),
+                          ),
+                        ],
+                      ),
                       if (topTags.isEmpty)
                         const Text('暂无标签',
                             style: TextStyle(fontSize: 12, color: Colors.grey))
