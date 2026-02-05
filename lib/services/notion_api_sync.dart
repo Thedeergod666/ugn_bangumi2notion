@@ -766,6 +766,37 @@ extension NotionApiSync on NotionApi {
     return end == null ? {'start': start} : {'start': start, 'end': end};
   }
 
+  Future<Map<String, String>?> _resolveAirDateRange(
+    BangumiSubjectDetail detail,
+  ) async {
+    var range = _buildAirDateRange(detail);
+    if (range == null) {
+      final start = _normalizeDateString(detail.airDate);
+      if (start == null || start.isEmpty) return null;
+      range = {'start': start};
+    }
+
+    final start = range['start'];
+    if (start == null || start.isEmpty) return null;
+    if (range['end'] != null && range['end']!.isNotEmpty) return range;
+
+    try {
+      final lastAirDate = await _bangumiApi.fetchLastEpisodeAirDate(
+        subjectId: detail.id,
+        totalEpisodes: detail.epsCount > 0 ? detail.epsCount : null,
+      );
+      if (lastAirDate != null &&
+          lastAirDate.trim().isNotEmpty &&
+          lastAirDate.trim() != start) {
+        return {'start': start, 'end': lastAirDate.trim()};
+      }
+    } catch (e) {
+      _logger.debug('获取最后一集放送时间失败: $e');
+    }
+
+    return range;
+  }
+
   Future<void> createAnimePage({
     required String token,
     required String databaseId,
@@ -828,7 +859,11 @@ extension NotionApiSync on NotionApi {
         tagsToWrite = <String>[];
       }
     }
-    final airDateRange = _buildAirDateRange(detail);
+    Map<String, String>? airDateRange;
+    if (config.airDateRange.isNotEmpty &&
+        (enabledFields == null || enabledFields.contains('airDateRange'))) {
+      airDateRange = await _resolveAirDateRange(detail);
+    }
 
 
 

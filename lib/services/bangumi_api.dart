@@ -23,6 +23,7 @@ class BangumiApi {
   static const int _maxKeywordLength = 50;
   static const int _staffPageLimit = 50;
   static const int _staffMaxItems = 200;
+  static const int _episodePageLimit = 100;
   static const Duration _selfTimeout = Duration(seconds: 10);
   static const int _logTextLimit = 200;
 
@@ -215,6 +216,89 @@ class BangumiApi {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return BangumiSubjectDetail.fromJson(data);
+  }
+
+  Future<List<BangumiEpisode>> fetchSubjectEpisodes({
+    required int subjectId,
+    String? accessToken,
+    int? type,
+  }) async {
+    final episodes = <BangumiEpisode>[];
+    int offset = 0;
+    int? total;
+
+    while (true) {
+      final query = <String, String>{
+        'subject_id': subjectId.toString(),
+        'limit': _episodePageLimit.toString(),
+        'offset': offset.toString(),
+        if (type != null) 'type': type.toString(),
+      };
+      final uri =
+          Uri.parse('$_baseUrl/v0/episodes').replace(queryParameters: query);
+      final response = await sendWithRetry(
+        logger: _logger,
+        label: 'Bangumi episodes',
+        request: () => _client
+            .get(
+              uri,
+              headers: _buildHeaders(accessToken: accessToken),
+            )
+            .timeout(_timeout),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(_mapBangumiError('Bangumi 绔犺妭鍒楄〃', response));
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final list = data['data'] as List<dynamic>? ?? [];
+      episodes.addAll(
+        list
+            .whereType<Map<String, dynamic>>()
+            .map(BangumiEpisode.fromJson),
+      );
+      total ??= (data['total'] as num?)?.toInt();
+
+      if (list.length < _episodePageLimit) break;
+      if (total != null && episodes.length >= total) break;
+
+      offset += _episodePageLimit;
+    }
+
+    return episodes;
+  }
+
+  Future<String?> fetchLastEpisodeAirDate({
+    required int subjectId,
+    int? totalEpisodes,
+    String? accessToken,
+  }) async {
+    final episodes = await fetchSubjectEpisodes(
+      subjectId: subjectId,
+      accessToken: accessToken,
+      type: 0,
+    );
+    if (episodes.isEmpty) return null;
+
+    final candidates =
+        episodes.where((e) => e.airDate.trim().isNotEmpty).toList();
+    if (candidates.isEmpty) return null;
+
+    BangumiEpisode? target;
+    if (totalEpisodes != null && totalEpisodes > 0) {
+      final matches = candidates.where((e) {
+        final sort = e.sort.round();
+        final ep = e.ep.round();
+        return sort == totalEpisodes || ep == totalEpisodes;
+      }).toList();
+      if (matches.isNotEmpty) {
+        target = matches.reduce((a, b) => a.sort >= b.sort ? a : b);
+      }
+    }
+
+    target ??= candidates.reduce((a, b) => a.sort >= b.sort ? a : b);
+    return target.airDate.trim();
   }
 
   Future<StaffResponse?> _fetchStaff(int subjectId) async {

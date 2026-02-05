@@ -119,6 +119,34 @@ class BangumiCalendarDay {
   }
 }
 
+class BangumiEpisode {
+  const BangumiEpisode({
+    required this.id,
+    required this.type,
+    required this.sort,
+    required this.ep,
+    required this.airDate,
+  });
+
+  final int id;
+  final int type;
+  final double sort;
+  final double ep;
+  final String airDate;
+
+  factory BangumiEpisode.fromJson(Map<String, dynamic> json) {
+    return BangumiEpisode(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      type: (json['type'] as num?)?.toInt() ?? 0,
+      sort: (json['sort'] as num?)?.toDouble() ?? 0,
+      ep: (json['ep'] as num?)?.toDouble() ??
+          (json['sort'] as num?)?.toDouble() ??
+          0,
+      airDate: json['airdate'] as String? ?? '',
+    );
+  }
+}
+
 class BangumiSubjectDetail {
   BangumiSubjectDetail({
     required this.id,
