@@ -55,7 +55,7 @@ class BangumiApi {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'User-Agent':
-          'FlutterUTools/1.0.0 (https://github.com/yourusername/flutter_utools)', // TODO: Update User-Agent
+          'FlutterUTools/1.0.0 (https://github.com/yourusername/flutter_utools)',
     };
     if (accessToken != null && accessToken.isNotEmpty) {
       headers['Authorization'] = 'Bearer $accessToken';
