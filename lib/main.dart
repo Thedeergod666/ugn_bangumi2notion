@@ -16,38 +16,38 @@ import 'screens/calendar_page.dart';
 import 'services/logging.dart';
 import 'theme/kazumi_theme.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await dotenv.load(fileName: ".env");
-  } catch (_) {
-    // .env file is optional
-  }
-
-  final settings = AppSettings();
-  await settings.load();
+void main() {
   final logger = Logger();
-
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    logger.error(
-      'FlutterError: ${details.exceptionAsString()}',
-      error: details.exception,
-      stackTrace: details.stack,
-    );
-  };
-
-  PlatformDispatcher.instance.onError = (error, stack) {
-    logger.error(
-      'PlatformDispatcher error: ${error.runtimeType}',
-      error: error,
-      stackTrace: stack,
-    );
-    return true;
-  };
-
   runZonedGuarded(
-    () {
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      try {
+        await dotenv.load(fileName: ".env");
+      } catch (_) {
+        // .env file is optional
+      }
+
+      final settings = AppSettings();
+      await settings.load();
+
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        logger.error(
+          'FlutterError: ${details.exceptionAsString()}',
+          error: details.exception,
+          stackTrace: details.stack,
+        );
+      };
+
+      PlatformDispatcher.instance.onError = (error, stack) {
+        logger.error(
+          'PlatformDispatcher error: ${error.runtimeType}',
+          error: error,
+          stackTrace: stack,
+        );
+        return true;
+      };
+
       runApp(
         MultiProvider(
           providers: [

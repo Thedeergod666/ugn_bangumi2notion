@@ -34,28 +34,29 @@ class AppearanceSettingsPage extends StatelessWidget {
       builder: (context) {
         return AlertDialog(
           title: const Text('深色模式'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RadioListTile<ThemeMode>(
-                title: const Text('跟随系统'),
-                value: ThemeMode.system,
-                groupValue: settings.themeMode,
-                onChanged: (value) => Navigator.pop(context, value),
-              ),
-              RadioListTile<ThemeMode>(
-                title: const Text('浅色模式'),
-                value: ThemeMode.light,
-                groupValue: settings.themeMode,
-                onChanged: (value) => Navigator.pop(context, value),
-              ),
-              RadioListTile<ThemeMode>(
-                title: const Text('深色模式'),
-                value: ThemeMode.dark,
-                groupValue: settings.themeMode,
-                onChanged: (value) => Navigator.pop(context, value),
-              ),
-            ],
+          content: RadioGroup<ThemeMode>(
+            groupValue: settings.themeMode,
+            onChanged: (value) => Navigator.pop(context, value),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<ThemeMode>(
+                  title: const Text('跟随系统'),
+                  value: ThemeMode.system,
+                  selected: settings.themeMode == ThemeMode.system,
+                ),
+                RadioListTile<ThemeMode>(
+                  title: const Text('浅色模式'),
+                  value: ThemeMode.light,
+                  selected: settings.themeMode == ThemeMode.light,
+                ),
+                RadioListTile<ThemeMode>(
+                  title: const Text('深色模式'),
+                  value: ThemeMode.dark,
+                  selected: settings.themeMode == ThemeMode.dark,
+                ),
+              ],
+            ),
           ),
         );
       },
