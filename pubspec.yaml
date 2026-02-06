@@ -38,6 +38,7 @@ dependencies:
   flutter_secure_storage: ^9.2.2
   url_launcher: ^6.3.2
   google_fonts: ^6.2.1
+  dynamic_color: ^1.8.1
   flutter_dotenv: ^6.0.0
   html: ^0.15.4
   provider: ^6.1.2

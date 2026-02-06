@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,12 +12,14 @@ class NavigationShell extends StatefulWidget {
     required this.selectedRoute,
     required this.child,
     this.actions,
+    this.onBack,
   });
 
   final String title;
   final String selectedRoute;
   final Widget child;
   final List<Widget>? actions;
+  final VoidCallback? onBack;
 
   @override
   State<NavigationShell> createState() => _NavigationShellState();
@@ -88,6 +92,11 @@ class _NavigationShellState extends State<NavigationShell> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final settings = context.watch<AppSettings>();
+    final isDesktop =
+        Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    final showAppBar =
+        widget.onBack != null || !(isDesktop && settings.useSystemTitleBar);
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 900;
@@ -107,12 +116,19 @@ class _NavigationShellState extends State<NavigationShell> {
 
         return Scaffold(
           backgroundColor: colorScheme.surface,
-          appBar: AppBar(
-            title: Text(widget.title),
-            automaticallyImplyLeading: false,
-            leading: null,
-            actions: widget.actions,
-          ),
+          appBar: showAppBar
+              ? AppBar(
+                  title: Text(widget.title),
+                  automaticallyImplyLeading: widget.onBack != null,
+                  leading: widget.onBack == null
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: widget.onBack,
+                        ),
+                  actions: widget.actions,
+                )
+              : null,
           body: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(

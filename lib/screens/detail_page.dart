@@ -681,6 +681,7 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final ratingColor = colorScheme.tertiary;
+    final showRatings = context.watch<AppSettings>().showRatings;
     return SliverAppBar(
       expandedHeight: 380,
       pinned: true,
@@ -778,55 +779,58 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Text(
-                              detail.score.toStringAsFixed(1),
-                              style: TextStyle(
-                                color: ratingColor,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
+                        if (showRatings) ...[
+                          Row(
+                            children: [
+                              Text(
+                                detail.score.toStringAsFixed(1),
+                                style: TextStyle(
+                                  color: ratingColor,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: List.generate(5, (index) {
-                                    final rating = detail.score / 2;
-                                    if (index < rating.floor()) {
-                                      return Icon(
-                                        Icons.star,
-                                        color: ratingColor,
-                                        size: 12,
-                                      );
-                                    } else if (index < rating) {
-                                      return Icon(
-                                        Icons.star_half,
-                                        color: ratingColor,
-                                        size: 12,
-                                      );
-                                    } else {
-                                      return Icon(
-                                        Icons.star_border,
-                                        color: ratingColor,
-                                        size: 12,
-                                      );
-                                    }
-                                  }),
-                                ),
-                                Text(
-                                  'Rank #${detail.rank ?? "N/A"}',
-                                  style: textTheme.labelSmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: List.generate(5, (index) {
+                                      final rating = detail.score / 2;
+                                      if (index < rating.floor()) {
+                                        return Icon(
+                                          Icons.star,
+                                          color: ratingColor,
+                                          size: 12,
+                                        );
+                                      } else if (index < rating) {
+                                        return Icon(
+                                          Icons.star_half,
+                                          color: ratingColor,
+                                          size: 12,
+                                        );
+                                      } else {
+                                        return Icon(
+                                          Icons.star_border,
+                                          color: ratingColor,
+                                          size: 12,
+                                        );
+                                      }
+                                    }),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
+                                  Text(
+                                    'Rank #${detail.rank ?? "N/A"}',
+                                    style: textTheme.labelSmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ] else
+                          const SizedBox(height: 16),
                         // Action Button: View on Bangumi
                         InkWell(
                           onTap: () async {
@@ -872,11 +876,13 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                     ),
                   ),
                   // Right: Rating Distribution
-                  Expanded(
-                    child: RatingChart(
+                  if (showRatings)
+                    Expanded(
+                      child: RatingChart(
                         ratingCount: detail.ratingCount,
-                        total: detail.ratingTotal),
-                  ),
+                        total: detail.ratingTotal,
+                      ),
+                    ),
                 ],
               ),
             ),

@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,9 +10,11 @@ import '../app/app_settings.dart';
 import '../config/bangumi_oauth_config.dart';
 import '../models/bangumi_models.dart';
 import '../services/bangumi_oauth.dart';
-import '../services/notion_api.dart';
 import '../widgets/error_detail_dialog.dart';
 import '../widgets/navigation_shell.dart';
+import 'appearance_settings_page.dart';
+import 'database_settings_page.dart';
+import 'error_log_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -24,10 +25,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late final BangumiOAuth _oauth;
-  late final NotionApi _notionApi;
 
-  final _notionTokenController = TextEditingController();
-  final _notionDbController = TextEditingController();
   final _bangumiClientIdController = TextEditingController();
   final _bangumiClientSecretController = TextEditingController();
 
@@ -43,34 +41,16 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    final services = context.read<AppServices>();
-    _oauth = services.bangumiOAuth;
-    _notionApi = services.notionApi;
+    _oauth = context.read<AppServices>().bangumiOAuth;
     _load();
   }
 
   Future<void> _load() async {
-    final appSettings = context.read<AppSettings>();
-
-    String notionToken = appSettings.notionToken;
-    if (notionToken.isEmpty) {
-      notionToken = dotenv.env['NOTION_TOKEN'] ?? '';
-    }
-
-    String notionDbId = appSettings.notionDatabaseId;
-    if (notionDbId.isEmpty) {
-      notionDbId = dotenv.env['NOTION_DATABASE_ID'] ?? '';
-    }
-
-    _notionTokenController.text = notionToken;
-    _notionDbController.text = notionDbId;
-
     if (mounted) {
       setState(() {
         _loading = false;
       });
     }
-
     await _refreshBangumiStatus();
   }
 
@@ -117,49 +97,6 @@ class _SettingsPageState extends State<SettingsPage> {
         backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
       ),
     );
-  }
-
-  Future<void> _autoSaveNotionSettings() async {
-    try {
-      await context.read<AppSettings>().saveNotionSettings(
-            token: _notionTokenController.text.trim(),
-            databaseId: _notionDbController.text.trim(),
-          );
-    } catch (_) {}
-  }
-
-  Future<void> _saveAll() async {
-    setState(() {
-      _saving = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
-
-    try {
-      await context.read<AppSettings>().saveNotionSettings(
-            token: _notionTokenController.text.trim(),
-            databaseId: _notionDbController.text.trim(),
-          );
-      if (mounted) {
-        setState(() {
-          _successMessage = '设置已保存';
-        });
-        _showSnackBar('设置已保存');
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = '保存失败，请稍后重试';
-        });
-        _showSnackBar('保存失败，请稍后重试', isError: true);
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
-    }
   }
 
   Future<void> _authorize() async {
@@ -215,6 +152,52 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _logoutBangumi() async {
+    setState(() {
+      _saving = true;
+      _bangumiLoading = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+
+    try {
+      await _oauth.logout();
+      if (!mounted) {
+        return;
+      }
+      await context.read<AppSettings>().clearBangumiAccessToken();
+      if (mounted) {
+        setState(() {
+          _bangumiHasToken = false;
+          _bangumiTokenValid = false;
+          _bangumiUser = null;
+          _successMessage = '已退出 Bangumi 授权';
+        });
+        _showSnackBar('已退出 Bangumi 授权');
+      }
+    } catch (error, stackTrace) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = '退出失败，请稍后重试';
+        });
+        await showDialog(
+          context: context,
+          builder: (context) => ErrorDetailDialog(
+            error: error,
+            stackTrace: stackTrace,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _bangumiLoading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _showBangumiConfigMissingDialog() async {
     if (!mounted) {
       return;
@@ -232,7 +215,7 @@ class _SettingsPageState extends State<SettingsPage> {
               Text(
                 '${BangumiOAuthConfig.missingMessage}\n'
                 '请在环境变量/打包参数中添加这两个，或联系开发人员重新打包。\n'
-                '提示：写入环境变量后需要重新打包/重启会话才能生效。',
+                '提示：写入环境变量后需要重新打包/重启应用。',
               ),
               if (showEnvInputs) ...[
                 const SizedBox(height: 16),
@@ -268,9 +251,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         clientSecret: clientSecret,
                       );
                       if (mounted) {
-                        _showSnackBar(
-                          '已写入环境变量，需重新打包/重启会话后生效',
-                        );
+                        _showSnackBar('已写入环境变量，重启应用后生效');
                       }
                       if (context.mounted) {
                         Navigator.of(context).pop();
@@ -304,7 +285,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   showEnvInputs = !showEnvInputs;
                 });
               },
-              child: Text(showEnvInputs ? '收起添加环境变量' : '添加环境变量'),
+              child: Text(showEnvInputs ? '收起环境变量' : '添加环境变量'),
             ),
             FilledButton(
               onPressed: () async {
@@ -398,98 +379,14 @@ class _SettingsPageState extends State<SettingsPage> {
     return '$content$line\n';
   }
 
-  Future<void> _logoutBangumi() async {
-    setState(() {
-      _saving = true;
-      _bangumiLoading = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
-
-    try {
-      await _oauth.logout();
-      if (!mounted) {
-        return;
-      }
-      await context.read<AppSettings>().clearBangumiAccessToken();
-      if (mounted) {
-        setState(() {
-          _bangumiHasToken = false;
-          _bangumiTokenValid = false;
-          _bangumiUser = null;
-          _successMessage = '已退出 Bangumi 授权';
-        });
-        _showSnackBar('已退出 Bangumi 授权');
-      }
-    } catch (error, stackTrace) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = '退出失败，请稍后重试';
-        });
-        await showDialog(
-          context: context,
-          builder: (context) => ErrorDetailDialog(
-            error: error,
-            stackTrace: stackTrace,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-          _bangumiLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _testNotionConnection() async {
-    setState(() {
-      _saving = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
-
-    try {
-      final token = _notionTokenController.text.trim();
-      final databaseId = _notionDbController.text.trim();
-
-      if (token.isEmpty || databaseId.isEmpty) {
-        throw Exception('请先填写 Notion Token 与 Database ID');
-      }
-
-      await _notionApi.testConnection(
-        token: token,
-        databaseId: databaseId,
-      );
-
-      if (mounted) {
-        setState(() {
-          _successMessage = 'Notion 连接成功';
-        });
-        _showSnackBar('Notion 连接成功');
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = '连接失败，请稍后重试';
-        });
-        _showSnackBar('连接失败，请稍后重试', isError: true);
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
-    }
+  void _openPage(Widget page) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => page),
+    );
   }
 
   @override
   void dispose() {
-    _notionTokenController.dispose();
-    _notionDbController.dispose();
     _bangumiClientIdController.dispose();
     _bangumiClientSecretController.dispose();
     super.dispose();
@@ -505,95 +402,8 @@ class _SettingsPageState extends State<SettingsPage> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _sectionTitle('Bangumi 设置'),
-                _buildBangumiStatusCard(),
-                const SizedBox(height: 12),
-                Text(
-                  '点击授权将打开系统浏览器，完成登录后会回调到本地 http://localhost:8080/auth/callback。',
-                  style:
-                      TextStyle(color: Theme.of(context).colorScheme.outline),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _saving ? null : _authorize,
-                        icon: _bangumiLoading
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.lock_open),
-                        label: const Text('登录/授权'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    OutlinedButton.icon(
-                      onPressed: (_saving || !_bangumiHasToken)
-                          ? null
-                          : _logoutBangumi,
-                      icon: const Icon(Icons.logout),
-                      label: const Text('登出'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                _sectionTitle('Notion 设置'),
-                TextField(
-                  controller: _notionTokenController,
-                  decoration: InputDecoration(
-                    labelText: 'Notion Token',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: TextButton.icon(
-                        onPressed: () => launchUrl(
-                            Uri.parse('https://www.notion.so/my-integrations')),
-                        icon: const Icon(Icons.key_rounded, size: 18),
-                        label: const Text('获取'),
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          foregroundColor:
-                              Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                    helperText:
-                        '前往 Notion 开发者后台获取 Internal Integration Token，将安全保存',
-                  ),
-                  obscureText: true,
-                  onChanged: (_) => _autoSaveNotionSettings(),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _notionDbController,
-                  decoration: const InputDecoration(
-                    labelText: 'Notion Database ID',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (_) => _autoSaveNotionSettings(),
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: _saving ? null : _saveAll,
-                  icon: const Icon(Icons.save),
-                  label: const Text('保存设置'),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: _saving ? null : _testNotionConnection,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.link),
-                  label: const Text('测试 Notion 连接'),
-                ),
+                _sectionTitle('账号与同步'),
+                _buildBangumiCard(),
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -612,12 +422,42 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 24),
-                _sectionTitle('OAuth 回调配置'),
-                _buildCopyableTile(
+                const SizedBox(height: 20),
+                _sectionTitle('应用与外观'),
+                _buildGroup(
                   context,
-                  label: '桌面端回调地址',
-                  value: 'http://localhost:8080/auth/callback',
+                  [
+                    _buildNavTile(
+                      icon: Icons.storage_rounded,
+                      title: '数据库设置',
+                      subtitle: '配置 Notion Token 与数据库 ID',
+                      onTap: () => _openPage(const DatabaseSettingsPage()),
+                    ),
+                    _buildNavTile(
+                      icon: Icons.palette_outlined,
+                      title: '外观设置',
+                      subtitle: '主题、配色、字体等',
+                      onTap: () => _openPage(const AppearanceSettingsPage()),
+                    ),
+                    _buildNavTile(
+                      icon: Icons.bug_report_outlined,
+                      title: '错误日志',
+                      subtitle: '查看错误日志与复制',
+                      onTap: () => _openPage(const ErrorLogPage()),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                _sectionTitle('开发者'),
+                _buildGroup(
+                  context,
+                  [
+                    _buildCopyableTile(
+                      context,
+                      label: 'OAuth 回调地址',
+                      value: 'http://localhost:8080/auth/callback',
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -632,6 +472,94 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildBangumiCard() {
+    final hasToken = _bangumiHasToken;
+    final userLabel = _bangumiUser == null
+        ? '未获取到用户信息'
+        : (_bangumiUser!.nickname.isNotEmpty ? _bangumiUser!.nickname : '已登录');
+    final statusText =
+        hasToken ? (_bangumiTokenValid ? '已登录' : 'Token 无效或已过期') : '未登录';
+    final statusColor = _bangumiTokenValid
+        ? Colors.green
+        : (hasToken ? Colors.orange : Colors.grey);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(Icons.account_circle, color: statusColor),
+            title: Text(
+              statusText,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: statusColor,
+              ),
+            ),
+            subtitle: Text(
+              userLabel,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12,
+              ),
+            ),
+            trailing: TextButton.icon(
+              onPressed: _bangumiLoading ? null : _refreshBangumiStatus,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('刷新'),
+            ),
+          ),
+          Divider(height: 1, color: colorScheme.outlineVariant),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _saving ? null : _authorize,
+                        icon: _bangumiLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.lock_open),
+                        label: const Text('登录/授权'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed:
+                          (_saving || !_bangumiHasToken) ? null : _logoutBangumi,
+                      icon: const Icon(Icons.logout),
+                      label: const Text('登出'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '点击授权将打开系统浏览器，完成登录后会回调到本地地址。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCopyableTile(
     BuildContext context, {
     required String label,
@@ -642,41 +570,42 @@ class _SettingsPageState extends State<SettingsPage> {
         Clipboard.setData(ClipboardData(text: value));
         _showSnackBar('已复制到剪贴板: $value');
       },
-      borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        child: Row(
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
+            const Icon(Icons.link_rounded, size: 18),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
                     value,
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                       color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
-                ),
-                Icon(
-                  Icons.copy_rounded,
-                  size: 16,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.7),
-                ),
-              ],
+                ],
+              ),
+            ),
+            Icon(
+              Icons.copy_rounded,
+              size: 16,
+              color: Theme.of(context)
+                  .colorScheme
+                  .primary
+                  .withValues(alpha: 0.7),
             ),
           ],
         ),
@@ -684,56 +613,46 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildBangumiStatusCard() {
-    final hasToken = _bangumiHasToken;
-    final userLabel = _bangumiUser == null
-        ? '未获取到用户信息'
-        : (_bangumiUser!.nickname.isNotEmpty ? _bangumiUser!.nickname : '已登录');
-    final statusText =
-        hasToken ? (_bangumiTokenValid ? '已登录' : 'Token 无效或已过期') : '未登录';
-    final statusColor = _bangumiTokenValid
-        ? Colors.green
-        : (hasToken ? Colors.orange : Colors.grey);
-
+  Widget _buildGroup(BuildContext context, List<Widget> tiles) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.account_circle, color: statusColor),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  statusText,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: statusColor,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  userLabel,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          TextButton.icon(
-            onPressed: _bangumiLoading ? null : _refreshBangumiStatus,
-            icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('刷新'),
-          ),
-        ],
+      child: Column(
+        children: _addDividers(context, tiles),
       ),
+    );
+  }
+
+  List<Widget> _addDividers(BuildContext context, List<Widget> tiles) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final children = <Widget>[];
+    for (var i = 0; i < tiles.length; i++) {
+      if (i > 0) {
+        children.add(
+          Divider(height: 1, color: colorScheme.outlineVariant),
+        );
+      }
+      children.add(tiles[i]);
+    }
+    return children;
+  }
+
+  Widget _buildNavTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    VoidCallback? onTap,
+  }) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: subtitle == null ? null : Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
     );
   }
 

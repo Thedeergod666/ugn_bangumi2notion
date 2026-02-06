@@ -10,6 +10,12 @@ class SettingsKeys {
   static const notionToken = 'notionToken';
   static const notionDatabaseId = 'notionDatabaseId';
   static const themeMode = 'themeMode';
+  static const useDynamicColor = 'useDynamicColor';
+  static const colorSchemeId = 'colorSchemeId';
+  static const useSystemFont = 'useSystemFont';
+  static const showRatings = 'showRatings';
+  static const oledOptimization = 'oledOptimization';
+  static const useSystemTitleBar = 'useSystemTitleBar';
   static const mappingConfig = 'mappingConfig';
   static const dailyRecommendationBindings = 'dailyRecommendationBindings';
   static const notionProperties = 'notionProperties';
@@ -78,9 +84,43 @@ class SettingsStorage {
     _cache![SettingsKeys.themeMode] = mode;
   }
 
+  Future<void> saveUseDynamicColor(bool value) async {
+    await _saveBoolSetting(SettingsKeys.useDynamicColor, value);
+  }
+
+  Future<void> saveColorSchemeId(String value) async {
+    final prefs = await _prefs;
+    await prefs.setString(SettingsKeys.colorSchemeId, value);
+    _cache ??= {};
+    _cache![SettingsKeys.colorSchemeId] = value;
+  }
+
+  Future<void> saveUseSystemFont(bool value) async {
+    await _saveBoolSetting(SettingsKeys.useSystemFont, value);
+  }
+
+  Future<void> saveShowRatings(bool value) async {
+    await _saveBoolSetting(SettingsKeys.showRatings, value);
+  }
+
+  Future<void> saveOledOptimization(bool value) async {
+    await _saveBoolSetting(SettingsKeys.oledOptimization, value);
+  }
+
+  Future<void> saveUseSystemTitleBar(bool value) async {
+    await _saveBoolSetting(SettingsKeys.useSystemTitleBar, value);
+  }
+
   Future<String> getThemeMode() async {
     final prefs = await _prefs;
     return prefs.getString(SettingsKeys.themeMode) ?? 'system';
+  }
+
+  Future<void> _saveBoolSetting(String key, bool value) async {
+    final prefs = await _prefs;
+    await prefs.setBool(key, value);
+    _cache ??= {};
+    _cache![key] = value.toString();
   }
 
   Future<void> saveMappingConfig(MappingConfig config) async {
@@ -164,6 +204,14 @@ class SettingsStorage {
       return Map<String, String>.from(_cache!);
     }
     final prefs = await _prefs;
+    final useDynamicColor =
+        prefs.getBool(SettingsKeys.useDynamicColor) ?? false;
+    final useSystemFont = prefs.getBool(SettingsKeys.useSystemFont) ?? false;
+    final showRatings = prefs.getBool(SettingsKeys.showRatings) ?? true;
+    final oledOptimization =
+        prefs.getBool(SettingsKeys.oledOptimization) ?? false;
+    final useSystemTitleBar =
+        prefs.getBool(SettingsKeys.useSystemTitleBar) ?? false;
     final data = {
       SettingsKeys.bangumiAccessToken:
           await _secureStorage.read(key: SettingsKeys.bangumiAccessToken) ?? '',
@@ -175,6 +223,13 @@ class SettingsStorage {
           prefs.getString(SettingsKeys.notionDatabaseId) ?? '',
       SettingsKeys.themeMode:
           prefs.getString(SettingsKeys.themeMode) ?? 'system',
+      SettingsKeys.useDynamicColor: useDynamicColor.toString(),
+      SettingsKeys.colorSchemeId:
+          prefs.getString(SettingsKeys.colorSchemeId) ?? 'default',
+      SettingsKeys.useSystemFont: useSystemFont.toString(),
+      SettingsKeys.showRatings: showRatings.toString(),
+      SettingsKeys.oledOptimization: oledOptimization.toString(),
+      SettingsKeys.useSystemTitleBar: useSystemTitleBar.toString(),
     };
     _cache = Map<String, String>.from(data);
     return data;

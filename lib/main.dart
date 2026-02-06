@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +13,7 @@ import 'screens/search_page.dart';
 import 'screens/settings_page.dart';
 import 'screens/mapping_page.dart';
 import 'screens/calendar_page.dart';
+import 'services/logging.dart';
 import 'theme/kazumi_theme.dart';
 
 void main() async {
@@ -21,18 +26,49 @@ void main() async {
 
   final settings = AppSettings();
   await settings.load();
+  final logger = Logger();
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: settings),
-        Provider<AppServices>(
-          create: (_) => AppServices(),
-          dispose: (_, services) => services.dispose(),
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    logger.error(
+      'FlutterError: ${details.exceptionAsString()}',
+      error: details.exception,
+      stackTrace: details.stack,
+    );
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    logger.error(
+      'PlatformDispatcher error: ${error.runtimeType}',
+      error: error,
+      stackTrace: stack,
+    );
+    return true;
+  };
+
+  runZonedGuarded(
+    () {
+      runApp(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: settings),
+            ChangeNotifierProvider.value(value: logger),
+            Provider<AppServices>(
+              create: (_) => AppServices(logger: logger),
+              dispose: (_, services) => services.dispose(),
+            ),
+          ],
+          child: const MyApp(),
         ),
-      ],
-      child: const MyApp(),
-    ),
+      );
+    },
+    (error, stack) {
+      logger.error(
+        'Uncaught zone error: ${error.runtimeType}',
+        error: error,
+        stackTrace: stack,
+      );
+    },
   );
 }
 
@@ -70,14 +106,36 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentMode = context.watch<AppSettings>().themeMode;
-    return MaterialApp(
-      title: '悠gn助手',
-      theme: KazumiTheme.light(),
-      darkTheme: KazumiTheme.dark(),
-      themeMode: currentMode,
-      initialRoute: '/calendar',
-      onGenerateRoute: _onGenerateRoute,
+    final settings = context.watch<AppSettings>();
+    final seed = KazumiTheme.seedForId(settings.colorSchemeId).color;
+    return DynamicColorBuilder(
+      builder: (lightDynamic, darkDynamic) {
+        final lightScheme = KazumiTheme.buildScheme(
+          brightness: Brightness.light,
+          seedColor: seed,
+          dynamicScheme: settings.useDynamicColor ? lightDynamic : null,
+        );
+        final darkScheme = KazumiTheme.buildScheme(
+          brightness: Brightness.dark,
+          seedColor: seed,
+          dynamicScheme: settings.useDynamicColor ? darkDynamic : null,
+          oledOptimization: settings.oledOptimization,
+        );
+        return MaterialApp(
+          title: '鎮爂n助手',
+          theme: KazumiTheme.light(
+            scheme: lightScheme,
+            useSystemFont: settings.useSystemFont,
+          ),
+          darkTheme: KazumiTheme.dark(
+            scheme: darkScheme,
+            useSystemFont: settings.useSystemFont,
+          ),
+          themeMode: settings.themeMode,
+          initialRoute: '/calendar',
+          onGenerateRoute: _onGenerateRoute,
+        );
+      },
     );
   }
 }

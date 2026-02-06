@@ -1,15 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
-class ErrorDetailDialog extends StatelessWidget {
-  final Object error;
-  final StackTrace? stackTrace;
+import '../services/logging.dart';
 
+class ErrorDetailDialog extends StatefulWidget {
   const ErrorDetailDialog({
     super.key,
     required this.error,
     this.stackTrace,
   });
+
+  final Object error;
+  final StackTrace? stackTrace;
+
+  @override
+  State<ErrorDetailDialog> createState() => _ErrorDetailDialogState();
+}
+
+class _ErrorDetailDialogState extends State<ErrorDetailDialog> {
+  bool _logged = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _logged) {
+        return;
+      }
+      final logger = context.read<Logger>();
+      logger.error(
+        'UI error dialog: ${widget.error}',
+        error: widget.error,
+        stackTrace: widget.stackTrace,
+      );
+      _logged = true;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,24 +45,24 @@ class ErrorDetailDialog extends StatelessWidget {
         children: [
           Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
           const SizedBox(width: 8),
-          const Text('导入失败详情'),
+          const Text('错误详情'),
         ],
       ),
       content: SizedBox(
-        width: double.maxFinite, // Ensure dialog takes appropriate width
+        width: double.maxFinite,
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               SelectableText(
-                'Error: $error',
+                'Error: ${widget.error}',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.error,
                 ),
               ),
-              if (stackTrace != null) ...[
+              if (widget.stackTrace != null) ...[
                 const SizedBox(height: 16),
                 const Text(
                   'Stack Trace:',
@@ -50,7 +77,7 @@ class ErrorDetailDialog extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: SelectableText(
-                    stackTrace.toString(),
+                    widget.stackTrace.toString(),
                     style: const TextStyle(
                       fontSize: 12,
                       fontFamily: 'monospace',
@@ -65,7 +92,8 @@ class ErrorDetailDialog extends StatelessWidget {
       actions: [
         TextButton.icon(
           onPressed: () {
-            final text = 'Error: $error\n\nStack Trace:\n$stackTrace';
+            final text =
+                'Error: ${widget.error}\n\nStack Trace:\n${widget.stackTrace}';
             Clipboard.setData(ClipboardData(text: text));
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('错误信息已复制')),

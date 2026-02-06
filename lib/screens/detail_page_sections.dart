@@ -121,6 +121,7 @@ mixin _DetailPageSections on State<DetailPage> {
   Widget _buildCommentsTab(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final showRatings = context.watch<AppSettings>().showRatings;
     if (_commentsLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -192,7 +193,7 @@ mixin _DetailPageSections on State<DetailPage> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    if (comment.rate > 0)
+                    if (showRatings && comment.rate > 0)
                       Row(
                         children: List.generate(5, (i) {
                           return Icon(

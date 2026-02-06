@@ -283,6 +283,7 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   Widget _buildBody(BuildContext context) {
+    final showRatings = context.watch<AppSettings>().showRatings;
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -321,7 +322,7 @@ class _CalendarPageState extends State<CalendarPage> {
       children: [
         if (!_notionConfigured) _buildNoticeBanner(context),
         if (_notionConfigured) ...[
-          _buildBoundSection(context),
+          _buildBoundSection(context, showRatings: showRatings),
           const SizedBox(height: 12),
         ],
         _buildWeekdaySelector(context),
@@ -344,6 +345,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     isBound: _boundIds.contains(item.id),
                     watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
                     latestEpisodes: _latestEpisodeCache[item.id] ?? 0,
+                    showRatings: showRatings,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -444,7 +446,10 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
-  Widget _buildBoundSection(BuildContext context) {
+  Widget _buildBoundSection(
+    BuildContext context, {
+    required bool showRatings,
+  }) {
     final now = DateTime.now();
     final dateLabel = '${now.year}-${now.month}-${now.day}';
     final hasBound = _boundItems.isNotEmpty;
@@ -486,6 +491,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   yougnScore: _yougnScores[item.id],
                   detail: _detailCache[item.id],
                   latestEpisodes: _latestEpisodeCache[item.id] ?? 0,
+                  showRatings: showRatings,
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
@@ -629,6 +635,7 @@ class _BoundBangumiCard extends StatelessWidget {
     required this.yougnScore,
     required this.detail,
     required this.latestEpisodes,
+    required this.showRatings,
     required this.onTap,
   });
 
@@ -637,6 +644,7 @@ class _BoundBangumiCard extends StatelessWidget {
   final double? yougnScore;
   final BangumiSubjectDetail? detail;
   final int latestEpisodes;
+  final bool showRatings;
   final VoidCallback onTap;
 
   @override
@@ -686,9 +694,10 @@ class _BoundBangumiCard extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (yougnScore != null)
+                          if (showRatings && yougnScore != null)
                             Text('悠GN ${yougnScore!.toStringAsFixed(1)}'),
-                          if (yougnScore != null) const SizedBox(height: 4),
+                          if (showRatings && yougnScore != null)
+                            const SizedBox(height: 4),
                           Text('已追 $watchedText'),
                           const SizedBox(height: 4),
                           Text('已更 $latestText'),
@@ -715,6 +724,7 @@ class _CalendarItemCard extends StatelessWidget {
     required this.isBound,
     required this.watchedEpisodes,
     required this.latestEpisodes,
+    required this.showRatings,
     required this.onTap,
   });
 
@@ -723,6 +733,7 @@ class _CalendarItemCard extends StatelessWidget {
   final bool isBound;
   final int watchedEpisodes;
   final int latestEpisodes;
+  final bool showRatings;
   final VoidCallback onTap;
 
   @override
@@ -737,7 +748,8 @@ class _CalendarItemCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final score = detail?.score ?? 0;
     final rank = detail?.rank;
-    final hasRating = score > 0 || (rank != null && rank > 0);
+    final hasRating =
+        showRatings && (score > 0 || (rank != null && rank > 0));
     final tags = detail?.tags.take(10).toList() ?? <String>[];
     final ratingStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
           color: colorScheme.tertiary,

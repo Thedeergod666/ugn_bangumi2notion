@@ -627,6 +627,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     required String longReview,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final showRatings = context.watch<AppSettings>().showRatings;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -641,7 +642,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            Container(
+            if (showRatings)
+              Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: colorScheme.primaryContainer,
