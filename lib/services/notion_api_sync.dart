@@ -385,6 +385,93 @@ extension NotionApiSync on NotionApi {
     return progress;
   }
 
+  Future<List<NotionSearchItem>> searchDatabase({
+    required String token,
+    required String databaseId,
+    required String titlePropertyName,
+    required String keyword,
+  }) async {
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 鏃犳晥');
+    }
+    final trimmedKeyword = keyword.trim();
+    if (trimmedKeyword.isEmpty) {
+      return [];
+    }
+
+    String propertyType = 'title';
+    try {
+      final properties = await getDatabaseProperties(
+        token: token,
+        databaseId: normalizedDatabaseId,
+      );
+      final prop = properties.firstWhere(
+        (p) => p.name == titlePropertyName,
+        orElse: () => NotionProperty(name: titlePropertyName, type: ''),
+      );
+      if (prop.type.isNotEmpty) {
+        propertyType = prop.type;
+      }
+    } catch (e) {
+      _logger.debug('Schema fetch failed in searchDatabase: $e');
+    }
+
+    final filterKey = propertyType == 'title' ? 'title' : 'rich_text';
+    final url = Uri.parse(NotionApi._baseUrl).replace(
+      pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query'],
+    );
+
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Notion post',
+      request: () => _client
+          .post(
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Notion-Version': NotionApi._notionVersion,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'page_size': 50,
+              'filter': {
+                'property': titlePropertyName,
+                filterKey: {'contains': trimmedKeyword},
+              },
+            }),
+          )
+          .timeout(NotionApi._queryTimeout),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_mapNotionError('Notion 搜索', response));
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final results = data['results'] as List<dynamic>? ?? [];
+    final items = <NotionSearchItem>[];
+    for (final item in results) {
+      if (item is! Map<String, dynamic>) continue;
+      final properties = item['properties'] as Map<String, dynamic>? ?? {};
+      final titleProperty =
+          properties[titlePropertyName] as Map<String, dynamic>?;
+      final title = titleProperty != null
+          ? (_extractPlainText(titleProperty) ?? '')
+          : '';
+      if (title.isEmpty) continue;
+      items.add(
+        NotionSearchItem(
+          id: item['id']?.toString() ?? '',
+          title: title,
+          url: item['url']?.toString() ?? '',
+        ),
+      );
+    }
+
+    return items;
+  }
+
   Future<String?> findPageByUniqueId({
     required String token,
     required String databaseId,

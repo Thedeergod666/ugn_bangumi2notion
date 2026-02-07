@@ -128,7 +128,8 @@ class NotionMappingPanel extends StatelessWidget {
             color: Theme.of(context).colorScheme.primary,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
+        _buildSectionTitle('核心字段'),
         _buildBindingRow(
           context,
           label: '标题 (title)',
@@ -147,10 +148,44 @@ class NotionMappingPanel extends StatelessWidget {
         ),
         _buildBindingRow(
           context,
+          label: 'Bangumi评分 (bangumiScore)',
+          value: bindings.bangumiScore,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(bangumiScore: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: 'Bangumi排名 (bangumiRank)',
+          value: bindings.bangumiRank,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(bangumiRank: value),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSectionTitle('日期信息'),
+        _buildBindingRow(
+          context,
+          label: '追番日期 (followDate)',
+          value: bindings.followDate,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(followDate: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
           label: '放送日期 (airDate)',
           value: bindings.airDate,
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(airDate: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '放送日期范围 (airDateRange)',
+          value: bindings.airDateRange,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(airDateRange: value),
           ),
         ),
         _buildBindingRow(
@@ -169,6 +204,42 @@ class NotionMappingPanel extends StatelessWidget {
             bindings.copyWith(type: value),
           ),
         ),
+        const SizedBox(height: 12),
+        _buildSectionTitle('制作信息'),
+        _buildBindingRow(
+          context,
+          label: '动画制作 (animationProduction)',
+          value: bindings.animationProduction,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(animationProduction: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '导演 (director)',
+          value: bindings.director,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(director: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '脚本 (script)',
+          value: bindings.script,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(script: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '分镜 (storyboard)',
+          value: bindings.storyboard,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(storyboard: value),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSectionTitle('内容信息'),
         _buildBindingRow(
           context,
           label: '短评 (shortReview)',
@@ -194,12 +265,38 @@ class NotionMappingPanel extends StatelessWidget {
             bindings.copyWith(subjectId: value.isEmpty ? null : value),
           ),
         ),
+        _buildBindingRow(
+          context,
+          label: '封面 (cover)',
+          value: bindings.cover,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(cover: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '长评 (longReview)',
+          value: bindings.longReview,
+          onChanged: (value) => onBindingsChanged(
+            bindings.copyWith(longReview: value),
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildAutoExtractedNote(BuildContext context) {
     return const SizedBox.shrink();
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        title,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+    );
   }
 
   Widget _buildBindingRow(

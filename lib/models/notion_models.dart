@@ -33,7 +33,10 @@ class NotionProperty {
 class DailyRecommendation {
   final String title;
   final double? yougnScore;
+  final double? bangumiScore;
   final DateTime? airDate;
+  final DateTime? airEndDate;
+  final DateTime? followDate;
   final List<String> tags;
   final String? type;
   final String? shortReview;
@@ -43,11 +46,20 @@ class DailyRecommendation {
   final String? contentLongReview;
   final String? bangumiId;
   final String? subjectId;
+  final String? pageId;
+  final String? pageUrl;
+  final String? animationProduction;
+  final String? director;
+  final String? script;
+  final String? storyboard;
 
   const DailyRecommendation({
     required this.title,
     required this.yougnScore,
+    required this.bangumiScore,
     required this.airDate,
+    required this.airEndDate,
+    required this.followDate,
     required this.tags,
     required this.type,
     required this.shortReview,
@@ -57,13 +69,22 @@ class DailyRecommendation {
     this.contentLongReview,
     required this.bangumiId,
     required this.subjectId,
+    required this.pageId,
+    required this.pageUrl,
+    required this.animationProduction,
+    required this.director,
+    required this.script,
+    required this.storyboard,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'title': title,
       'yougnScore': yougnScore,
+      'bangumiScore': bangumiScore,
       'airDate': airDate?.toIso8601String(),
+      'airEndDate': airEndDate?.toIso8601String(),
+      'followDate': followDate?.toIso8601String(),
       'tags': tags,
       'type': type,
       'shortReview': shortReview,
@@ -73,6 +94,12 @@ class DailyRecommendation {
       'contentLongReview': contentLongReview,
       'bangumiId': bangumiId,
       'subjectId': subjectId,
+      'pageId': pageId,
+      'pageUrl': pageUrl,
+      'animationProduction': animationProduction,
+      'director': director,
+      'script': script,
+      'storyboard': storyboard,
     };
   }
 
@@ -85,11 +112,20 @@ class DailyRecommendation {
             .toList()
         : <String>[];
     final airDateText = json['airDate']?.toString();
+    final airEndDateText = json['airEndDate']?.toString();
+    final followDateText = json['followDate']?.toString();
     return DailyRecommendation(
       title: json['title']?.toString() ?? '',
       yougnScore: (json['yougnScore'] as num?)?.toDouble(),
+      bangumiScore: (json['bangumiScore'] as num?)?.toDouble(),
       airDate: airDateText != null && airDateText.isNotEmpty
           ? DateTime.tryParse(airDateText)
+          : null,
+      airEndDate: airEndDateText != null && airEndDateText.isNotEmpty
+          ? DateTime.tryParse(airEndDateText)
+          : null,
+      followDate: followDateText != null && followDateText.isNotEmpty
+          ? DateTime.tryParse(followDateText)
           : null,
       tags: tags,
       type: json['type']?.toString(),
@@ -100,8 +136,36 @@ class DailyRecommendation {
       contentLongReview: json['contentLongReview']?.toString(),
       bangumiId: json['bangumiId']?.toString(),
       subjectId: json['subjectId']?.toString(),
+      pageId: json['pageId']?.toString(),
+      pageUrl: json['pageUrl']?.toString(),
+      animationProduction: json['animationProduction']?.toString(),
+      director: json['director']?.toString(),
+      script: json['script']?.toString(),
+      storyboard: json['storyboard']?.toString(),
     );
   }
+}
+
+class NotionScoreEntry {
+  final double yougnScore;
+  final double bangumiScore;
+
+  const NotionScoreEntry({
+    required this.yougnScore,
+    required this.bangumiScore,
+  });
+}
+
+class NotionSearchItem {
+  final String id;
+  final String title;
+  final String url;
+
+  const NotionSearchItem({
+    required this.id,
+    required this.title,
+    required this.url,
+  });
 }
 
 class BangumiProgressInfo {

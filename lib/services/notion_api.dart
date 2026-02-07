@@ -32,6 +32,7 @@ class NotionApi {
   static const double defaultYougnScoreThreshold = 6.5;
   static const int _dailyRecommendationMaxQueryItems = 200;
   static const int _dailyRecommendationTargetItems = 50;
+  static const int _scoreHistogramMaxItems = 1000;
   static const int _logTextLimit = 200;
 
   void dispose() {

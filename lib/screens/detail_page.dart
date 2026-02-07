@@ -541,6 +541,7 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
         airDate: _detail!.airDate,
         epsCount: _detail!.epsCount,
         tags: selectedTags ?? [], // 浣跨敤閫変腑鐨勬爣绛?
+        tagDetails: _detail!.tagDetails,
         studio: _detail!.studio,
         director: _detail!.director,
         script: _detail!.script,

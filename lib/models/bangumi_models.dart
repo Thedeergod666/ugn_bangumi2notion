@@ -158,6 +158,23 @@ class BangumiEpisode {
   }
 }
 
+class BangumiTag {
+  final String name;
+  final int count;
+
+  const BangumiTag({
+    required this.name,
+    required this.count,
+  });
+
+  factory BangumiTag.fromJson(Map<String, dynamic> json) {
+    return BangumiTag(
+      name: json['name']?.toString() ?? '',
+      count: (json['count'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class BangumiSubjectDetail {
   BangumiSubjectDetail({
     required this.id,
@@ -168,6 +185,7 @@ class BangumiSubjectDetail {
     required this.airDate,
     required this.epsCount,
     required this.tags,
+    required this.tagDetails,
     required this.studio,
     required this.director,
     required this.script,
@@ -188,6 +206,7 @@ class BangumiSubjectDetail {
   final String airDate;
   final int epsCount;
   final List<String> tags;
+  final List<BangumiTag> tagDetails;
   String studio;
   String director;
   String script;
@@ -207,6 +226,13 @@ class BangumiSubjectDetail {
 
     final infoboxMap = _buildInfoboxMap(infoboxList);
 
+    final tagDetails = tagsJson
+        .whereType<Map<String, dynamic>>()
+        .map(BangumiTag.fromJson)
+        .where((tag) => tag.name.isNotEmpty)
+        .toList();
+    final tagNames = tagDetails.map((tag) => tag.name).toList();
+
     return BangumiSubjectDetail(
       id: (json['id'] as num?)?.toInt() ?? 0,
       name: json['name'] as String? ?? '',
@@ -216,11 +242,8 @@ class BangumiSubjectDetail {
           images?['large'] as String? ?? images?['medium'] as String? ?? '',
       airDate: json['date'] as String? ?? '',
       epsCount: (json['eps'] as num?)?.toInt() ?? 0,
-      tags: tagsJson
-          .map((tag) =>
-              tag is Map<String, dynamic> ? tag['name'] as String? : null)
-          .whereType<String>()
-          .toList(),
+      tags: tagNames,
+      tagDetails: tagDetails,
       studio: _getFromInfoboxMap(infoboxMap, ['动画制作', '制作', '制作会社']),
       director: _getFromInfoboxMap(infoboxMap, ['导演', '監督']),
       script:
@@ -291,6 +314,7 @@ class BangumiSubjectDetail {
     String? airDate,
     int? epsCount,
     List<String>? tags,
+    List<BangumiTag>? tagDetails,
     String? studio,
     String? director,
     String? script,
@@ -311,6 +335,7 @@ class BangumiSubjectDetail {
       airDate: airDate ?? this.airDate,
       epsCount: epsCount ?? this.epsCount,
       tags: tags ?? this.tags,
+      tagDetails: tagDetails ?? this.tagDetails,
       studio: studio ?? this.studio,
       director: director ?? this.director,
       script: script ?? this.script,

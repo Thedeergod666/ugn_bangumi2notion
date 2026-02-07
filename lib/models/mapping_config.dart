@@ -244,24 +244,40 @@ class MappingConfig {
 class NotionDailyRecommendationBindings {
   final String title;
   final String yougnScore;
+  final String bangumiScore;
+  final String bangumiRank;
+  final String followDate;
   final String airDate;
+  final String airDateRange;
   final String tags;
   final String type;
   final String shortReview;
   final String longReview;
   final String cover;
+  final String animationProduction;
+  final String director;
+  final String script;
+  final String storyboard;
   final String? bangumiId;
   final String? subjectId;
 
   const NotionDailyRecommendationBindings({
     this.title = '',
     this.yougnScore = '',
+    this.bangumiScore = '',
+    this.bangumiRank = '',
+    this.followDate = '',
     this.airDate = '',
+    this.airDateRange = '',
     this.tags = '',
     this.type = '',
     this.shortReview = '',
     this.longReview = '',
     this.cover = '',
+    this.animationProduction = '',
+    this.director = '',
+    this.script = '',
+    this.storyboard = '',
     this.bangumiId,
     this.subjectId,
   });
@@ -269,12 +285,20 @@ class NotionDailyRecommendationBindings {
   bool get isEmpty {
     return title.isEmpty &&
         yougnScore.isEmpty &&
+        bangumiScore.isEmpty &&
+        bangumiRank.isEmpty &&
+        followDate.isEmpty &&
         airDate.isEmpty &&
+        airDateRange.isEmpty &&
         tags.isEmpty &&
         type.isEmpty &&
         shortReview.isEmpty &&
         longReview.isEmpty &&
         cover.isEmpty &&
+        animationProduction.isEmpty &&
+        director.isEmpty &&
+        script.isEmpty &&
+        storyboard.isEmpty &&
         (bangumiId == null || bangumiId!.isEmpty) &&
         (subjectId == null || subjectId!.isEmpty);
   }
@@ -283,12 +307,20 @@ class NotionDailyRecommendationBindings {
     return {
       'title': title,
       'yougnScore': yougnScore,
+      'bangumiScore': bangumiScore,
+      'bangumiRank': bangumiRank,
+      'followDate': followDate,
       'airDate': airDate,
+      'airDateRange': airDateRange,
       'tags': tags,
       'type': type,
       'shortReview': shortReview,
       'longReview': longReview,
       'cover': cover,
+      'animationProduction': animationProduction,
+      'director': director,
+      'script': script,
+      'storyboard': storyboard,
       'bangumiId': bangumiId,
       'subjectId': subjectId,
     };
@@ -306,12 +338,20 @@ class NotionDailyRecommendationBindings {
     return NotionDailyRecommendationBindings(
       title: json['title'] ?? '',
       yougnScore: json['yougnScore'] ?? '',
+      bangumiScore: json['bangumiScore'] ?? '',
+      bangumiRank: json['bangumiRank'] ?? '',
+      followDate: json['followDate'] ?? '',
       airDate: json['airDate'] ?? '',
+      airDateRange: json['airDateRange'] ?? '',
       tags: json['tags'] ?? '',
       type: json['type'] ?? '',
       shortReview: json['shortReview'] ?? '',
       longReview: json['longReview'] ?? '',
       cover: json['cover'] ?? '',
+      animationProduction: json['animationProduction'] ?? '',
+      director: json['director'] ?? '',
+      script: json['script'] ?? '',
+      storyboard: json['storyboard'] ?? '',
       bangumiId: normalizeOptionalString(json['bangumiId']),
       subjectId: normalizeOptionalString(json['subjectId']),
     );
@@ -320,24 +360,40 @@ class NotionDailyRecommendationBindings {
   NotionDailyRecommendationBindings copyWith({
     String? title,
     String? yougnScore,
+    String? bangumiScore,
+    String? bangumiRank,
+    String? followDate,
     String? airDate,
+    String? airDateRange,
     String? tags,
     String? type,
     String? shortReview,
     String? longReview,
     String? cover,
+    String? animationProduction,
+    String? director,
+    String? script,
+    String? storyboard,
     String? bangumiId,
     String? subjectId,
   }) {
     return NotionDailyRecommendationBindings(
       title: title ?? this.title,
       yougnScore: yougnScore ?? this.yougnScore,
+      bangumiScore: bangumiScore ?? this.bangumiScore,
+      bangumiRank: bangumiRank ?? this.bangumiRank,
+      followDate: followDate ?? this.followDate,
       airDate: airDate ?? this.airDate,
+      airDateRange: airDateRange ?? this.airDateRange,
       tags: tags ?? this.tags,
       type: type ?? this.type,
       shortReview: shortReview ?? this.shortReview,
       longReview: longReview ?? this.longReview,
       cover: cover ?? this.cover,
+      animationProduction: animationProduction ?? this.animationProduction,
+      director: director ?? this.director,
+      script: script ?? this.script,
+      storyboard: storyboard ?? this.storyboard,
       bangumiId: bangumiId ?? this.bangumiId,
       subjectId: subjectId ?? this.subjectId,
     );

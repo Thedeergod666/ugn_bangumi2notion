@@ -1,15 +1,18 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../models/mapping_config.dart';
-import '../models/notion_models.dart';
 import '../app/app_services.dart';
 import '../app/app_settings.dart';
+import '../models/bangumi_models.dart';
+import '../models/mapping_config.dart';
+import '../models/notion_models.dart';
+import '../services/bangumi_api.dart';
 import '../services/notion_api.dart';
 import '../services/settings_storage.dart';
 import '../widgets/error_detail_dialog.dart';
@@ -17,11 +20,33 @@ import '../widgets/navigation_shell.dart';
 
 class _DailyCacheData {
   final List<DailyRecommendation> candidates;
-  final int index;
+  final List<int> indices;
+  final int currentIndex;
 
   const _DailyCacheData({
     required this.candidates,
-    required this.index,
+    required this.indices,
+    required this.currentIndex,
+  });
+}
+
+class _NotionContent {
+  final String? coverUrl;
+  final String? longReview;
+
+  const _NotionContent({
+    required this.coverUrl,
+    required this.longReview,
+  });
+}
+
+class _ScoreBin {
+  final String label;
+  final int count;
+
+  const _ScoreBin({
+    required this.label,
+    required this.count,
   });
 }
 
@@ -34,15 +59,33 @@ class RecommendationPage extends StatefulWidget {
 
 class _RecommendationPageState extends State<RecommendationPage> {
   static const double _minScore = 6.5;
+  static const int _heroSize = 3;
   static const int _logTextLimit = 200;
+  static const List<String> _scoreLabels = [
+    '10',
+    '[9,10)',
+    '[8,9)',
+    '[7,8)',
+    '[6,7)',
+    '[5,6)',
+    '[4,5)',
+    '[3,4)',
+    '[2,3)',
+    '[1,2)',
+    '[0,1)',
+  ];
 
   late final NotionApi _notionApi;
+  late final BangumiApi _bangumiApi;
   final SettingsStorage _settingsStorage = SettingsStorage();
+  final PageController _pageController = PageController();
 
   bool _loading = true;
-  DailyRecommendation? _recommendation;
   List<DailyRecommendation> _dailyCandidates = [];
-  int _dailyIndex = 0;
+  List<int> _heroIndices = [];
+  int _currentHeroIndex = 0;
+  bool _statsLoading = false;
+
   String? _errorMessage;
   String? _emptyMessage;
   String? _configurationMessage;
@@ -50,20 +93,40 @@ class _RecommendationPageState extends State<RecommendationPage> {
   Object? _error;
   StackTrace? _stackTrace;
 
+  bool _showLongReview = false;
+  bool _swapRightCards = false;
+
+  final Map<int, BangumiSubjectDetail> _bangumiDetailCache = {};
+  final Set<int> _bangumiDetailLoading = {};
+  final Map<String, _NotionContent> _notionContentCache = {};
+  final Set<String> _notionContentLoading = {};
+
+  List<NotionScoreEntry> _scoreEntries = [];
+  List<_ScoreBin> _scoreBins = [];
+  int _scoreTotal = 0;
+
   @override
   void initState() {
     super.initState();
-    _notionApi = context.read<AppServices>().notionApi;
+    final services = context.read<AppServices>();
+    _notionApi = services.notionApi;
+    _bangumiApi = services.bangumiApi;
     _loadRecommendation();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadRecommendation({bool showLoading = true}) async {
     if (showLoading && mounted) {
       setState(() {
         _loading = true;
-        _recommendation = null;
         _dailyCandidates = [];
-        _dailyIndex = 0;
+        _heroIndices = [];
+        _currentHeroIndex = 0;
         _errorMessage = null;
         _emptyMessage = null;
         _configurationMessage = null;
@@ -80,20 +143,33 @@ class _RecommendationPageState extends State<RecommendationPage> {
         if (kDebugMode) {
           debugPrint('[DailyReco] cache hit');
         }
+        final indices = _normalizeHeroIndices(
+          cached.indices,
+          cached.candidates.length,
+        );
+        final currentIndex =
+            (cached.currentIndex >= 0 && cached.currentIndex < indices.length)
+                ? cached.currentIndex
+                : 0;
         if (!mounted) return;
-        final current = cached.candidates.isNotEmpty
-            ? cached.candidates[cached.index]
-            : null;
         setState(() {
           _dailyCandidates = cached.candidates;
-          _dailyIndex = cached.index;
-          _recommendation = current;
+          _heroIndices = indices;
+          _currentHeroIndex = currentIndex;
           _loading = false;
-          _emptyMessage =
-              (cached.candidates.isEmpty || current?.title.isEmpty == true)
-                  ? '暂无 ${_minScore.toStringAsFixed(1)}+ 条目'
-                  : null;
+          _emptyMessage = _dailyCandidates.isEmpty
+              ? '暂无 ${_minScore.toStringAsFixed(1)}+ 条目'
+              : null;
         });
+        _jumpToHeroIndex(currentIndex);
+        final bindings = await _loadBindings();
+        if (bindings != null) {
+          await _loadLibraryStats(
+            token: appSettings.notionToken,
+            databaseId: appSettings.notionDatabaseId,
+            bindings: bindings,
+          );
+        }
         return;
       }
 
@@ -111,12 +187,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
         return;
       }
 
-      final mappingConfig = await _settingsStorage.getMappingConfig();
-      final legacyBindings =
-          await _settingsStorage.getDailyRecommendationBindings();
-      final bindings = _resolveBindings(mappingConfig, legacyBindings);
-
-      if (bindings.isEmpty ||
+      final bindings = await _loadBindings();
+      if (bindings == null ||
           bindings.yougnScore.isEmpty ||
           bindings.title.isEmpty) {
         _setConfiguration(
@@ -133,34 +205,85 @@ class _RecommendationPageState extends State<RecommendationPage> {
         minScore: _minScore,
       );
 
-      final pickedIndex =
-          candidates.isEmpty ? 0 : Random().nextInt(candidates.length);
+      final indices = _pickHeroIndices(candidates.length);
       await _saveDailyCache(
         candidates: candidates,
-        index: pickedIndex,
+        indices: indices,
+        currentIndex: 0,
       );
 
       if (!mounted) return;
       setState(() {
         _dailyCandidates = candidates;
-        _dailyIndex = pickedIndex;
-        _recommendation =
-            candidates.isNotEmpty ? candidates[pickedIndex] : null;
+        _heroIndices = indices;
+        _currentHeroIndex = 0;
         _loading = false;
         if (candidates.isEmpty) {
           _emptyMessage = '暂无 ${_minScore.toStringAsFixed(1)}+ 条目';
         }
       });
+      _jumpToHeroIndex(0);
+      await _loadLibraryStats(
+        token: token,
+        databaseId: databaseId,
+        bindings: bindings,
+      );
     } catch (error, stackTrace) {
       if (!mounted) return;
       final isTimeout = error is TimeoutException;
       setState(() {
         _loading = false;
-        _errorMessage = isTimeout ? '网络较慢，点击换一部重试' : '加载失败，请稍后重试';
+        _errorMessage =
+            isTimeout ? '网络较慢，点击换一部重试' : '加载失败，请稍后重试';
         _error = error;
         _stackTrace = stackTrace;
       });
       _showErrorSnackBar(error, stackTrace);
+    }
+  }
+
+  Future<NotionDailyRecommendationBindings?> _loadBindings() async {
+    final mappingConfig = await _settingsStorage.getMappingConfig();
+    final legacyBindings =
+        await _settingsStorage.getDailyRecommendationBindings();
+    final bindings = _resolveBindings(mappingConfig, legacyBindings);
+    return bindings.isEmpty ? null : bindings;
+  }
+
+  Future<void> _loadLibraryStats({
+    required String token,
+    required String databaseId,
+    required NotionDailyRecommendationBindings bindings,
+  }) async {
+    if (token.isEmpty || databaseId.isEmpty || bindings.yougnScore.isEmpty) {
+      return;
+    }
+    if (_statsLoading) return;
+    setState(() => _statsLoading = true);
+    try {
+      final entries = await _notionApi.getYougnScoreEntries(
+        token: token,
+        databaseId: databaseId,
+        yougnScoreProperty: bindings.yougnScore,
+        bangumiScoreProperty:
+            bindings.bangumiScore.isEmpty ? null : bindings.bangumiScore,
+      );
+      final bins = _buildScoreBins(entries);
+      if (!mounted) return;
+      setState(() {
+        _scoreEntries = entries;
+        _scoreBins = bins;
+        _scoreTotal = entries.length;
+        _statsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _statsLoading = false;
+        _scoreEntries = [];
+        _scoreBins = [];
+        _scoreTotal = 0;
+      });
     }
   }
 
@@ -176,7 +299,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     if (value == null) return '';
     final trimmed = value.trim();
     if (trimmed.length <= _logTextLimit) return trimmed;
-    return '${trimmed.substring(0, _logTextLimit)}…';
+    return '${trimmed.substring(0, _logTextLimit)}...';
   }
 
   Future<_DailyCacheData?> _loadDailyCache() async {
@@ -199,23 +322,36 @@ class _RecommendationPageState extends State<RecommendationPage> {
             .whereType<Map<String, dynamic>>()
             .map(DailyRecommendation.fromJson)
             .toList();
-        var index = int.tryParse(decoded['index']?.toString() ?? '') ?? 0;
-        if (index < 0) index = 0;
-        if (index >= candidates.length && candidates.isNotEmpty) {
-          index = 0;
+        final indices = _parseIndices(decoded['indices'], candidates.length);
+        var currentIndex =
+            int.tryParse(decoded['currentIndex']?.toString() ?? '') ??
+                int.tryParse(decoded['index']?.toString() ?? '') ??
+                0;
+        if (currentIndex < 0) currentIndex = 0;
+        if (currentIndex >= indices.length && indices.isNotEmpty) {
+          currentIndex = 0;
         }
         if (kDebugMode) {
-          final currentTitle =
-              candidates.isNotEmpty ? candidates[index].title : '';
+          final currentTitle = candidates.isNotEmpty
+              ? candidates[indices.isNotEmpty ? indices.first : 0].title
+              : '';
           final currentScore = candidates.isNotEmpty
-              ? candidates[index].yougnScore?.toStringAsFixed(1) ?? '-'
+              ? candidates[indices.isNotEmpty ? indices.first : 0]
+                      .yougnScore
+                      ?.toStringAsFixed(1) ??
+                  '-'
               : '-';
           debugPrint(
             '[DailyReco] cache payload candidates=${candidates.length} '
-            'index=$index title="${_clipLog(currentTitle)}" score=$currentScore',
+            'indices=${indices.length} title="${_clipLog(currentTitle)}" '
+            'score=$currentScore',
           );
         }
-        return _DailyCacheData(candidates: candidates, index: index);
+        return _DailyCacheData(
+          candidates: candidates,
+          indices: indices,
+          currentIndex: currentIndex,
+        );
       }
       final recommendation = DailyRecommendation.fromJson(decoded);
       if (kDebugMode) {
@@ -224,7 +360,11 @@ class _RecommendationPageState extends State<RecommendationPage> {
           'score=${recommendation.yougnScore?.toStringAsFixed(1) ?? "-"}',
         );
       }
-      return _DailyCacheData(candidates: [recommendation], index: 0);
+      return _DailyCacheData(
+        candidates: [recommendation],
+        indices: const [0],
+        currentIndex: 0,
+      );
     } catch (_) {
       return null;
     }
@@ -232,11 +372,13 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
   Future<void> _saveDailyCache({
     required List<DailyRecommendation> candidates,
-    required int index,
+    required List<int> indices,
+    required int currentIndex,
   }) async {
     final payload = jsonEncode({
-      'version': 2,
-      'index': index,
+      'version': 3,
+      'currentIndex': currentIndex,
+      'indices': indices,
       'candidates': candidates.map((item) => item.toJson()).toList(),
     });
     await _settingsStorage.saveDailyRecommendationCache(
@@ -245,18 +387,43 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
   }
 
-  Future<void> _nextRecommendation() async {
-    if (_dailyCandidates.length <= 1) return;
-    final nextIndex = (_dailyIndex + 1) % _dailyCandidates.length;
-    if (kDebugMode) {
-      debugPrint('[DailyReco] next index=$nextIndex');
+  List<int> _parseIndices(dynamic raw, int max) {
+    if (raw is! List) return [];
+    final indices = <int>[];
+    for (final value in raw) {
+      final parsed = int.tryParse(value.toString());
+      if (parsed == null) continue;
+      if (parsed < 0 || parsed >= max) continue;
+      if (!indices.contains(parsed)) indices.add(parsed);
     }
-    if (!mounted) return;
-    setState(() {
-      _dailyIndex = nextIndex;
-      _recommendation = _dailyCandidates[nextIndex];
+    return indices;
+  }
+
+  List<int> _pickHeroIndices(int count) {
+    if (count <= 0) return [];
+    final size = min(count, _heroSize);
+    final rand = Random();
+    final picks = <int>{};
+    while (picks.length < size) {
+      picks.add(rand.nextInt(count));
+    }
+    final list = picks.toList()..shuffle(rand);
+    return list;
+  }
+
+  List<int> _normalizeHeroIndices(List<int> indices, int count) {
+    if (count <= 0) return [];
+    final valid = indices.where((i) => i >= 0 && i < count).toList();
+    if (valid.isEmpty) return _pickHeroIndices(count);
+    return valid;
+  }
+
+  void _jumpToHeroIndex(int index) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_pageController.hasClients) return;
+      if (index < 0 || index >= _heroIndices.length) return;
+      _pageController.jumpToPage(index);
     });
-    await _saveDailyCache(candidates: _dailyCandidates, index: _dailyIndex);
   }
 
   NotionDailyRecommendationBindings _resolveBindings(
@@ -299,8 +466,189 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
   }
 
+  Future<void> _reshuffleRecommendations() async {
+    if (_dailyCandidates.isEmpty) {
+      await _loadRecommendation();
+      return;
+    }
+    final indices = _pickHeroIndices(_dailyCandidates.length);
+    if (indices.isEmpty) return;
+    if (!mounted) return;
+    setState(() {
+      _heroIndices = indices;
+      _currentHeroIndex = 0;
+      _showLongReview = false;
+      _swapRightCards = false;
+    });
+    await _saveDailyCache(
+      candidates: _dailyCandidates,
+      indices: _heroIndices,
+      currentIndex: _currentHeroIndex,
+    );
+    _jumpToHeroIndex(0);
+  }
+
+  int? _resolveSubjectId(DailyRecommendation recommendation) {
+    final raw = (recommendation.subjectId?.trim().isNotEmpty == true)
+        ? recommendation.subjectId
+        : recommendation.bangumiId;
+    if (raw == null || raw.trim().isEmpty) return null;
+    return int.tryParse(raw.trim());
+  }
+
+  void _scheduleBangumiDetailLoad(int subjectId) {
+    if (_bangumiDetailCache.containsKey(subjectId) ||
+        _bangumiDetailLoading.contains(subjectId)) {
+      return;
+    }
+    _bangumiDetailLoading.add(subjectId);
+    _loadBangumiDetail(subjectId);
+  }
+
+  Future<void> _loadBangumiDetail(int subjectId) async {
+    try {
+      final token = context.read<AppSettings>().bangumiAccessToken;
+      final detail = await _bangumiApi.fetchDetail(
+        subjectId: subjectId,
+        accessToken: token.isEmpty ? null : token,
+      );
+      if (!mounted) return;
+      setState(() {
+        _bangumiDetailCache[subjectId] = detail;
+      });
+    } catch (_) {
+      // Ignore bangumi detail failures
+    } finally {
+      _bangumiDetailLoading.remove(subjectId);
+    }
+  }
+
+  void _scheduleNotionContentLoad(String? pageId) {
+    if (pageId == null || pageId.trim().isEmpty) return;
+    if (_notionContentCache.containsKey(pageId) ||
+        _notionContentLoading.contains(pageId)) {
+      return;
+    }
+    _notionContentLoading.add(pageId);
+    _loadNotionContent(pageId);
+  }
+
+  Future<void> _loadNotionContent(String pageId) async {
+    try {
+      final token = context.read<AppSettings>().notionToken;
+      if (token.isEmpty) return;
+      final content = await _notionApi.getPageContent(
+        token: token,
+        pageId: pageId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _notionContentCache[pageId] = _NotionContent(
+          coverUrl: content.coverUrl,
+          longReview: content.longReview,
+        );
+      });
+    } catch (_) {
+      // Ignore notion content failures
+    } finally {
+      _notionContentLoading.remove(pageId);
+    }
+  }
+
+  _NotionContent? _resolveNotionContent(DailyRecommendation recommendation) {
+    final pageId = recommendation.pageId?.trim() ?? '';
+    if (pageId.isEmpty) return null;
+    return _notionContentCache[pageId];
+  }
+
+  String _resolveCoverUrl(
+    DailyRecommendation recommendation,
+    BangumiSubjectDetail? detail,
+    _NotionContent? content,
+  ) {
+    final detailCover = detail?.imageUrl ?? '';
+    if (detailCover.isNotEmpty) return detailCover;
+    final cover = recommendation.cover?.trim() ?? '';
+    if (cover.isNotEmpty) return cover;
+    final cachedCover = recommendation.contentCoverUrl?.trim() ?? '';
+    if (cachedCover.isNotEmpty) return cachedCover;
+    final contentCover = content?.coverUrl?.trim() ?? '';
+    if (contentCover.isNotEmpty) return contentCover;
+    return '';
+  }
+
+  String _resolveLongReview(
+    DailyRecommendation recommendation,
+    _NotionContent? content,
+  ) {
+    final direct = recommendation.longReview?.trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+    final cached = recommendation.contentLongReview?.trim() ?? '';
+    if (cached.isNotEmpty) return cached;
+    final contentText = content?.longReview?.trim() ?? '';
+    return contentText;
+  }
+
+  List<String> _resolveTags(
+    DailyRecommendation recommendation,
+    BangumiSubjectDetail? detail,
+  ) {
+    if (detail != null && detail.tagDetails.isNotEmpty) {
+      final sorted = [...detail.tagDetails]
+        ..sort((a, b) => b.count.compareTo(a.count));
+      return sorted.take(8).map((tag) => tag.name).toList();
+    }
+    return recommendation.tags.take(8).toList();
+  }
+
+  String _pickNotionOrBangumi(String? notionValue, String? bangumiValue) {
+    final notion = notionValue?.trim() ?? '';
+    if (notion.isNotEmpty) return notion;
+    return bangumiValue?.trim() ?? '';
+  }
+
+  int? _computeYougnRank(double? yougnScore, double? bangumiScore) {
+    if (yougnScore == null || _scoreEntries.isEmpty) return null;
+    final compareBangumiScore = bangumiScore ?? 0;
+    var rank = 1;
+    for (final entry in _scoreEntries) {
+      if (entry.yougnScore > yougnScore) {
+        rank += 1;
+        continue;
+      }
+      if (entry.yougnScore == yougnScore &&
+          entry.bangumiScore > compareBangumiScore) {
+        rank += 1;
+      }
+    }
+    return rank;
+  }
+
+  List<_ScoreBin> _buildScoreBins(List<NotionScoreEntry> entries) {
+    final counts = List<int>.filled(_scoreLabels.length, 0);
+    for (final entry in entries) {
+      final index = _scoreToBinIndex(entry.yougnScore);
+      counts[index] += 1;
+    }
+    return List.generate(
+      _scoreLabels.length,
+      (index) => _ScoreBin(label: _scoreLabels[index], count: counts[index]),
+    );
+  }
+
+  int _scoreToBinIndex(double score) {
+    if (score >= 10) return 0;
+    final clamped = score.clamp(0, 9.999);
+    final bucket = clamped.floor();
+    return 1 + (9 - bucket);
+  }
+
+  String _scoreToBinLabel(double score) {
+    return _scoreLabels[_scoreToBinIndex(score)];
+  }
+
   String _formatDate(DateTime? date) {
-    if (date == null) return '未知';
+    if (date == null) return '-';
     final local = date.toLocal();
     final y = local.year.toString().padLeft(4, '0');
     final m = local.month.toString().padLeft(2, '0');
@@ -308,15 +656,12 @@ class _RecommendationPageState extends State<RecommendationPage> {
     return '$y-$m-$d';
   }
 
-  String _formatCoverUrl(
-    String url, {
-    int head = 64,
-    int tail = 48,
-  }) {
-    if (url.length <= head + tail + 1) {
-      return url;
-    }
-    return '${url.substring(0, head)}…${url.substring(url.length - tail)}';
+  Future<void> _openNotionPage(String? url) async {
+    final trimmed = url?.trim() ?? '';
+    if (trimmed.isEmpty) return;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -371,31 +716,43 @@ class _RecommendationPageState extends State<RecommendationPage> {
         context,
         icon: Icons.inbox_outlined,
         title: _emptyMessage!,
-        actionLabel: '再换一部',
-        onAction: _loading
-            ? null
-            : () => _dailyCandidates.isNotEmpty
-                ? _nextRecommendation()
-                : _loadRecommendation(),
+        actionLabel: '换一部',
+        onAction: _loading ? null : _reshuffleRecommendations,
       );
     }
 
-    final recommendation = _recommendation;
-    if (recommendation == null) {
+    if (_dailyCandidates.isEmpty || _heroIndices.isEmpty) {
       return _buildCenteredMessage(
         context,
         icon: Icons.inbox_outlined,
         title: '暂无推荐内容',
-        actionLabel: '再换一部',
-        onAction: _loading
-            ? null
-            : () => _dailyCandidates.isNotEmpty
-                ? _nextRecommendation()
-                : _loadRecommendation(),
+        actionLabel: '换一部',
+        onAction: _loading ? null : _reshuffleRecommendations,
       );
     }
 
-    return _buildRecommendationContent(context, recommendation);
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: _heroIndices.length,
+      onPageChanged: (index) {
+        if (!mounted) return;
+        setState(() {
+          _currentHeroIndex = index;
+          _showLongReview = false;
+          _swapRightCards = false;
+        });
+        _saveDailyCache(
+          candidates: _dailyCandidates,
+          indices: _heroIndices,
+          currentIndex: _currentHeroIndex,
+        );
+      },
+      itemBuilder: (context, index) {
+        final candidateIndex = _heroIndices[index];
+        final recommendation = _dailyCandidates[candidateIndex];
+        return _buildHeroPage(context, recommendation);
+      },
+    );
   }
 
   Widget _buildCenteredMessage(
@@ -449,288 +806,704 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
   }
 
-  Widget _buildRecommendationContent(
+  Widget _buildHeroPage(
     BuildContext context,
     DailyRecommendation recommendation,
   ) {
-    final title = recommendation.title;
-    final scoreText = recommendation.yougnScore?.toStringAsFixed(1) ?? '-';
-    final airDate = _formatDate(recommendation.airDate);
-    final tags = recommendation.tags;
-    final type = recommendation.type?.trim() ?? '';
-    final shortReview = recommendation.shortReview?.trim() ?? '';
-    final longReview = recommendation.longReview?.trim().isNotEmpty == true
-        ? recommendation.longReview!.trim()
-        : (recommendation.contentLongReview?.trim() ?? '');
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                '今日推荐',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              const Spacer(),
-              FilledButton.icon(
-                onPressed: _loading ? null : () => _nextRecommendation(),
-                icon: const Icon(Icons.shuffle),
-                label: const Text('换一部'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 900;
-              final cover = _buildCover(context, recommendation.cover);
-              final details = _buildRecommendationDetails(
-                context,
-                title: title,
-                scoreText: scoreText,
-                airDate: airDate,
-                type: type,
-                tags: tags,
-                shortReview: shortReview,
-                longReview: longReview,
-              );
-
-              if (isWide) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                        width: 260,
-                        child: AspectRatio(aspectRatio: 3 / 4, child: cover)),
-                    const SizedBox(width: 24),
-                    Expanded(child: details),
-                  ],
-                );
-              }
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AspectRatio(aspectRatio: 3 / 4, child: cover),
-                  const SizedBox(height: 16),
-                  details,
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCover(BuildContext context, String? coverUrl) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final url = coverUrl?.trim() ?? '';
-    final hasUrl = url.isNotEmpty;
-
-    if (!hasUrl) {
-      return Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Center(child: Icon(Icons.image_outlined, size: 48)),
-      );
+    final showRatings = context.watch<AppSettings>().showRatings;
+    final subjectId = _resolveSubjectId(recommendation);
+    if (subjectId != null) {
+      _scheduleBangumiDetailLoad(subjectId);
+    }
+    if ((recommendation.longReview?.trim().isEmpty ?? true) ||
+        (recommendation.cover?.trim().isEmpty ?? true)) {
+      _scheduleNotionContentLoad(recommendation.pageId);
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        color: colorScheme.surfaceContainerHighest,
-        child: Image.network(
-          url,
-          fit: BoxFit.cover,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) {
-              return child;
-            }
-            final expectedBytes = loadingProgress.expectedTotalBytes;
-            final loadedBytes = loadingProgress.cumulativeBytesLoaded;
-            final progress = expectedBytes != null && expectedBytes > 0
-                ? loadedBytes / expectedBytes
-                : null;
-            return Center(
-              child: CircularProgressIndicator(value: progress),
-            );
-          },
-          errorBuilder: (context, error, stackTrace) {
-            final displayUrl = _formatCoverUrl(url);
-            final errorType = error.runtimeType.toString();
-            final errorText = error.toString();
-            return Container(
-              width: double.infinity,
-              height: double.infinity,
-              color: colorScheme.surfaceContainerHighest,
-              padding: const EdgeInsets.all(12),
-              child: SingleChildScrollView(
-                child: Column(
+    final detail = subjectId != null ? _bangumiDetailCache[subjectId] : null;
+    final notionContent = _resolveNotionContent(recommendation);
+    final coverUrl = _resolveCoverUrl(recommendation, detail, notionContent);
+    final tags = _resolveTags(recommendation, detail);
+    final longReview = _resolveLongReview(recommendation, notionContent);
+
+    final bangumiScore = detail != null && detail.score > 0
+        ? detail.score
+        : recommendation.bangumiScore;
+    final yougnRank = _computeYougnRank(
+      recommendation.yougnScore,
+      bangumiScore,
+    );
+    final bangumiRank = detail?.rank;
+
+    final animationProduction = _pickNotionOrBangumi(
+      recommendation.animationProduction,
+      detail?.animationProduction,
+    );
+    final director = _pickNotionOrBangumi(
+      recommendation.director,
+      detail?.director,
+    );
+    final script = _pickNotionOrBangumi(
+      recommendation.script,
+      detail?.script,
+    );
+    final storyboard = _pickNotionOrBangumi(
+      recommendation.storyboard,
+      detail?.storyboard,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 1200;
+        final isMedium = constraints.maxWidth >= 900;
+        final isCompact = constraints.maxWidth < 720;
+
+        final coverPanel = _buildCoverPanel(
+          context,
+          coverUrl: coverUrl,
+          onTap: recommendation.pageUrl?.isNotEmpty == true
+              ? () => _openNotionPage(recommendation.pageUrl)
+              : null,
+        );
+        final infoPanel = _buildInfoPanel(
+          context,
+          recommendation: recommendation,
+          showRatings: showRatings,
+          yougnRank: yougnRank,
+          bangumiScore: bangumiScore,
+          bangumiRank: bangumiRank,
+          followDate: recommendation.followDate,
+          airDate: recommendation.airDate,
+          airEndDate: recommendation.airEndDate,
+          animationProduction: animationProduction,
+          director: director,
+          script: script,
+          storyboard: storyboard,
+          tags: tags,
+        );
+        final rightPanel = _buildRightPanel(
+          context,
+          recommendation: recommendation,
+          isWide: isWide,
+          longReview: longReview,
+        );
+
+        final header = _buildHeader(context);
+        final pageIndicator = _buildPageIndicator();
+
+        Widget content;
+        if (isWide) {
+          content = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 2, child: coverPanel),
+              const SizedBox(width: 16),
+              Expanded(flex: 3, child: infoPanel),
+              const SizedBox(width: 16),
+              Expanded(flex: 3, child: rightPanel),
+            ],
+          );
+        } else {
+          final top = isMedium
+              ? Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '图片加载失败',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: colorScheme.error,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'URL：',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                    SelectableText(
-                      displayUrl,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '错误类型：$errorType',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '错误信息：$errorText',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      maxLines: 6,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    Expanded(flex: 2, child: coverPanel),
+                    const SizedBox(width: 16),
+                    Expanded(flex: 3, child: infoPanel),
                   ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    coverPanel,
+                    const SizedBox(height: 16),
+                    infoPanel,
+                  ],
+                );
+
+          content = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              top,
+              const SizedBox(height: 16),
+              rightPanel,
+            ],
+          );
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              if (pageIndicator != null) ...[
+                const SizedBox(height: 8),
+                pageIndicator,
+              ],
+              const SizedBox(height: 16),
+              content,
+              if (isCompact) const SizedBox(height: 24),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildRecommendationDetails(
-    BuildContext context, {
-    required String title,
-    required String scoreText,
-    required String airDate,
-    required String type,
-    required List<String> tags,
-    required String shortReview,
-    required String longReview,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final showRatings = context.watch<AppSettings>().showRatings;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildHeader(BuildContext context) {
+    return Row(
       children: [
         Text(
-          title,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+          '今日推荐',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            if (showRatings)
-              Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.star,
-                    size: 16,
-                    color: colorScheme.onPrimaryContainer,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '悠gn评分 $scoreText',
-                    style: TextStyle(
-                      color: colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Chip(
-              label: Text('放送日期 $airDate'),
-              backgroundColor: colorScheme.surfaceContainerLow,
-              side: BorderSide(color: colorScheme.outlineVariant),
-            ),
-            if (type.isNotEmpty)
-              Chip(
-                label: Text(type),
-                backgroundColor: colorScheme.surfaceContainerLow,
-                side: BorderSide(color: colorScheme.outlineVariant),
-              ),
-          ],
+        const Spacer(),
+        FilledButton.icon(
+          onPressed: _loading ? null : _reshuffleRecommendations,
+          icon: const Icon(Icons.shuffle),
+          label: const Text('换一部'),
         ),
-        const SizedBox(height: 16),
-        if (tags.isNotEmpty) ...[
+      ],
+    );
+  }
+
+  Widget? _buildPageIndicator() {
+    if (_heroIndices.length <= 1) return null;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(_heroIndices.length, (index) {
+        final isActive = index == _currentHeroIndex;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 18 : 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: isActive
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.outlineVariant,
+            borderRadius: BorderRadius.circular(999),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildCoverPanel(
+    BuildContext context, {
+    required String coverUrl,
+    VoidCallback? onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          onTap: onTap,
+          child: AspectRatio(
+            aspectRatio: 3 / 4,
+            child: coverUrl.isEmpty
+                ? Container(
+                    color: colorScheme.surfaceContainerHighest,
+                    child: const Center(
+                      child: Icon(Icons.image_outlined, size: 48),
+                    ),
+                  )
+                : Image.network(
+                    coverUrl,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      final expected = loadingProgress.expectedTotalBytes;
+                      final loaded = loadingProgress.cumulativeBytesLoaded;
+                      final progress = expected != null && expected > 0
+                          ? loaded / expected
+                          : null;
+                      return Center(
+                        child: CircularProgressIndicator(value: progress),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: colorScheme.surfaceContainerHighest,
+                        child: const Center(
+                          child: Icon(Icons.broken_image_outlined, size: 48),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoPanel(
+    BuildContext context, {
+    required DailyRecommendation recommendation,
+    required bool showRatings,
+    required int? yougnRank,
+    required double? bangumiScore,
+    required int? bangumiRank,
+    required DateTime? followDate,
+    required DateTime? airDate,
+    required DateTime? airEndDate,
+    required String animationProduction,
+    required String director,
+    required String script,
+    required String storyboard,
+    required List<String> tags,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final title = recommendation.title;
+    final shortReview = recommendation.shortReview?.trim() ?? '';
+
+    return _buildPanel(
+      context,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(
-            '标签',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            title,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
           ),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: tags
-                .map(
-                  (tag) => Chip(
-                    label: Text(tag),
-                    backgroundColor: colorScheme.surfaceContainerLow,
-                  ),
-                )
-                .toList(),
+          if (showRatings)
+            _buildRatingLine(
+              context,
+              yougnScore: recommendation.yougnScore,
+              yougnRank: yougnRank,
+              bangumiScore: bangumiScore,
+              bangumiRank: bangumiRank,
+            ),
+          if (showRatings) const SizedBox(height: 10),
+          Text(
+            '悠简评',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 6),
+          Text(
+            shortReview.isEmpty ? '暂无简评' : shortReview,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: shortReview.isEmpty
+                      ? colorScheme.onSurfaceVariant
+                      : colorScheme.onSurface,
+                ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _buildDateLine(
+              followDate: followDate,
+              airDate: airDate,
+              airEndDate: airEndDate,
+            ),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _buildStaffLine(
+              animationProduction: animationProduction,
+              director: director,
+              script: script,
+              storyboard: storyboard,
+            ),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+          if (tags.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: tags
+                  .map(
+                    (tag) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        tag,
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildRatingLine(
+    BuildContext context, {
+    required double? yougnScore,
+    required int? yougnRank,
+    required double? bangumiScore,
+    required int? bangumiRank,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final yougnScoreText = yougnScore?.toStringAsFixed(1) ?? '-';
+    final yougnRankText = yougnRank == null ? '-' : '#$yougnRank';
+    final bangumiScoreText = bangumiScore?.toStringAsFixed(1) ?? '-';
+    final bangumiRankText = bangumiRank == null ? '-' : '#$bangumiRank';
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '悠gn $yougnScoreText',
+            style: TextStyle(
+              color: colorScheme.tertiary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          TextSpan(
+            text: ' | 排名 $yougnRankText',
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+          TextSpan(
+            text: ' | Bangumi $bangumiScoreText',
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+          TextSpan(
+            text: ' | 排名 $bangumiRankText',
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _buildDateLine({
+    required DateTime? followDate,
+    required DateTime? airDate,
+    required DateTime? airEndDate,
+  }) {
+    final followText = _formatDate(followDate);
+    final airText = _formatDate(airDate);
+    final endText = _formatDate(airEndDate);
+    return '追番 $followText | 放送 $airText | 结束 $endText';
+  }
+
+  String _buildStaffLine({
+    required String animationProduction,
+    required String director,
+    required String script,
+    required String storyboard,
+  }) {
+    final parts = <String>[];
+    if (animationProduction.isNotEmpty) {
+      parts.add('动画制作 $animationProduction');
+    }
+    if (director.isNotEmpty) {
+      parts.add('导演 $director');
+    }
+    if (script.isNotEmpty) {
+      parts.add('脚本 $script');
+    }
+    if (storyboard.isNotEmpty) {
+      parts.add('分镜 $storyboard');
+    }
+    if (parts.isEmpty) {
+      return '动画制作/导演/脚本/分镜：-';
+    }
+    return parts.join(' | ');
+  }
+
+  Widget _buildRightPanel(
+    BuildContext context, {
+    required DailyRecommendation recommendation,
+    required bool isWide,
+    required String longReview,
+  }) {
+    final hint = isWide
+        ? (_showLongReview ? '点击查看排名' : '点击查看长评')
+        : '点击交换顺序';
+    final rankCard = _buildRankCard(
+      context,
+      recommendation: recommendation,
+      hint: hint,
+    );
+    final reviewCard = _buildLongReviewCard(
+      context,
+      recommendation: recommendation,
+      longReview: longReview,
+      hint: hint,
+    );
+
+    if (isWide) {
+      return GestureDetector(
+        onTap: () => setState(() => _showLongReview = !_showLongReview),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: _showLongReview
+              ? KeyedSubtree(
+                  key: const ValueKey('review'),
+                  child: reviewCard,
+                )
+              : KeyedSubtree(
+                  key: const ValueKey('rank'),
+                  child: rankCard,
+                ),
+        ),
+      );
+    }
+
+    final cards =
+        _swapRightCards ? [reviewCard, rankCard] : [rankCard, reviewCard];
+    return GestureDetector(
+      onTap: () => setState(() => _swapRightCards = !_swapRightCards),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          cards[0],
+          const SizedBox(height: 16),
+          cards[1],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRankCard(
+    BuildContext context, {
+    required DailyRecommendation recommendation,
+    String? hint,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final yougnScore = recommendation.yougnScore;
+    final yougnScoreText = yougnScore?.toStringAsFixed(1) ?? '-';
+    final currentLabel =
+        yougnScore != null ? _scoreToBinLabel(yougnScore) : '-';
+    final total = _scoreTotal;
+    final maxCount = _scoreBins.fold<int>(
+      0,
+      (current, bin) => bin.count > current ? bin.count : current,
+    );
+
+    Widget body;
+    if (_statsLoading) {
+      body = const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    } else if (_scoreBins.isEmpty || total == 0) {
+      body = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Text(
+          '暂无评分分布数据',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+        ),
+      );
+    } else {
+      body = Column(
+        children: _scoreBins.map((bin) {
+          final isActive = bin.label == currentLabel;
+          return _buildScoreRow(
+            context,
+            bin: bin,
+            total: total,
+            maxCount: maxCount,
+            highlight: isActive,
+          );
+        }).toList(),
+      );
+    }
+
+    return _buildPanel(
+      context,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildPanelHeader(
+            context,
+            title: '排名分布',
+            hint: hint,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '当前评分 $yougnScoreText | 当前分区 $currentLabel | 共 $total 部',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 12),
+          body,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScoreRow(
+    BuildContext context, {
+    required _ScoreBin bin,
+    required int total,
+    required int maxCount,
+    required bool highlight,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final ratio = maxCount == 0 ? 0.0 : bin.count / maxCount;
+    final percent = total == 0 ? 0.0 : (bin.count / total) * 100;
+    final barColor = highlight ? colorScheme.primary : colorScheme.tertiary;
+    final labelStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color:
+              highlight ? colorScheme.primary : colorScheme.onSurfaceVariant,
+          fontWeight: highlight ? FontWeight.w600 : FontWeight.w400,
+        );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 60,
+            child: Text(
+              bin.label,
+              style: labelStyle,
+            ),
+          ),
+          Expanded(
+            child: Container(
+              height: 8,
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: ratio == 0 ? 0 : ratio.clamp(0.05, 1.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: barColor,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 84,
+            child: Text(
+              total == 0 ? '-' : '${percent.toStringAsFixed(1)}% / ${bin.count}',
+              textAlign: TextAlign.right,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: highlight
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLongReviewCard(
+    BuildContext context, {
+    required DailyRecommendation recommendation,
+    required String longReview,
+    String? hint,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final pageId = recommendation.pageId?.trim() ?? '';
+    final isLoading =
+        pageId.isNotEmpty && _notionContentLoading.contains(pageId);
+    final trimmed = longReview.trim();
+    final displayText = trimmed.isNotEmpty
+        ? trimmed
+        : (isLoading ? '长评加载中...' : '暂无长评');
+    final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: trimmed.isNotEmpty
+              ? colorScheme.onSurface
+              : colorScheme.onSurfaceVariant,
+          height: 1.6,
+        );
+
+    return _buildPanel(
+      context,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildPanelHeader(
+            context,
+            title: '长评',
+            hint: hint,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            displayText,
+            style: textStyle,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPanelHeader(
+    BuildContext context, {
+    required String title,
+    String? hint,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
         Text(
-          '悠简评',
+          title,
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          shortReview.isEmpty ? '暂无简评' : shortReview,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: shortReview.isEmpty
-                    ? colorScheme.onSurfaceVariant
-                    : colorScheme.onSurface,
-              ),
-        ),
-        if (longReview.isNotEmpty) ...[
-          const SizedBox(height: 20),
+        const Spacer(),
+        if (hint != null)
           Text(
-            '正文长评',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
+            hint,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colorScheme.primary,
                 ),
           ),
-          const SizedBox(height: 8),
-          Text(longReview, style: Theme.of(context).textTheme.bodyMedium),
-        ],
       ],
+    );
+  }
+
+  Widget _buildPanel(
+    BuildContext context,
+    Widget child,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: child,
     );
   }
 }

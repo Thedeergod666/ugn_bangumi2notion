@@ -137,9 +137,44 @@ extension NotionApiDailyRecommendation on NotionApi {
     return DateTime.tryParse(start);
   }
 
+  ({DateTime? start, DateTime? end}) _extractDateRange(
+    Map<String, dynamic> property,
+  ) {
+    final Map<String, dynamic>? date = property['date'];
+    if (date == null) return (start: null, end: null);
+    final startText = date['start']?.toString();
+    final endText = date['end']?.toString();
+    return (
+      start: (startText != null && startText.isNotEmpty)
+          ? DateTime.tryParse(startText)
+          : null,
+      end: (endText != null && endText.isNotEmpty)
+          ? DateTime.tryParse(endText)
+          : null,
+    );
+  }
+
   String? _extractUrl(Map<String, dynamic> property) {
     final url = property['url']?.toString() ?? '';
     return url.isEmpty ? null : url;
+  }
+
+  String? _extractFilesUrl(Map<String, dynamic> property) {
+    final files = property['files'];
+    if (files is! List || files.isEmpty) return null;
+    for (final file in files) {
+      if (file is! Map<String, dynamic>) continue;
+      final type = file['type']?.toString();
+      if (type == 'external') {
+        final url = file['external']?['url']?.toString();
+        if (url != null && url.isNotEmpty) return url;
+      }
+      if (type == 'file') {
+        final url = file['file']?['url']?.toString();
+        if (url != null && url.isNotEmpty) return url;
+      }
+    }
+    return null;
   }
 
   String? _extractFallbackText(Map<String, dynamic> property) {
@@ -415,6 +450,13 @@ extension NotionApiDailyRecommendation on NotionApi {
       return _extractDate(property);
     }
 
+    ({DateTime? start, DateTime? end}) readDateRange(String key) {
+      if (key.isEmpty) return (start: null, end: null);
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return (start: null, end: null);
+      return _extractDateRange(property);
+    }
+
     List<String> readTags(String key) {
       if (key.isEmpty) return [];
       final property = properties[key] as Map<String, dynamic>?;
@@ -429,6 +471,15 @@ extension NotionApiDailyRecommendation on NotionApi {
       return _extractSelect(property) ?? _extractPlainText(property);
     }
 
+    String? readCover(String key) {
+      if (key.isEmpty) return null;
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return null;
+      return _extractFilesUrl(property) ??
+          _extractUrl(property) ??
+          _extractPlainText(property);
+    }
+
     final title = readText(bindings.title) ?? '';
     if (title.isEmpty) {
       throw Exception('每日推荐解析失败：标题字段为空或类型不匹配');
@@ -441,11 +492,14 @@ extension NotionApiDailyRecommendation on NotionApi {
     }
 
     final pageId = page['id']?.toString();
+    final pageUrl = page['url']?.toString();
     String? contentLongReview;
+    String? contentCoverUrl;
     if (pageId != null && pageId.isNotEmpty && bindings.longReview.isEmpty) {
       try {
         final content = await getPageContent(token: token, pageId: pageId);
         contentLongReview = content.longReview;
+        contentCoverUrl = content.coverUrl;
       } catch (e) {
         _logger.debug('读取 Notion 正文失败: $e');
       }
@@ -453,6 +507,22 @@ extension NotionApiDailyRecommendation on NotionApi {
 
     final bangumiId = readText(bindings.bangumiId ?? '');
     final subjectId = readText(bindings.subjectId ?? '');
+    final bangumiScore =
+        readNumber(bindings.bangumiScore) ??
+        readScoreFallback(bindings.bangumiScore);
+    final followDate = readDate(bindings.followDate);
+    DateTime? airDate = readDate(bindings.airDate);
+    DateTime? airEndDate;
+    if (bindings.airDateRange.isNotEmpty) {
+      final range = readDateRange(bindings.airDateRange);
+      airDate ??= range.start;
+      airEndDate = range.end;
+    }
+    final animationProduction = readText(bindings.animationProduction);
+    final director = readText(bindings.director);
+    final script = readText(bindings.script);
+    final storyboard = readText(bindings.storyboard);
+    final coverProperty = readCover(bindings.cover);
     final bangumiCover = await _resolveBangumiCover(
       bangumiId: bangumiId,
       subjectId: subjectId,
@@ -483,16 +553,25 @@ extension NotionApiDailyRecommendation on NotionApi {
     return DailyRecommendation(
       title: title,
       yougnScore: score,
-      airDate: readDate(bindings.airDate),
+      bangumiScore: bangumiScore,
+      airDate: airDate,
+      airEndDate: airEndDate,
+      followDate: followDate,
       tags: readTags(bindings.tags),
       type: readSelect(bindings.type),
       shortReview: readText(bindings.shortReview),
       longReview: readText(bindings.longReview),
-      cover: bangumiCover,
-      contentCoverUrl: null,
+      cover: bangumiCover ?? coverProperty,
+      contentCoverUrl: contentCoverUrl,
       contentLongReview: contentLongReview,
       bangumiId: bangumiId,
       subjectId: subjectId,
+      pageId: pageId,
+      pageUrl: pageUrl,
+      animationProduction: animationProduction,
+      director: director,
+      script: script,
+      storyboard: storyboard,
     );
   }
 
@@ -655,6 +734,16 @@ extension NotionApiDailyRecommendation on NotionApi {
       return _extractDate(property);
     }
 
+    ({DateTime? start, DateTime? end}) readDateRange(
+      Map<String, dynamic> properties,
+      String key,
+    ) {
+      if (key.isEmpty) return (start: null, end: null);
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return (start: null, end: null);
+      return _extractDateRange(property);
+    }
+
     List<String> readTags(Map<String, dynamic> properties, String key) {
       if (key.isEmpty) return [];
       final property = properties[key] as Map<String, dynamic>?;
@@ -669,7 +758,15 @@ extension NotionApiDailyRecommendation on NotionApi {
       return _extractSelect(property) ?? _extractPlainText(property);
     }
 
-    final Map<String, String?> coverCache = {};
+    String? readCover(Map<String, dynamic> properties, String key) {
+      if (key.isEmpty) return null;
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return null;
+      return _extractFilesUrl(property) ??
+          _extractUrl(property) ??
+          _extractPlainText(property);
+    }
+
     final candidates = <DailyRecommendation>[];
     for (final item in results) {
       if (item is! Map<String, dynamic>) continue;
@@ -683,23 +780,34 @@ extension NotionApiDailyRecommendation on NotionApi {
 
       final bangumiId = readText(properties, bindings.bangumiId ?? '');
       final subjectId = readText(properties, bindings.subjectId ?? '');
-      final coverKey = (subjectId?.trim().isNotEmpty == true)
-          ? subjectId!.trim()
-          : (bangumiId?.trim().isNotEmpty == true ? bangumiId!.trim() : '');
-      String? cover = coverKey.isNotEmpty ? coverCache[coverKey] : null;
-      if (coverKey.isNotEmpty && cover == null) {
-        cover = await _resolveBangumiCover(
-          bangumiId: bangumiId,
-          subjectId: subjectId,
-        );
-        coverCache[coverKey] = cover;
+      final pageId = item['id']?.toString();
+      final pageUrl = item['url']?.toString();
+      final bangumiScore =
+          readNumber(properties, bindings.bangumiScore) ??
+          readScoreFallback(properties, bindings.bangumiScore);
+      final followDate = readDate(properties, bindings.followDate);
+      DateTime? airDate = readDate(properties, bindings.airDate);
+      DateTime? airEndDate;
+      if (bindings.airDateRange.isNotEmpty) {
+        final range = readDateRange(properties, bindings.airDateRange);
+        airDate ??= range.start;
+        airEndDate = range.end;
       }
+      final animationProduction =
+          readText(properties, bindings.animationProduction);
+      final director = readText(properties, bindings.director);
+      final script = readText(properties, bindings.script);
+      final storyboard = readText(properties, bindings.storyboard);
+      final cover = readCover(properties, bindings.cover);
 
       candidates.add(
         DailyRecommendation(
           title: title,
           yougnScore: score,
-          airDate: readDate(properties, bindings.airDate),
+          bangumiScore: bangumiScore,
+          airDate: airDate,
+          airEndDate: airEndDate,
+          followDate: followDate,
           tags: readTags(properties, bindings.tags),
           type: readSelect(properties, bindings.type),
           shortReview: readText(properties, bindings.shortReview),
@@ -709,6 +817,12 @@ extension NotionApiDailyRecommendation on NotionApi {
           contentLongReview: null,
           bangumiId: bangumiId,
           subjectId: subjectId,
+          pageId: pageId,
+          pageUrl: pageUrl,
+          animationProduction: animationProduction,
+          director: director,
+          script: script,
+          storyboard: storyboard,
         ),
       );
     }
@@ -718,6 +832,120 @@ extension NotionApiDailyRecommendation on NotionApi {
     );
 
     return candidates;
+  }
+
+  Future<List<NotionScoreEntry>> getYougnScoreEntries({
+    required String token,
+    required String databaseId,
+    required String yougnScoreProperty,
+    String? bangumiScoreProperty,
+  }) async {
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 鏃犳晥');
+    }
+    if (yougnScoreProperty.trim().isEmpty) {
+      return [];
+    }
+
+    String yougnScoreType = 'number';
+    String bangumiScoreType = 'number';
+    try {
+      final properties = await getDatabaseProperties(
+        token: token,
+        databaseId: normalizedDatabaseId,
+      );
+      final typeMap = _buildPropertyTypeMap(properties);
+      yougnScoreType = typeMap[yougnScoreProperty] ?? 'number';
+      if (bangumiScoreProperty != null &&
+          bangumiScoreProperty.trim().isNotEmpty) {
+        bangumiScoreType = typeMap[bangumiScoreProperty] ?? 'number';
+      }
+    } catch (e) {
+      _logger.debug('Schema fetch failed in getYougnScoreEntries: $e');
+    }
+
+    double? readScore(
+      Map<String, dynamic> properties,
+      String key,
+      String type,
+    ) {
+      if (key.trim().isEmpty) return null;
+      final property = properties[key] as Map<String, dynamic>?;
+      if (property == null) return null;
+      if (type == 'number') {
+        return _extractNumberValue(property);
+      }
+      return _parseScoreFromText(_extractPlainText(property));
+    }
+
+    final url = Uri.parse(NotionApi._baseUrl).replace(
+      pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query'],
+    );
+    final entries = <NotionScoreEntry>[];
+    String? nextCursor;
+    bool hasMore = true;
+    int pageCount = 0;
+
+    while (hasMore && entries.length < NotionApi._scoreHistogramMaxItems) {
+      pageCount += 1;
+      final body = <String, dynamic>{
+        'page_size': 100,
+      };
+      if (nextCursor != null && nextCursor.isNotEmpty) {
+        body['start_cursor'] = nextCursor;
+      }
+      final response = await sendWithRetry(
+        logger: _logger,
+        label: 'Notion post',
+        request: () => _client
+            .post(
+              url,
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Notion-Version': NotionApi._notionVersion,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(NotionApi._queryTimeout),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(_mapNotionError('鑾峰彇姣忔棩鎺ㄨ崘', response));
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final pageResults = data['results'] as List<dynamic>? ?? [];
+      for (final item in pageResults) {
+        if (item is! Map<String, dynamic>) continue;
+        final properties = item['properties'] as Map<String, dynamic>? ?? {};
+        final yougnScore =
+            readScore(properties, yougnScoreProperty, yougnScoreType);
+        if (yougnScore == null) continue;
+        double bangumiScore = 0;
+        if (bangumiScoreProperty != null &&
+            bangumiScoreProperty.trim().isNotEmpty) {
+          bangumiScore =
+                  readScore(properties, bangumiScoreProperty, bangumiScoreType) ??
+              0;
+        }
+        entries.add(
+          NotionScoreEntry(
+            yougnScore: yougnScore,
+            bangumiScore: bangumiScore,
+          ),
+        );
+        if (entries.length >= NotionApi._scoreHistogramMaxItems) break;
+      }
+      hasMore = data['has_more'] == true;
+      nextCursor = data['next_cursor']?.toString();
+    }
+
+    _logger.debug(
+      'getYougnScoreEntries done: pages=$pageCount items=${entries.length}',
+    );
+    return entries;
   }
 
   int? _extractBangumiIdFromProperty(
