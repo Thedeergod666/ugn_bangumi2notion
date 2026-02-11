@@ -38,12 +38,37 @@ class _SearchPageState extends State<SearchPage> {
   List<NotionSearchItem> _notionItems = [];
   bool _loading = false;
   String? _errorMessage;
+  bool _initializedFromArgs = false;
 
   @override
   void initState() {
     super.initState();
     _api = context.read<AppServices>().bangumiApi;
     _notionApi = context.read<AppServices>().notionApi;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initializedFromArgs) return;
+    _initializedFromArgs = true;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map) {
+      final source = args['source']?.toString();
+      if (source == 'notion') {
+        _source = _SearchSource.notion;
+      } else if (source == 'bangumi') {
+        _source = _SearchSource.bangumi;
+      }
+      final keyword = args['keyword']?.toString().trim() ?? '';
+      if (keyword.isNotEmpty) {
+        _controller.text = keyword;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _search();
+        });
+      }
+    }
   }
 
   @override

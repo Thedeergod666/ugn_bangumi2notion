@@ -61,24 +61,26 @@ class _RecommendationPageState extends State<RecommendationPage> {
   static const double _minScore = 6.5;
   static const int _heroSize = 3;
   static const int _logTextLimit = 200;
+  static const Duration _rotationInterval = Duration(seconds: 20);
   static const List<String> _scoreLabels = [
     '10',
-    '[9,10)',
-    '[8,9)',
-    '[7,8)',
-    '[6,7)',
-    '[5,6)',
-    '[4,5)',
-    '[3,4)',
-    '[2,3)',
-    '[1,2)',
-    '[0,1)',
+    '9',
+    '8',
+    '7',
+    '6',
+    '5',
+    '4',
+    '3',
+    '2',
+    '1',
   ];
 
   late final NotionApi _notionApi;
   late final BangumiApi _bangumiApi;
   final SettingsStorage _settingsStorage = SettingsStorage();
   final PageController _pageController = PageController();
+  final TextEditingController _notionSearchController =
+      TextEditingController();
 
   bool _loading = true;
   List<DailyRecommendation> _dailyCandidates = [];
@@ -94,7 +96,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
   StackTrace? _stackTrace;
 
   bool _showLongReview = false;
-  bool _swapRightCards = false;
+  Timer? _rotationTimer;
 
   final Map<int, BangumiSubjectDetail> _bangumiDetailCache = {};
   final Set<int> _bangumiDetailLoading = {};
@@ -116,7 +118,9 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
   @override
   void dispose() {
+    _rotationTimer?.cancel();
     _pageController.dispose();
+    _notionSearchController.dispose();
     super.dispose();
   }
 
@@ -135,6 +139,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
         _stackTrace = null;
       });
     }
+    _stopRotationTimer();
 
     try {
       final appSettings = context.read<AppSettings>();
@@ -162,6 +167,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
               : null;
         });
         _jumpToHeroIndex(currentIndex);
+        _startRotationTimer();
         final bindings = await _loadBindings();
         if (bindings != null) {
           await _loadLibraryStats(
@@ -223,6 +229,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
         }
       });
       _jumpToHeroIndex(0);
+      _startRotationTimer();
       await _loadLibraryStats(
         token: token,
         databaseId: databaseId,
@@ -238,6 +245,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
         _error = error;
         _stackTrace = stackTrace;
       });
+      _stopRotationTimer();
       _showErrorSnackBar(error, stackTrace);
     }
   }
@@ -442,6 +450,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
       _configurationMessage = message;
       _configurationRoute = route;
     });
+    _stopRotationTimer();
   }
 
   void _showErrorSnackBar(Object error, StackTrace stackTrace) {
@@ -478,7 +487,6 @@ class _RecommendationPageState extends State<RecommendationPage> {
       _heroIndices = indices;
       _currentHeroIndex = 0;
       _showLongReview = false;
-      _swapRightCards = false;
     });
     await _saveDailyCache(
       candidates: _dailyCandidates,
@@ -486,6 +494,35 @@ class _RecommendationPageState extends State<RecommendationPage> {
       currentIndex: _currentHeroIndex,
     );
     _jumpToHeroIndex(0);
+    _startRotationTimer();
+  }
+
+  void _startRotationTimer() {
+    _rotationTimer?.cancel();
+    if (_heroIndices.length <= 1) return;
+    _rotationTimer = Timer.periodic(_rotationInterval, (_) {
+      _advanceHeroPage();
+    });
+  }
+
+  void _stopRotationTimer() {
+    _rotationTimer?.cancel();
+    _rotationTimer = null;
+  }
+
+  void _resetRotationTimer() {
+    _startRotationTimer();
+  }
+
+  void _advanceHeroPage() {
+    if (!_pageController.hasClients) return;
+    if (_heroIndices.length <= 1) return;
+    final nextIndex = (_currentHeroIndex + 1) % _heroIndices.length;
+    _pageController.animateToPage(
+      nextIndex,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    );
   }
 
   int? _resolveSubjectId(DailyRecommendation recommendation) {
@@ -638,9 +675,9 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
   int _scoreToBinIndex(double score) {
     if (score >= 10) return 0;
-    final clamped = score.clamp(0, 9.999);
+    final clamped = score.clamp(1, 9.999);
     final bucket = clamped.floor();
-    return 1 + (9 - bucket);
+    return 10 - bucket;
   }
 
   String _scoreToBinLabel(double score) {
@@ -739,8 +776,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
         setState(() {
           _currentHeroIndex = index;
           _showLongReview = false;
-          _swapRightCards = false;
         });
+        _resetRotationTimer();
         _saveDailyCache(
           candidates: _dailyCandidates,
           indices: _heroIndices,
@@ -858,14 +895,15 @@ class _RecommendationPageState extends State<RecommendationPage> {
         final isMedium = constraints.maxWidth >= 900;
         final isCompact = constraints.maxWidth < 720;
 
-        final coverPanel = _buildCoverPanel(
+        final coverImage = _buildCoverImage(
           context,
           coverUrl: coverUrl,
+          stretch: isMedium,
           onTap: recommendation.pageUrl?.isNotEmpty == true
               ? () => _openNotionPage(recommendation.pageUrl)
               : null,
         );
-        final infoPanel = _buildInfoPanel(
+        final infoContent = _buildInfoContent(
           context,
           recommendation: recommendation,
           showRatings: showRatings,
@@ -881,51 +919,38 @@ class _RecommendationPageState extends State<RecommendationPage> {
           storyboard: storyboard,
           tags: tags,
         );
+        final leftPanel = _buildLeftPanel(
+          context,
+          cover: coverImage,
+          info: infoContent,
+          horizontal: isMedium,
+        );
         final rightPanel = _buildRightPanel(
           context,
           recommendation: recommendation,
-          isWide: isWide,
+          showBoth: isWide,
           longReview: longReview,
         );
 
         final header = _buildHeader(context);
+        final searchBar = _buildNotionSearchBar(context);
         final pageIndicator = _buildPageIndicator();
 
         Widget content;
-        if (isWide) {
+        if (isMedium) {
           content = Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(flex: 2, child: coverPanel),
+              Expanded(flex: 6, child: leftPanel),
               const SizedBox(width: 16),
-              Expanded(flex: 3, child: infoPanel),
-              const SizedBox(width: 16),
-              Expanded(flex: 3, child: rightPanel),
+              Expanded(flex: 5, child: rightPanel),
             ],
           );
         } else {
-          final top = isMedium
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 2, child: coverPanel),
-                    const SizedBox(width: 16),
-                    Expanded(flex: 3, child: infoPanel),
-                  ],
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    coverPanel,
-                    const SizedBox(height: 16),
-                    infoPanel,
-                  ],
-                );
-
           content = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              top,
+              leftPanel,
               const SizedBox(height: 16),
               rightPanel,
             ],
@@ -938,8 +963,10 @@ class _RecommendationPageState extends State<RecommendationPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               header,
+              const SizedBox(height: 12),
+              searchBar,
               if (pageIndicator != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 pageIndicator,
               ],
               const SizedBox(height: 16),
@@ -965,7 +992,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
         FilledButton.icon(
           onPressed: _loading ? null : _reshuffleRecommendations,
           icon: const Icon(Icons.shuffle),
-          label: const Text('换一部'),
+          label: const Text('换一下'),
         ),
       ],
     );
@@ -993,61 +1020,148 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
   }
 
-  Widget _buildCoverPanel(
+  Widget _buildNotionSearchBar(BuildContext context) {
+    return _buildPanel(
+      context,
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _notionSearchController,
+              decoration: const InputDecoration(
+                hintText: 'Notion 搜索',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onSubmitted: (_) => _triggerNotionSearch(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton(
+            onPressed: _triggerNotionSearch,
+            child: const Text('搜索'),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    );
+  }
+
+  void _triggerNotionSearch() {
+    final keyword = _notionSearchController.text.trim();
+    if (keyword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入关键词')),
+      );
+      return;
+    }
+    Navigator.of(context).pushNamed(
+      '/search',
+      arguments: {
+        'source': 'notion',
+        'keyword': keyword,
+      },
+    );
+  }
+
+  Widget _buildLeftPanel(
     BuildContext context, {
-    required String coverUrl,
-    VoidCallback? onTap,
+    required Widget cover,
+    required Widget info,
+    required bool horizontal,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final content = horizontal
+        ? IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Flexible(flex: 4, child: cover),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 6,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: info,
+                  ),
+                ),
+              ],
+            ),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              cover,
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: info,
+              ),
+            ],
+          );
+
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          onTap: onTap,
-          child: AspectRatio(
-            aspectRatio: 3 / 4,
-            child: coverUrl.isEmpty
-                ? Container(
-                    color: colorScheme.surfaceContainerHighest,
-                    child: const Center(
-                      child: Icon(Icons.image_outlined, size: 48),
-                    ),
-                  )
-                : Image.network(
-                    coverUrl,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      final expected = loadingProgress.expectedTotalBytes;
-                      final loaded = loadingProgress.cumulativeBytesLoaded;
-                      final progress = expected != null && expected > 0
-                          ? loaded / expected
-                          : null;
-                      return Center(
-                        child: CircularProgressIndicator(value: progress),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: const Center(
-                          child: Icon(Icons.broken_image_outlined, size: 48),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ),
+      clipBehavior: Clip.antiAlias,
+      child: content,
+    );
+  }
+
+  Widget _buildCoverImage(
+    BuildContext context, {
+    required String coverUrl,
+    bool stretch = false,
+    VoidCallback? onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final image = coverUrl.isEmpty
+        ? Container(
+            color: colorScheme.surfaceContainerHighest,
+            child: const Center(
+              child: Icon(Icons.image_outlined, size: 48),
+            ),
+          )
+        : Image.network(
+            coverUrl,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              final expected = loadingProgress.expectedTotalBytes;
+              final loaded = loadingProgress.cumulativeBytesLoaded;
+              final progress =
+                  expected != null && expected > 0 ? loaded / expected : null;
+              return Center(
+                child: CircularProgressIndicator(value: progress),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: colorScheme.surfaceContainerHighest,
+                child: const Center(
+                  child: Icon(Icons.broken_image_outlined, size: 48),
+                ),
+              );
+            },
+          );
+
+    final child = stretch
+        ? SizedBox.expand(child: image)
+        : AspectRatio(aspectRatio: 3 / 4, child: image);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: child,
       ),
     );
   }
 
-  Widget _buildInfoPanel(
+  Widget _buildInfoContent(
     BuildContext context, {
     required DailyRecommendation recommendation,
     required bool showRatings,
@@ -1067,92 +1181,89 @@ class _RecommendationPageState extends State<RecommendationPage> {
     final title = recommendation.title;
     final shortReview = recommendation.shortReview?.trim() ?? '';
 
-    return _buildPanel(
-      context,
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+        const SizedBox(height: 8),
+        if (showRatings)
+          _buildRatingLine(
+            context,
+            yougnScore: recommendation.yougnScore,
+            yougnRank: yougnRank,
+            bangumiScore: bangumiScore,
+            bangumiRank: bangumiRank,
           ),
-          const SizedBox(height: 8),
-          if (showRatings)
-            _buildRatingLine(
-              context,
-              yougnScore: recommendation.yougnScore,
-              yougnRank: yougnRank,
-              bangumiScore: bangumiScore,
-              bangumiRank: bangumiRank,
-            ),
-          if (showRatings) const SizedBox(height: 10),
-          Text(
-            '悠简评',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+        if (showRatings) const SizedBox(height: 10),
+        Text(
+          '悠简评',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          shortReview.isEmpty ? '暂无简评' : shortReview,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: shortReview.isEmpty
+                    ? colorScheme.onSurfaceVariant
+                    : colorScheme.onSurface,
+              ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _buildDateLine(
+            followDate: followDate,
+            airDate: airDate,
+            airEndDate: airEndDate,
           ),
-          const SizedBox(height: 6),
-          Text(
-            shortReview.isEmpty ? '暂无简评' : shortReview,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: shortReview.isEmpty
-                      ? colorScheme.onSurfaceVariant
-                      : colorScheme.onSurface,
-                ),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _buildStaffLine(
+            animationProduction: animationProduction,
+            director: director,
+            script: script,
+            storyboard: storyboard,
           ),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+        ),
+        if (tags.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text(
-            _buildDateLine(
-              followDate: followDate,
-              airDate: airDate,
-              airEndDate: airEndDate,
-            ),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _buildStaffLine(
-              animationProduction: animationProduction,
-              director: director,
-              script: script,
-              storyboard: storyboard,
-            ),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
-          if (tags.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: tags
-                  .map(
-                    (tag) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        tag,
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: tags
+                .map(
+                  (tag) => Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
                     ),
-                  )
-                  .toList(),
-            ),
-          ],
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      tag,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
         ],
-      ),
+      ],
     );
   }
 
@@ -1235,12 +1346,12 @@ class _RecommendationPageState extends State<RecommendationPage> {
   Widget _buildRightPanel(
     BuildContext context, {
     required DailyRecommendation recommendation,
-    required bool isWide,
+    required bool showBoth,
     required String longReview,
   }) {
-    final hint = isWide
-        ? (_showLongReview ? '点击查看排名' : '点击查看长评')
-        : '点击交换顺序';
+    final hint = showBoth
+        ? null
+        : (_showLongReview ? '点击查看排名' : '点击查看长评');
     final rankCard = _buildRankCard(
       context,
       recommendation: recommendation,
@@ -1253,35 +1364,30 @@ class _RecommendationPageState extends State<RecommendationPage> {
       hint: hint,
     );
 
-    if (isWide) {
-      return GestureDetector(
-        onTap: () => setState(() => _showLongReview = !_showLongReview),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: _showLongReview
-              ? KeyedSubtree(
-                  key: const ValueKey('review'),
-                  child: reviewCard,
-                )
-              : KeyedSubtree(
-                  key: const ValueKey('rank'),
-                  child: rankCard,
-                ),
-        ),
+    if (showBoth) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: rankCard),
+          const SizedBox(width: 16),
+          Expanded(child: reviewCard),
+        ],
       );
     }
 
-    final cards =
-        _swapRightCards ? [reviewCard, rankCard] : [rankCard, reviewCard];
     return GestureDetector(
-      onTap: () => setState(() => _swapRightCards = !_swapRightCards),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          cards[0],
-          const SizedBox(height: 16),
-          cards[1],
-        ],
+      onTap: () => setState(() => _showLongReview = !_showLongReview),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        child: _showLongReview
+            ? KeyedSubtree(
+                key: const ValueKey('review'),
+                child: reviewCard,
+              )
+            : KeyedSubtree(
+                key: const ValueKey('rank'),
+                child: rankCard,
+              ),
       ),
     );
   }
@@ -1493,11 +1599,12 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
   Widget _buildPanel(
     BuildContext context,
-    Widget child,
-  ) {
+    Widget child, {
+    EdgeInsets? padding,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: padding ?? const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(20),
