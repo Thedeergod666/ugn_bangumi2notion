@@ -79,6 +79,7 @@ class RecommendationViewModel extends ChangeNotifier {
 
   bool _showLongReview = false;
   Timer? _rotationTimer;
+  bool _disposed = false;
 
   final Map<int, BangumiSubjectDetail> _bangumiDetailCache = {};
   final Set<int> _bangumiDetailLoading = {};
@@ -651,15 +652,21 @@ class RecommendationViewModel extends ChangeNotifier {
   }
 
   void _notifyListenersSafe() {
-    if (!hasListeners) return;
+    if (_disposed || !hasListeners) return;
     if (SchedulerBinding.instance.schedulerPhase != SchedulerPhase.idle) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (!hasListeners) return;
+        if (_disposed || !hasListeners) return;
         notifyListeners();
       });
       return;
     }
     notifyListeners();
+  }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
   }
 
   List<RecommendationScoreBin> _buildScoreBins(List<NotionScoreEntry> entries) {
@@ -685,6 +692,8 @@ class RecommendationViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _rotationTimer?.cancel();
+    _rotationTimer = null;
+    _disposed = true;
     super.dispose();
   }
 }

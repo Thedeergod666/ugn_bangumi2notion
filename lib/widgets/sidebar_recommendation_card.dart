@@ -178,14 +178,17 @@ class _SidebarRecommendationCardState extends State<SidebarRecommendationCard> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            Text(
-              data.title,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+            RotatedBox(
+              quarterTurns: 3,
+              child: Text(
+                data.title,
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
             ),
             if (data.yougnScoreText != null) ...[
               const SizedBox(height: 6),

@@ -289,7 +289,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 1200;
+        final isUltraWide = constraints.maxWidth >= 1200;
         final isMedium = constraints.maxWidth >= 900;
         final isCompact = constraints.maxWidth < 720;
 
@@ -321,14 +321,28 @@ class _RecommendationPageState extends State<RecommendationPage> {
           context,
           cover: coverImage,
           info: infoContent,
-          horizontal: isMedium,
+          horizontal: true,
         );
         final rightPanel = _buildRightPanel(
           context,
           model,
           recommendation: recommendation,
-          showBoth: isWide,
+          showBoth: isUltraWide,
           longReview: longReview,
+        );
+
+        final rankCard = _buildRankCard(
+          context,
+          model,
+          recommendation: recommendation,
+          hint: null,
+        );
+        final reviewCard = _buildLongReviewCard(
+          context,
+          model,
+          recommendation: recommendation,
+          longReview: longReview,
+          hint: null,
         );
 
         final header = _buildHeader(context, model);
@@ -336,14 +350,31 @@ class _RecommendationPageState extends State<RecommendationPage> {
         final pageIndicator = _buildPageIndicator(model);
 
         Widget content;
-        if (isMedium) {
-          content = Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(flex: 6, child: leftPanel),
-              const SizedBox(width: 16),
-              Expanded(flex: 5, child: rightPanel),
-            ],
+        if (isUltraWide) {
+          content = IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 4, child: leftPanel),
+                const SizedBox(width: 16),
+                Expanded(flex: 3, child: rankCard),
+                const SizedBox(width: 16),
+                Expanded(flex: 3, child: reviewCard),
+              ],
+            ),
+          );
+        } else if (isMedium) {
+          const leftFlex = 6;
+          const rightFlex = 4;
+          content = IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: leftFlex, child: leftPanel),
+                const SizedBox(width: 16),
+                Expanded(flex: rightFlex, child: rightPanel),
+              ],
+            ),
           );
         } else {
           content = Column(
@@ -768,7 +799,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
     if (showBoth) {
       return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(child: rankCard),
           const SizedBox(width: 16),
