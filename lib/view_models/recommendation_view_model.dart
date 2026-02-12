@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../app/app_settings.dart';
 import '../models/bangumi_models.dart';
@@ -306,7 +307,7 @@ class RecommendationViewModel extends ChangeNotifier {
       return;
     }
     _notionContentLoading.add(pageId);
-    notifyListeners();
+    _notifyListenersSafe();
     _loadNotionContent(pageId);
   }
 
@@ -646,6 +647,18 @@ class RecommendationViewModel extends ChangeNotifier {
     final nextIndex = (_currentHeroIndex + 1) % _heroIndices.length;
     _currentHeroIndex = nextIndex;
     _showLongReview = false;
+    notifyListeners();
+  }
+
+  void _notifyListenersSafe() {
+    if (!hasListeners) return;
+    if (SchedulerBinding.instance.schedulerPhase != SchedulerPhase.idle) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!hasListeners) return;
+        notifyListeners();
+      });
+      return;
+    }
     notifyListeners();
   }
 
