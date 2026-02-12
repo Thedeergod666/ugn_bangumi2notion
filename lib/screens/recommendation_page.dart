@@ -1,54 +1,13 @@
-﻿import 'dart:async';
-import 'dart:convert';
-import 'dart:math';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_services.dart';
 import '../app/app_settings.dart';
-import '../models/bangumi_models.dart';
-import '../models/mapping_config.dart';
 import '../models/notion_models.dart';
-import '../services/bangumi_api.dart';
-import '../services/notion_api.dart';
-import '../services/settings_storage.dart';
+import '../view_models/recommendation_view_model.dart';
 import '../widgets/error_detail_dialog.dart';
 import '../widgets/navigation_shell.dart';
-
-class _DailyCacheData {
-  final List<DailyRecommendation> candidates;
-  final List<int> indices;
-  final int currentIndex;
-
-  const _DailyCacheData({
-    required this.candidates,
-    required this.indices,
-    required this.currentIndex,
-  });
-}
-
-class _NotionContent {
-  final String? coverUrl;
-  final String? longReview;
-
-  const _NotionContent({
-    required this.coverUrl,
-    required this.longReview,
-  });
-}
-
-class _ScoreBin {
-  final String label;
-  final int count;
-
-  const _ScoreBin({
-    required this.label,
-    required this.count,
-  });
-}
 
 class RecommendationPage extends StatefulWidget {
   const RecommendationPage({super.key});
@@ -58,630 +17,62 @@ class RecommendationPage extends StatefulWidget {
 }
 
 class _RecommendationPageState extends State<RecommendationPage> {
-  static const double _minScore = 6.5;
-  static const int _heroSize = 3;
-  static const int _logTextLimit = 200;
-  static const Duration _rotationInterval = Duration(seconds: 20);
-  static const List<String> _scoreLabels = [
-    '10',
-    '9',
-    '8',
-    '7',
-    '6',
-    '5',
-    '4',
-    '3',
-    '2',
-    '1',
-  ];
-
-  late final NotionApi _notionApi;
-  late final BangumiApi _bangumiApi;
-  final SettingsStorage _settingsStorage = SettingsStorage();
-  final PageController _pageController = PageController();
-  final TextEditingController _notionSearchController =
-      TextEditingController();
-
-  bool _loading = true;
-  List<DailyRecommendation> _dailyCandidates = [];
-  List<int> _heroIndices = [];
-  int _currentHeroIndex = 0;
-  bool _statsLoading = false;
-
-  String? _errorMessage;
-  String? _emptyMessage;
-  String? _configurationMessage;
-  String? _configurationRoute;
-  Object? _error;
-  StackTrace? _stackTrace;
-
-  bool _showLongReview = false;
-  Timer? _rotationTimer;
-
-  final Map<int, BangumiSubjectDetail> _bangumiDetailCache = {};
-  final Set<int> _bangumiDetailLoading = {};
-  final Map<String, _NotionContent> _notionContentCache = {};
-  final Set<String> _notionContentLoading = {};
-
-  List<NotionScoreEntry> _scoreEntries = [];
-  List<_ScoreBin> _scoreBins = [];
-  int _scoreTotal = 0;
+  late final RecommendationViewModel _viewModel;
+  late final PageController _pageController;
+  late final TextEditingController _notionSearchController;
+  int _lastHeroIndex = 0;
 
   @override
   void initState() {
     super.initState();
     final services = context.read<AppServices>();
-    _notionApi = services.notionApi;
-    _bangumiApi = services.bangumiApi;
-    _loadRecommendation();
+    _viewModel = RecommendationViewModel(
+      notionApi: services.notionApi,
+      bangumiApi: services.bangumiApi,
+    );
+    _pageController = PageController();
+    _notionSearchController = TextEditingController();
+    _viewModel.addListener(_handleModelUpdate);
+    _viewModel.load(context.read<AppSettings>());
   }
 
   @override
   void dispose() {
-    _rotationTimer?.cancel();
+    _viewModel.removeListener(_handleModelUpdate);
+    _viewModel.dispose();
     _pageController.dispose();
     _notionSearchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadRecommendation({bool showLoading = true}) async {
-    if (showLoading && mounted) {
-      setState(() {
-        _loading = true;
-        _dailyCandidates = [];
-        _heroIndices = [];
-        _currentHeroIndex = 0;
-        _errorMessage = null;
-        _emptyMessage = null;
-        _configurationMessage = null;
-        _configurationRoute = null;
-        _error = null;
-        _stackTrace = null;
-      });
-    }
-    _stopRotationTimer();
-
-    try {
-      final appSettings = context.read<AppSettings>();
-      final cached = await _loadDailyCache();
-      if (cached != null) {
-        if (kDebugMode) {
-          debugPrint('[DailyReco] cache hit');
-        }
-        final indices = _normalizeHeroIndices(
-          cached.indices,
-          cached.candidates.length,
-        );
-        final currentIndex =
-            (cached.currentIndex >= 0 && cached.currentIndex < indices.length)
-                ? cached.currentIndex
-                : 0;
-        if (!mounted) return;
-        setState(() {
-          _dailyCandidates = cached.candidates;
-          _heroIndices = indices;
-          _currentHeroIndex = currentIndex;
-          _loading = false;
-          _emptyMessage = _dailyCandidates.isEmpty
-              ? '暂无 ${_minScore.toStringAsFixed(1)}+ 条目'
-              : null;
-        });
-        _jumpToHeroIndex(currentIndex);
-        _startRotationTimer();
-        final bindings = await _loadBindings();
-        if (bindings != null) {
-          await _loadLibraryStats(
-            token: appSettings.notionToken,
-            databaseId: appSettings.notionDatabaseId,
-            bindings: bindings,
-          );
-        }
-        return;
-      }
-
-      if (kDebugMode) {
-        debugPrint('[DailyReco] cache miss');
-      }
-      final token = appSettings.notionToken;
-      final databaseId = appSettings.notionDatabaseId;
-
-      if (token.isEmpty || databaseId.isEmpty) {
-        _setConfiguration(
-          '请先在设置页面配置 Notion Token 和 Database ID',
-          '/settings',
-        );
-        return;
-      }
-
-      final bindings = await _loadBindings();
-      if (bindings == null ||
-          bindings.yougnScore.isEmpty ||
-          bindings.title.isEmpty) {
-        _setConfiguration(
-          '请先在映射配置页面绑定每日推荐字段',
-          '/mapping',
-        );
-        return;
-      }
-
-      final candidates = await _notionApi.getDailyRecommendationCandidates(
-        token: token,
-        databaseId: databaseId,
-        bindings: bindings,
-        minScore: _minScore,
-      );
-
-      final indices = _pickHeroIndices(candidates.length);
-      await _saveDailyCache(
-        candidates: candidates,
-        indices: indices,
-        currentIndex: 0,
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _dailyCandidates = candidates;
-        _heroIndices = indices;
-        _currentHeroIndex = 0;
-        _loading = false;
-        if (candidates.isEmpty) {
-          _emptyMessage = '暂无 ${_minScore.toStringAsFixed(1)}+ 条目';
-        }
-      });
-      _jumpToHeroIndex(0);
-      _startRotationTimer();
-      await _loadLibraryStats(
-        token: token,
-        databaseId: databaseId,
-        bindings: bindings,
-      );
-    } catch (error, stackTrace) {
-      if (!mounted) return;
-      final isTimeout = error is TimeoutException;
-      setState(() {
-        _loading = false;
-        _errorMessage =
-            isTimeout ? '网络较慢，点击换一部重试' : '加载失败，请稍后重试';
-        _error = error;
-        _stackTrace = stackTrace;
-      });
-      _stopRotationTimer();
-      _showErrorSnackBar(error, stackTrace);
-    }
-  }
-
-  Future<NotionDailyRecommendationBindings?> _loadBindings() async {
-    final mappingConfig = await _settingsStorage.getMappingConfig();
-    final legacyBindings =
-        await _settingsStorage.getDailyRecommendationBindings();
-    final bindings = _resolveBindings(mappingConfig, legacyBindings);
-    return bindings.isEmpty ? null : bindings;
-  }
-
-  Future<void> _loadLibraryStats({
-    required String token,
-    required String databaseId,
-    required NotionDailyRecommendationBindings bindings,
-  }) async {
-    if (token.isEmpty || databaseId.isEmpty || bindings.yougnScore.isEmpty) {
+  void _handleModelUpdate() {
+    if (!mounted) return;
+    final jumpIndex = _viewModel.takePendingJumpIndex();
+    if (jumpIndex != null) {
+      _lastHeroIndex = jumpIndex;
+      _jumpToIndex(jumpIndex);
       return;
     }
-    if (_statsLoading) return;
-    setState(() => _statsLoading = true);
-    try {
-      final entries = await _notionApi.getYougnScoreEntries(
-        token: token,
-        databaseId: databaseId,
-        yougnScoreProperty: bindings.yougnScore,
-        bangumiScoreProperty:
-            bindings.bangumiScore.isEmpty ? null : bindings.bangumiScore,
+    final index = _viewModel.currentHeroIndex;
+    if (_pageController.hasClients && index != _lastHeroIndex) {
+      _lastHeroIndex = index;
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
       );
-      final bins = _buildScoreBins(entries);
-      if (!mounted) return;
-      setState(() {
-        _scoreEntries = entries;
-        _scoreBins = bins;
-        _scoreTotal = entries.length;
-        _statsLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _statsLoading = false;
-        _scoreEntries = [];
-        _scoreBins = [];
-        _scoreTotal = 0;
-      });
     }
   }
 
-  String _buildTodayKey() {
-    final now = DateTime.now();
-    final y = now.year.toString().padLeft(4, '0');
-    final m = now.month.toString().padLeft(2, '0');
-    final d = now.day.toString().padLeft(2, '0');
-    return '$y-$m-$d';
-  }
-
-  String _clipLog(String? value) {
-    if (value == null) return '';
-    final trimmed = value.trim();
-    if (trimmed.length <= _logTextLimit) return trimmed;
-    return '${trimmed.substring(0, _logTextLimit)}...';
-  }
-
-  Future<_DailyCacheData?> _loadDailyCache() async {
-    final today = _buildTodayKey();
-    final cachedDate = await _settingsStorage.getDailyRecommendationCacheDate();
-    final payload = await _settingsStorage.getDailyRecommendationCachePayload();
-    if (cachedDate == null || payload == null || payload.isEmpty) {
-      return null;
+  void _jumpToIndex(int index) {
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(index);
+      return;
     }
-    if (cachedDate != today) {
-      return null;
-    }
-
-    try {
-      final decoded = jsonDecode(payload);
-      if (decoded is! Map<String, dynamic>) return null;
-      if (decoded['candidates'] is List) {
-        final rawList = decoded['candidates'] as List;
-        final candidates = rawList
-            .whereType<Map<String, dynamic>>()
-            .map(DailyRecommendation.fromJson)
-            .toList();
-        final indices = _parseIndices(decoded['indices'], candidates.length);
-        var currentIndex =
-            int.tryParse(decoded['currentIndex']?.toString() ?? '') ??
-                int.tryParse(decoded['index']?.toString() ?? '') ??
-                0;
-        if (currentIndex < 0) currentIndex = 0;
-        if (currentIndex >= indices.length && indices.isNotEmpty) {
-          currentIndex = 0;
-        }
-        if (kDebugMode) {
-          final currentTitle = candidates.isNotEmpty
-              ? candidates[indices.isNotEmpty ? indices.first : 0].title
-              : '';
-          final currentScore = candidates.isNotEmpty
-              ? candidates[indices.isNotEmpty ? indices.first : 0]
-                      .yougnScore
-                      ?.toStringAsFixed(1) ??
-                  '-'
-              : '-';
-          debugPrint(
-            '[DailyReco] cache payload candidates=${candidates.length} '
-            'indices=${indices.length} title="${_clipLog(currentTitle)}" '
-            'score=$currentScore',
-          );
-        }
-        return _DailyCacheData(
-          candidates: candidates,
-          indices: indices,
-          currentIndex: currentIndex,
-        );
-      }
-      final recommendation = DailyRecommendation.fromJson(decoded);
-      if (kDebugMode) {
-        debugPrint(
-          '[DailyReco] cache payload title="${_clipLog(recommendation.title)}" '
-          'score=${recommendation.yougnScore?.toStringAsFixed(1) ?? "-"}',
-        );
-      }
-      return _DailyCacheData(
-        candidates: [recommendation],
-        indices: const [0],
-        currentIndex: 0,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _saveDailyCache({
-    required List<DailyRecommendation> candidates,
-    required List<int> indices,
-    required int currentIndex,
-  }) async {
-    final payload = jsonEncode({
-      'version': 3,
-      'currentIndex': currentIndex,
-      'indices': indices,
-      'candidates': candidates.map((item) => item.toJson()).toList(),
-    });
-    await _settingsStorage.saveDailyRecommendationCache(
-      date: _buildTodayKey(),
-      payload: payload,
-    );
-  }
-
-  List<int> _parseIndices(dynamic raw, int max) {
-    if (raw is! List) return [];
-    final indices = <int>[];
-    for (final value in raw) {
-      final parsed = int.tryParse(value.toString());
-      if (parsed == null) continue;
-      if (parsed < 0 || parsed >= max) continue;
-      if (!indices.contains(parsed)) indices.add(parsed);
-    }
-    return indices;
-  }
-
-  List<int> _pickHeroIndices(int count) {
-    if (count <= 0) return [];
-    final size = min(count, _heroSize);
-    final rand = Random();
-    final picks = <int>{};
-    while (picks.length < size) {
-      picks.add(rand.nextInt(count));
-    }
-    final list = picks.toList()..shuffle(rand);
-    return list;
-  }
-
-  List<int> _normalizeHeroIndices(List<int> indices, int count) {
-    if (count <= 0) return [];
-    final valid = indices.where((i) => i >= 0 && i < count).toList();
-    if (valid.isEmpty) return _pickHeroIndices(count);
-    return valid;
-  }
-
-  void _jumpToHeroIndex(int index) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_pageController.hasClients) return;
-      if (index < 0 || index >= _heroIndices.length) return;
+      if (!mounted || !_pageController.hasClients) return;
       _pageController.jumpToPage(index);
     });
-  }
-
-  NotionDailyRecommendationBindings _resolveBindings(
-    MappingConfig config,
-    NotionDailyRecommendationBindings legacyBindings,
-  ) {
-    return config.dailyRecommendationBindings.isEmpty
-        ? legacyBindings
-        : config.dailyRecommendationBindings;
-  }
-
-  void _setConfiguration(String message, String route) {
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      _configurationMessage = message;
-      _configurationRoute = route;
-    });
-    _stopRotationTimer();
-  }
-
-  void _showErrorSnackBar(Object error, StackTrace stackTrace) {
-    if (!mounted) return;
-    final isTimeout = error is TimeoutException;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(isTimeout ? '网络较慢，点击换一部重试' : '加载失败，请稍后重试'),
-        action: SnackBarAction(
-          label: '详情',
-          onPressed: () {
-            showDialog(
-              context: context,
-              builder: (context) => ErrorDetailDialog(
-                error: error,
-                stackTrace: stackTrace,
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Future<void> _reshuffleRecommendations() async {
-    if (_dailyCandidates.isEmpty) {
-      await _loadRecommendation();
-      return;
-    }
-    final indices = _pickHeroIndices(_dailyCandidates.length);
-    if (indices.isEmpty) return;
-    if (!mounted) return;
-    setState(() {
-      _heroIndices = indices;
-      _currentHeroIndex = 0;
-      _showLongReview = false;
-    });
-    await _saveDailyCache(
-      candidates: _dailyCandidates,
-      indices: _heroIndices,
-      currentIndex: _currentHeroIndex,
-    );
-    _jumpToHeroIndex(0);
-    _startRotationTimer();
-  }
-
-  void _startRotationTimer() {
-    _rotationTimer?.cancel();
-    if (_heroIndices.length <= 1) return;
-    _rotationTimer = Timer.periodic(_rotationInterval, (_) {
-      _advanceHeroPage();
-    });
-  }
-
-  void _stopRotationTimer() {
-    _rotationTimer?.cancel();
-    _rotationTimer = null;
-  }
-
-  void _resetRotationTimer() {
-    _startRotationTimer();
-  }
-
-  void _advanceHeroPage() {
-    if (!_pageController.hasClients) return;
-    if (_heroIndices.length <= 1) return;
-    final nextIndex = (_currentHeroIndex + 1) % _heroIndices.length;
-    _pageController.animateToPage(
-      nextIndex,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  int? _resolveSubjectId(DailyRecommendation recommendation) {
-    final raw = (recommendation.subjectId?.trim().isNotEmpty == true)
-        ? recommendation.subjectId
-        : recommendation.bangumiId;
-    if (raw == null || raw.trim().isEmpty) return null;
-    return int.tryParse(raw.trim());
-  }
-
-  void _scheduleBangumiDetailLoad(int subjectId) {
-    if (_bangumiDetailCache.containsKey(subjectId) ||
-        _bangumiDetailLoading.contains(subjectId)) {
-      return;
-    }
-    _bangumiDetailLoading.add(subjectId);
-    _loadBangumiDetail(subjectId);
-  }
-
-  Future<void> _loadBangumiDetail(int subjectId) async {
-    try {
-      final token = context.read<AppSettings>().bangumiAccessToken;
-      final detail = await _bangumiApi.fetchDetail(
-        subjectId: subjectId,
-        accessToken: token.isEmpty ? null : token,
-      );
-      if (!mounted) return;
-      setState(() {
-        _bangumiDetailCache[subjectId] = detail;
-      });
-    } catch (_) {
-      // Ignore bangumi detail failures
-    } finally {
-      _bangumiDetailLoading.remove(subjectId);
-    }
-  }
-
-  void _scheduleNotionContentLoad(String? pageId) {
-    if (pageId == null || pageId.trim().isEmpty) return;
-    if (_notionContentCache.containsKey(pageId) ||
-        _notionContentLoading.contains(pageId)) {
-      return;
-    }
-    _notionContentLoading.add(pageId);
-    _loadNotionContent(pageId);
-  }
-
-  Future<void> _loadNotionContent(String pageId) async {
-    try {
-      final token = context.read<AppSettings>().notionToken;
-      if (token.isEmpty) return;
-      final content = await _notionApi.getPageContent(
-        token: token,
-        pageId: pageId,
-      );
-      if (!mounted) return;
-      setState(() {
-        _notionContentCache[pageId] = _NotionContent(
-          coverUrl: content.coverUrl,
-          longReview: content.longReview,
-        );
-      });
-    } catch (_) {
-      // Ignore notion content failures
-    } finally {
-      _notionContentLoading.remove(pageId);
-    }
-  }
-
-  _NotionContent? _resolveNotionContent(DailyRecommendation recommendation) {
-    final pageId = recommendation.pageId?.trim() ?? '';
-    if (pageId.isEmpty) return null;
-    return _notionContentCache[pageId];
-  }
-
-  String _resolveCoverUrl(
-    DailyRecommendation recommendation,
-    BangumiSubjectDetail? detail,
-    _NotionContent? content,
-  ) {
-    final detailCover = detail?.imageUrl ?? '';
-    if (detailCover.isNotEmpty) return detailCover;
-    final cover = recommendation.cover?.trim() ?? '';
-    if (cover.isNotEmpty) return cover;
-    final cachedCover = recommendation.contentCoverUrl?.trim() ?? '';
-    if (cachedCover.isNotEmpty) return cachedCover;
-    final contentCover = content?.coverUrl?.trim() ?? '';
-    if (contentCover.isNotEmpty) return contentCover;
-    return '';
-  }
-
-  String _resolveLongReview(
-    DailyRecommendation recommendation,
-    _NotionContent? content,
-  ) {
-    final direct = recommendation.longReview?.trim() ?? '';
-    if (direct.isNotEmpty) return direct;
-    final cached = recommendation.contentLongReview?.trim() ?? '';
-    if (cached.isNotEmpty) return cached;
-    final contentText = content?.longReview?.trim() ?? '';
-    return contentText;
-  }
-
-  List<String> _resolveTags(
-    DailyRecommendation recommendation,
-    BangumiSubjectDetail? detail,
-  ) {
-    if (detail != null && detail.tagDetails.isNotEmpty) {
-      final sorted = [...detail.tagDetails]
-        ..sort((a, b) => b.count.compareTo(a.count));
-      return sorted.take(8).map((tag) => tag.name).toList();
-    }
-    return recommendation.tags.take(8).toList();
-  }
-
-  String _pickNotionOrBangumi(String? notionValue, String? bangumiValue) {
-    final notion = notionValue?.trim() ?? '';
-    if (notion.isNotEmpty) return notion;
-    return bangumiValue?.trim() ?? '';
-  }
-
-  int? _computeYougnRank(double? yougnScore, double? bangumiScore) {
-    if (yougnScore == null || _scoreEntries.isEmpty) return null;
-    final compareBangumiScore = bangumiScore ?? 0;
-    var rank = 1;
-    for (final entry in _scoreEntries) {
-      if (entry.yougnScore > yougnScore) {
-        rank += 1;
-        continue;
-      }
-      if (entry.yougnScore == yougnScore &&
-          entry.bangumiScore > compareBangumiScore) {
-        rank += 1;
-      }
-    }
-    return rank;
-  }
-
-  List<_ScoreBin> _buildScoreBins(List<NotionScoreEntry> entries) {
-    final counts = List<int>.filled(_scoreLabels.length, 0);
-    for (final entry in entries) {
-      final index = _scoreToBinIndex(entry.yougnScore);
-      counts[index] += 1;
-    }
-    return List.generate(
-      _scoreLabels.length,
-      (index) => _ScoreBin(label: _scoreLabels[index], count: counts[index]),
-    );
-  }
-
-  int _scoreToBinIndex(double score) {
-    if (score >= 10) return 0;
-    final clamped = score.clamp(1, 9.999);
-    final bucket = clamped.floor();
-    return 10 - bucket;
-  }
-
-  String _scoreToBinLabel(double score) {
-    return _scoreLabels[_scoreToBinIndex(score)];
   }
 
   String _formatDate(DateTime? date) {
@@ -703,24 +94,31 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
   @override
   Widget build(BuildContext context) {
-    return NavigationShell(
-      title: '每日推荐',
-      selectedRoute: '/recommendation',
-      child: _buildBody(context),
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
+      child: Consumer<RecommendationViewModel>(
+        builder: (context, model, _) {
+          return NavigationShell(
+            title: '每日推荐',
+            selectedRoute: '/recommendation',
+            child: _buildBody(context, model),
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
-    if (_loading) {
+  Widget _buildBody(BuildContext context, RecommendationViewModel model) {
+    if (model.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_configurationMessage != null) {
-      final route = _configurationRoute;
+    if (model.configurationMessage != null) {
+      final route = model.configurationRoute;
       return _buildCenteredMessage(
         context,
         icon: Icons.settings_suggest,
-        title: _configurationMessage!,
+        title: model.configurationMessage!,
         actionLabel: route == '/mapping' ? '去映射配置' : '去设置',
         onAction: route == null
             ? null
@@ -728,66 +126,61 @@ class _RecommendationPageState extends State<RecommendationPage> {
       );
     }
 
-    if (_errorMessage != null) {
+    if (model.errorMessage != null) {
       return _buildCenteredMessage(
         context,
         icon: Icons.error_outline,
-        title: _errorMessage!,
+        title: model.errorMessage!,
         actionLabel: '重试',
-        onAction: _loading ? null : () => _loadRecommendation(),
+        onAction: model.isLoading
+            ? null
+            : () => model.load(context.read<AppSettings>()),
         secondaryLabel: '查看详情',
-        onSecondaryAction: (_error != null && _stackTrace != null)
+        onSecondaryAction: (model.error != null && model.stackTrace != null)
             ? () => showDialog(
                   context: context,
                   builder: (context) => ErrorDetailDialog(
-                    error: _error!,
-                    stackTrace: _stackTrace!,
+                    error: model.error!,
+                    stackTrace: model.stackTrace!,
                   ),
                 )
             : null,
       );
     }
 
-    if (_emptyMessage != null) {
+    if (model.emptyMessage != null) {
       return _buildCenteredMessage(
         context,
         icon: Icons.inbox_outlined,
-        title: _emptyMessage!,
+        title: model.emptyMessage!,
         actionLabel: '换一部',
-        onAction: _loading ? null : _reshuffleRecommendations,
+        onAction: model.isLoading ? null : () => model.reshuffle(),
       );
     }
 
-    if (_dailyCandidates.isEmpty || _heroIndices.isEmpty) {
+    if (model.dailyCandidates.isEmpty || model.heroIndices.isEmpty) {
       return _buildCenteredMessage(
         context,
         icon: Icons.inbox_outlined,
         title: '暂无推荐内容',
         actionLabel: '换一部',
-        onAction: _loading ? null : _reshuffleRecommendations,
+        onAction: model.isLoading ? null : () => model.reshuffle(),
       );
     }
 
     return PageView.builder(
       controller: _pageController,
-      itemCount: _heroIndices.length,
+      itemCount: model.heroIndices.length,
       onPageChanged: (index) {
-        if (!mounted) return;
-        setState(() {
-          _currentHeroIndex = index;
-          _showLongReview = false;
-        });
-        _resetRotationTimer();
-        _saveDailyCache(
-          candidates: _dailyCandidates,
-          indices: _heroIndices,
-          currentIndex: _currentHeroIndex,
-        );
+        _lastHeroIndex = index;
+        model.updateHeroIndex(index);
       },
       itemBuilder: (context, index) {
-        final candidateIndex = _heroIndices[index];
-        final recommendation = _dailyCandidates[candidateIndex];
-        return _buildHeroPage(context, recommendation);
+        final recommendation = model.recommendationForHero(index);
+        if (recommendation == null) {
+          return const SizedBox.shrink();
+        }
+        return _buildHeroPage(context, model, recommendation);
       },
     );
   }
@@ -845,46 +238,51 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
   Widget _buildHeroPage(
     BuildContext context,
+    RecommendationViewModel model,
     DailyRecommendation recommendation,
   ) {
     final showRatings = context.watch<AppSettings>().showRatings;
-    final subjectId = _resolveSubjectId(recommendation);
+    final subjectId = model.resolveSubjectId(recommendation);
     if (subjectId != null) {
-      _scheduleBangumiDetailLoad(subjectId);
+      model.scheduleBangumiDetailLoad(subjectId);
     }
     if ((recommendation.longReview?.trim().isEmpty ?? true) ||
         (recommendation.cover?.trim().isEmpty ?? true)) {
-      _scheduleNotionContentLoad(recommendation.pageId);
+      model.scheduleNotionContentLoad(recommendation.pageId);
     }
 
-    final detail = subjectId != null ? _bangumiDetailCache[subjectId] : null;
-    final notionContent = _resolveNotionContent(recommendation);
-    final coverUrl = _resolveCoverUrl(recommendation, detail, notionContent);
-    final tags = _resolveTags(recommendation, detail);
-    final longReview = _resolveLongReview(recommendation, notionContent);
+    final detail = model.detailFor(recommendation);
+    final notionContent = model.notionContentFor(recommendation);
+    final coverUrl = model.resolveCoverUrl(
+      recommendation,
+      detail,
+      notionContent,
+    );
+    final tags = model.resolveTags(recommendation, detail);
+    final longReview = model.resolveLongReview(recommendation, notionContent);
 
     final bangumiScore = detail != null && detail.score > 0
         ? detail.score
         : recommendation.bangumiScore;
-    final yougnRank = _computeYougnRank(
+    final yougnRank = model.computeYougnRank(
       recommendation.yougnScore,
       bangumiScore,
     );
     final bangumiRank = detail?.rank;
 
-    final animationProduction = _pickNotionOrBangumi(
+    final animationProduction = model.pickNotionOrBangumi(
       recommendation.animationProduction,
       detail?.animationProduction,
     );
-    final director = _pickNotionOrBangumi(
+    final director = model.pickNotionOrBangumi(
       recommendation.director,
       detail?.director,
     );
-    final script = _pickNotionOrBangumi(
+    final script = model.pickNotionOrBangumi(
       recommendation.script,
       detail?.script,
     );
-    final storyboard = _pickNotionOrBangumi(
+    final storyboard = model.pickNotionOrBangumi(
       recommendation.storyboard,
       detail?.storyboard,
     );
@@ -927,14 +325,15 @@ class _RecommendationPageState extends State<RecommendationPage> {
         );
         final rightPanel = _buildRightPanel(
           context,
+          model,
           recommendation: recommendation,
           showBoth: isWide,
           longReview: longReview,
         );
 
-        final header = _buildHeader(context);
+        final header = _buildHeader(context, model);
         final searchBar = _buildNotionSearchBar(context);
-        final pageIndicator = _buildPageIndicator();
+        final pageIndicator = _buildPageIndicator(model);
 
         Widget content;
         if (isMedium) {
@@ -979,7 +378,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, RecommendationViewModel model) {
     return Row(
       children: [
         Text(
@@ -990,7 +389,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
         ),
         const Spacer(),
         FilledButton.icon(
-          onPressed: _loading ? null : _reshuffleRecommendations,
+          onPressed: model.isLoading ? null : () => model.reshuffle(),
           icon: const Icon(Icons.shuffle),
           label: const Text('换一下'),
         ),
@@ -998,12 +397,12 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
   }
 
-  Widget? _buildPageIndicator() {
-    if (_heroIndices.length <= 1) return null;
+  Widget? _buildPageIndicator(RecommendationViewModel model) {
+    if (model.heroIndices.length <= 1) return null;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(_heroIndices.length, (index) {
-        final isActive = index == _currentHeroIndex;
+      children: List.generate(model.heroIndices.length, (index) {
+        final isActive = index == model.currentHeroIndex;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -1344,21 +743,24 @@ class _RecommendationPageState extends State<RecommendationPage> {
   }
 
   Widget _buildRightPanel(
-    BuildContext context, {
+    BuildContext context,
+    RecommendationViewModel model, {
     required DailyRecommendation recommendation,
     required bool showBoth,
     required String longReview,
   }) {
     final hint = showBoth
         ? null
-        : (_showLongReview ? '点击查看排名' : '点击查看长评');
+        : (model.showLongReview ? '点击查看排名' : '点击查看长评');
     final rankCard = _buildRankCard(
       context,
+      model,
       recommendation: recommendation,
       hint: hint,
     );
     final reviewCard = _buildLongReviewCard(
       context,
+      model,
       recommendation: recommendation,
       longReview: longReview,
       hint: hint,
@@ -1376,10 +778,10 @@ class _RecommendationPageState extends State<RecommendationPage> {
     }
 
     return GestureDetector(
-      onTap: () => setState(() => _showLongReview = !_showLongReview),
+      onTap: model.toggleLongReview,
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 200),
-        child: _showLongReview
+        child: model.showLongReview
             ? KeyedSubtree(
                 key: const ValueKey('review'),
                 child: reviewCard,
@@ -1393,7 +795,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
   }
 
   Widget _buildRankCard(
-    BuildContext context, {
+    BuildContext context,
+    RecommendationViewModel model, {
     required DailyRecommendation recommendation,
     String? hint,
   }) {
@@ -1401,20 +804,20 @@ class _RecommendationPageState extends State<RecommendationPage> {
     final yougnScore = recommendation.yougnScore;
     final yougnScoreText = yougnScore?.toStringAsFixed(1) ?? '-';
     final currentLabel =
-        yougnScore != null ? _scoreToBinLabel(yougnScore) : '-';
-    final total = _scoreTotal;
-    final maxCount = _scoreBins.fold<int>(
+        yougnScore != null ? model.scoreToBinLabel(yougnScore) : '-';
+    final total = model.scoreTotal;
+    final maxCount = model.scoreBins.fold<int>(
       0,
       (current, bin) => bin.count > current ? bin.count : current,
     );
 
     Widget body;
-    if (_statsLoading) {
+    if (model.isStatsLoading) {
       body = const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
         child: Center(child: CircularProgressIndicator()),
       );
-    } else if (_scoreBins.isEmpty || total == 0) {
+    } else if (model.scoreBins.isEmpty || total == 0) {
       body = Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text(
@@ -1426,7 +829,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
       );
     } else {
       body = Column(
-        children: _scoreBins.map((bin) {
+        children: model.scoreBins.map((bin) {
           final isActive = bin.label == currentLabel;
           return _buildScoreRow(
             context,
@@ -1465,7 +868,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
   Widget _buildScoreRow(
     BuildContext context, {
-    required _ScoreBin bin,
+    required RecommendationScoreBin bin,
     required int total,
     required int maxCount,
     required bool highlight,
@@ -1531,7 +934,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
   }
 
   Widget _buildLongReviewCard(
-    BuildContext context, {
+    BuildContext context,
+    RecommendationViewModel model, {
     required DailyRecommendation recommendation,
     required String longReview,
     String? hint,
@@ -1539,7 +943,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final pageId = recommendation.pageId?.trim() ?? '';
     final isLoading =
-        pageId.isNotEmpty && _notionContentLoading.contains(pageId);
+        pageId.isNotEmpty && model.isNotionContentLoading(pageId);
     final trimmed = longReview.trim();
     final displayText = trimmed.isNotEmpty
         ? trimmed

@@ -1,11 +1,13 @@
-import 'dart:io';
+﻿import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_settings.dart';
+import '../core/layout/breakpoints.dart';
+import 'sidebar_recommendation_card.dart';
 
-class NavigationShell extends StatefulWidget {
+class NavigationShell extends StatelessWidget {
   const NavigationShell({
     super.key,
     required this.title,
@@ -21,26 +23,17 @@ class NavigationShell extends StatefulWidget {
   final List<Widget>? actions;
   final VoidCallback? onBack;
 
-  @override
-  State<NavigationShell> createState() => _NavigationShellState();
-}
-
-class _NavigationShellState extends State<NavigationShell> {
-  bool? _userExtended;
-  bool? _lastIsWide;
-
   int _selectedIndex() {
-    switch (widget.selectedRoute) {
+    switch (selectedRoute) {
       case '/calendar':
         return 0;
       case '/recommendation':
         return 1;
       case '/search':
         return 2;
+      case '/settings':
       case '/mapping':
         return 3;
-      case '/settings':
-        return 4;
       default:
         return 0;
     }
@@ -49,11 +42,8 @@ class _NavigationShellState extends State<NavigationShell> {
   void _handleDestinationSelected(BuildContext context, int index) {
     String route;
     switch (index) {
-      case 4:
-        route = '/settings';
-        break;
       case 3:
-        route = '/mapping';
+        route = '/settings';
         break;
       case 1:
         route = '/recommendation';
@@ -66,13 +56,13 @@ class _NavigationShellState extends State<NavigationShell> {
         route = '/calendar';
         break;
     }
-    if (route == widget.selectedRoute) {
+    if (route == selectedRoute) {
       return;
     }
     Navigator.pushReplacementNamed(context, route);
   }
 
-  void _toggleTheme() async {
+  Future<void> _toggleTheme(BuildContext context) async {
     final settings = context.read<AppSettings>();
     final currentMode = settings.themeMode;
     ThemeMode newMode;
@@ -81,7 +71,6 @@ class _NavigationShellState extends State<NavigationShell> {
     } else if (currentMode == ThemeMode.dark) {
       newMode = ThemeMode.light;
     } else {
-      // 如果是系统模式，根据当前实际亮度切换
       final brightness = MediaQuery.of(context).platformBrightness;
       newMode =
           brightness == Brightness.dark ? ThemeMode.light : ThemeMode.dark;
@@ -96,37 +85,72 @@ class _NavigationShellState extends State<NavigationShell> {
     final isDesktop =
         Platform.isWindows || Platform.isMacOS || Platform.isLinux;
     final showAppBar =
-        widget.onBack != null || !(isDesktop && settings.useSystemTitleBar);
+        onBack != null || !(isDesktop && settings.useSystemTitleBar);
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 900;
+        final size = Breakpoints.sizeForWidth(constraints.maxWidth);
+        final isNarrow = size == ScreenSize.narrow;
+        final isWide = size == ScreenSize.wide;
+        final useRail = !isNarrow;
+        final useBottomNav = isNarrow && onBack == null;
 
-        if (_lastIsWide != null && _lastIsWide != isWide) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() {
-                _userExtended = null;
-              });
-            }
-          });
-        }
-        _lastIsWide = isWide;
+        final contentRadius =
+            isNarrow ? BorderRadius.zero : BorderRadius.circular(28);
+        final surfaceBorder = isNarrow
+            ? null
+            : Border.all(color: colorScheme.outlineVariant);
 
-        final isExtended = _userExtended ?? isWide;
+        final content = Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: contentRadius,
+            border: surfaceBorder,
+          ),
+          child: ClipRRect(
+            borderRadius: contentRadius,
+            child: child,
+          ),
+        );
 
         return Scaffold(
           backgroundColor: colorScheme.surface,
           appBar: showAppBar
               ? AppBar(
-                  title: Text(widget.title),
-                  automaticallyImplyLeading: widget.onBack != null,
-                  leading: widget.onBack == null
+                  title: Text(title),
+                  automaticallyImplyLeading: onBack != null,
+                  leading: onBack == null
                       ? null
                       : IconButton(
                           icon: const Icon(Icons.arrow_back),
-                          onPressed: widget.onBack,
+                          onPressed: onBack,
                         ),
-                  actions: widget.actions,
+                  actions: actions,
+                )
+              : null,
+          bottomNavigationBar: useBottomNav
+              ? NavigationBar(
+                  selectedIndex: _selectedIndex(),
+                  onDestinationSelected: (index) =>
+                      _handleDestinationSelected(context, index),
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.calendar_month),
+                      label: '放送',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.recommend),
+                      label: '推荐',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.search),
+                      label: '搜索',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.settings),
+                      label: '设置',
+                    ),
+                  ],
                 )
               : null,
           body: DecoratedBox(
@@ -140,160 +164,134 @@ class _NavigationShellState extends State<NavigationShell> {
                 ],
               ),
             ),
-            child: Row(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-                  child: IntrinsicWidth(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: colorScheme.surface,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: colorScheme.outlineVariant),
-                        boxShadow: [
-                          BoxShadow(
-                            color: colorScheme.shadow.withValues(alpha: 0.08),
-                            blurRadius: 24,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: NavigationRail(
-                                selectedIndex: _selectedIndex(),
-                                extended: isExtended,
-                                groupAlignment: -1.0,
-                                useIndicator: true,
-                                indicatorShape: const StadiumBorder(),
-                                minWidth: 72,
-                                minExtendedWidth: 220,
-                                destinations: const [
-                                  NavigationRailDestination(
-                                    icon: Icon(Icons.calendar_month),
-                                    label: Text('新番放送'),
-                                  ),
-                                  NavigationRailDestination(
-                                    icon: Icon(Icons.recommend),
-                                    label: Text('每日推荐'),
-                                  ),
-                                  NavigationRailDestination(
-                                    icon: Icon(Icons.search),
-                                    label: Text('搜索'),
-                                  ),
-                                  NavigationRailDestination(
-                                    icon: Icon(Icons.map),
-                                    label: Text('映射配置'),
-                                  ),
-                                  NavigationRailDestination(
-                                    icon: Icon(Icons.settings),
-                                    label: Text('设置'),
-                                  ),
-                                ],
-                                onDestinationSelected: (index) =>
-                                    _handleDestinationSelected(context, index),
-                              ),
+            child: useRail
+                ? Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+                        child: IntrinsicWidth(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface,
+                              borderRadius: BorderRadius.circular(24),
+                              border:
+                                  Border.all(color: colorScheme.outlineVariant),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: colorScheme.shadow
+                                      .withValues(alpha: 0.08),
+                                  blurRadius: 24,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
                             ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
-                              child: Consumer<AppSettings>(
-                                builder: (context, settings, _) {
-                                  final mode = settings.themeMode;
-                                  final isDark = mode == ThemeMode.dark ||
-                                      (mode == ThemeMode.system &&
-                                          MediaQuery.of(context)
-                                                  .platformBrightness ==
-                                              Brightness.dark);
-                                  final icon = isDark
-                                      ? Icons.light_mode
-                                      : Icons.dark_mode;
-                                  final label = isDark ? '浅色模式' : '深色模式';
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(24),
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: NavigationRail(
+                                      selectedIndex: _selectedIndex(),
+                                      extended: isWide,
+                                      groupAlignment: -1.0,
+                                      useIndicator: true,
+                                      indicatorShape: const StadiumBorder(),
+                                      minWidth: 72,
+                                      minExtendedWidth: 220,
+                                      destinations: const [
+                                        NavigationRailDestination(
+                                          icon: Icon(Icons.calendar_month),
+                                          label: Text('放送页'),
+                                        ),
+                                        NavigationRailDestination(
+                                          icon: Icon(Icons.recommend),
+                                          label: Text('推荐页'),
+                                        ),
+                                        NavigationRailDestination(
+                                          icon: Icon(Icons.search),
+                                          label: Text('搜索页'),
+                                        ),
+                                        NavigationRailDestination(
+                                          icon: Icon(Icons.settings),
+                                          label: Text('设置页'),
+                                        ),
+                                      ],
+                                      onDestinationSelected: (index) =>
+                                          _handleDestinationSelected(
+                                              context, index),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12),
+                                    child: SidebarRecommendationCard(
+                                      extended: isWide,
+                                      compact: !isWide,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12),
+                                    child: Consumer<AppSettings>(
+                                      builder: (context, settings, _) {
+                                        final mode = settings.themeMode;
+                                        final isDark = mode == ThemeMode.dark ||
+                                            (mode == ThemeMode.system &&
+                                                MediaQuery.of(context)
+                                                        .platformBrightness ==
+                                                    Brightness.dark);
+                                        final icon = isDark
+                                            ? Icons.light_mode
+                                            : Icons.dark_mode;
+                                        final label =
+                                            isDark ? '浅色模式' : '深色模式';
 
-                                  return isExtended
-                                      ? TextButton.icon(
-                                          onPressed: _toggleTheme,
-                                          icon: Icon(icon),
-                                          label: Text(label),
-                                          style: TextButton.styleFrom(
-                                            alignment: Alignment.centerLeft,
-                                            minimumSize:
-                                                const Size(double.infinity, 48),
-                                            backgroundColor:
-                                                colorScheme.surfaceContainerLow,
-                                            foregroundColor:
-                                                colorScheme.onSurfaceVariant,
-                                          ),
-                                        )
-                                      : IconButton(
-                                          tooltip: label,
-                                          icon: Icon(icon),
-                                          onPressed: _toggleTheme,
-                                        );
-                                },
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: 20,
-                                left: 12,
-                                right: 12,
-                                top: 8,
-                              ),
-                              child: isExtended
-                                  ? TextButton.icon(
-                                      onPressed: () {
-                                        setState(() {
-                                          _userExtended = !isExtended;
-                                        });
-                                      },
-                                      icon: const Icon(Icons.chevron_left),
-                                      label: const Text('收起侧边栏'),
-                                      style: TextButton.styleFrom(
-                                        alignment: Alignment.centerLeft,
-                                        minimumSize:
-                                            const Size(double.infinity, 48),
-                                        foregroundColor:
-                                            colorScheme.onSurfaceVariant,
-                                      ),
-                                    )
-                                  : IconButton(
-                                      tooltip: '展开侧边栏',
-                                      icon: const Icon(Icons.chevron_right),
-                                      onPressed: () {
-                                        setState(() {
-                                          _userExtended = !isExtended;
-                                        });
+                                        return isWide
+                                            ? TextButton.icon(
+                                                onPressed: () =>
+                                                    _toggleTheme(context),
+                                                icon: Icon(icon),
+                                                label: Text(label),
+                                                style: TextButton.styleFrom(
+                                                  alignment:
+                                                      Alignment.centerLeft,
+                                                  minimumSize: const Size(
+                                                      double.infinity, 48),
+                                                  backgroundColor: colorScheme
+                                                      .surfaceContainerLow,
+                                                  foregroundColor: colorScheme
+                                                      .onSurfaceVariant,
+                                                ),
+                                              )
+                                            : IconButton(
+                                                tooltip: label,
+                                                icon: Icon(icon),
+                                                onPressed: () =>
+                                                    _toggleTheme(context),
+                                              );
                                       },
                                     ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                              ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(0, 12, 16, 12),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: colorScheme.surface,
-                        borderRadius: BorderRadius.circular(28),
-                        border: Border.all(color: colorScheme.outlineVariant),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(0, 12, 16, 12),
+                          child: content,
+                        ),
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(28),
-                        child: widget.child,
-                      ),
-                    ),
+                    ],
+                  )
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                    child: content,
                   ),
-                ),
-              ],
-            ),
           ),
         );
       },

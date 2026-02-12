@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_services.dart';
 import '../app/app_settings.dart';
-import '../services/notion_api.dart';
+import '../view_models/database_settings_view_model.dart';
 import '../widgets/navigation_shell.dart';
 
 class DatabaseSettingsPage extends StatefulWidget {
@@ -16,44 +15,30 @@ class DatabaseSettingsPage extends StatefulWidget {
 }
 
 class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
-  late final NotionApi _notionApi;
+  late final DatabaseSettingsViewModel _viewModel;
 
   final _notionTokenController = TextEditingController();
   final _notionDbController = TextEditingController();
-
-  bool _loading = true;
-  bool _saving = false;
-  String? _errorMessage;
-  String? _successMessage;
+  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
-    _notionApi = context.read<AppServices>().notionApi;
-    _load();
+    _viewModel = DatabaseSettingsViewModel(
+      notionApi: context.read<AppServices>().notionApi,
+      settings: context.read<AppSettings>(),
+    );
+    _viewModel.addListener(_syncControllers);
+    _viewModel.load();
   }
 
-  Future<void> _load() async {
-    final appSettings = context.read<AppSettings>();
-
-    String notionToken = appSettings.notionToken;
-    if (notionToken.isEmpty) {
-      notionToken = dotenv.env['NOTION_TOKEN'] ?? '';
+  void _syncControllers() {
+    if (_initialized || _viewModel.isLoading) {
+      return;
     }
-
-    String notionDbId = appSettings.notionDatabaseId;
-    if (notionDbId.isEmpty) {
-      notionDbId = dotenv.env['NOTION_DATABASE_ID'] ?? '';
-    }
-
-    _notionTokenController.text = notionToken;
-    _notionDbController.text = notionDbId;
-
-    if (mounted) {
-      setState(() {
-        _loading = false;
-      });
-    }
+    _initialized = true;
+    _notionTokenController.text = _viewModel.notionToken;
+    _notionDbController.text = _viewModel.notionDatabaseId;
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -69,92 +54,39 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
   }
 
   Future<void> _autoSaveNotionSettings() async {
-    try {
-      await context.read<AppSettings>().saveNotionSettings(
-            token: _notionTokenController.text.trim(),
-            databaseId: _notionDbController.text.trim(),
-          );
-    } catch (_) {}
+    _viewModel.updateToken(_notionTokenController.text);
+    _viewModel.updateDatabaseId(_notionDbController.text);
+    await _viewModel.autoSave();
   }
 
   Future<void> _saveAll() async {
-    setState(() {
-      _saving = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
-
-    try {
-      await context.read<AppSettings>().saveNotionSettings(
-            token: _notionTokenController.text.trim(),
-            databaseId: _notionDbController.text.trim(),
-          );
-      if (mounted) {
-        setState(() {
-          _successMessage = '设置已保存';
-        });
-        _showSnackBar('设置已保存');
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = '保存失败，请稍后重试';
-        });
-        _showSnackBar('保存失败，请稍后重试', isError: true);
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
+    _viewModel.updateToken(_notionTokenController.text);
+    _viewModel.updateDatabaseId(_notionDbController.text);
+    await _viewModel.saveAll();
+    if (!mounted) return;
+    if (_viewModel.errorMessage != null) {
+      _showSnackBar(_viewModel.errorMessage!, isError: true);
+    } else if (_viewModel.successMessage != null) {
+      _showSnackBar(_viewModel.successMessage!);
     }
   }
 
   Future<void> _testNotionConnection() async {
-    setState(() {
-      _saving = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
-
-    try {
-      final token = _notionTokenController.text.trim();
-      final databaseId = _notionDbController.text.trim();
-
-      if (token.isEmpty || databaseId.isEmpty) {
-        throw Exception('请先填写 Notion Token 与 Database ID');
-      }
-
-      await _notionApi.testConnection(
-        token: token,
-        databaseId: databaseId,
-      );
-
-      if (mounted) {
-        setState(() {
-          _successMessage = 'Notion 连接成功';
-        });
-        _showSnackBar('Notion 连接成功');
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = '连接失败，请稍后重试';
-        });
-        _showSnackBar('连接失败，请稍后重试', isError: true);
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
+    _viewModel.updateToken(_notionTokenController.text);
+    _viewModel.updateDatabaseId(_notionDbController.text);
+    await _viewModel.testConnection();
+    if (!mounted) return;
+    if (_viewModel.errorMessage != null) {
+      _showSnackBar(_viewModel.errorMessage!, isError: true);
+    } else if (_viewModel.successMessage != null) {
+      _showSnackBar(_viewModel.successMessage!);
     }
   }
 
   @override
   void dispose() {
+    _viewModel.removeListener(_syncControllers);
+    _viewModel.dispose();
     _notionTokenController.dispose();
     _notionDbController.dispose();
     super.dispose();
@@ -162,48 +94,58 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return NavigationShell(
-      title: '数据库设置',
-      selectedRoute: '/settings',
-      onBack: () => Navigator.of(context).pop(),
-      child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _sectionTitle('Notion 数据库'),
-                _buildFormCard(context),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _errorMessage!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
+      child: Consumer<DatabaseSettingsViewModel>(
+        builder: (context, model, _) {
+          return NavigationShell(
+            title: '数据库设置',
+            selectedRoute: '/settings',
+            onBack: () => Navigator.of(context).pop(),
+            child: model.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _sectionTitle('Notion 数据库'),
+                      _buildFormCard(context, model),
+                      if (model.errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          model.errorMessage!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ],
+                      if (model.successMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          model.successMessage!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      Text(
+                        '填写后可用于每日推荐与番剧同步功能。',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-                if (_successMessage != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _successMessage!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Text(
-                  '填写后可用于每日推荐与番剧同步功能。',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                ),
-              ],
-            ),
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildFormCard(BuildContext context) {
+  Widget _buildFormCard(
+    BuildContext context,
+    DatabaseSettingsViewModel model,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
@@ -252,15 +194,15 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: _saving ? null : _saveAll,
+                  onPressed: model.isSaving ? null : _saveAll,
                   icon: const Icon(Icons.save),
                   label: const Text('保存设置'),
                 ),
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
-                onPressed: _saving ? null : _testNotionConnection,
-                icon: _saving
+                onPressed: model.isSaving ? null : _testNotionConnection,
+                icon: model.isSaving
                     ? const SizedBox(
                         width: 18,
                         height: 18,

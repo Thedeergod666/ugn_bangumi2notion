@@ -8,6 +8,7 @@ class NotionMappingPanel extends StatelessWidget {
   final List<NotionProperty> properties;
   final NotionDailyRecommendationBindings bindings;
   final ValueChanged<NotionDailyRecommendationBindings> onBindingsChanged;
+  final bool embedInScroll;
 
   const NotionMappingPanel({
     super.key,
@@ -16,6 +17,7 @@ class NotionMappingPanel extends StatelessWidget {
     required this.properties,
     required this.bindings,
     required this.onBindingsChanged,
+    this.embedInScroll = false,
   });
 
   @override
@@ -52,6 +54,13 @@ class NotionMappingPanel extends StatelessWidget {
                   Expanded(child: rightPanel),
                 ],
               );
+
+        if (embedInScroll) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: content,
+          );
+        }
 
         return Scrollbar(
           thumbVisibility: true,
@@ -313,6 +322,7 @@ class NotionMappingPanel extends StatelessWidget {
           final useVertical = constraints.maxWidth < 520;
           final dropdown = DropdownButtonFormField<String>(
             initialValue: value,
+            isExpanded: true,
             items: items.map((prop) {
               return DropdownMenuItem(
                 value: prop.name,

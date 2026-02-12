@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../services/logging.dart';
+import '../view_models/error_log_view_model.dart';
 import '../widgets/navigation_shell.dart';
 
 class ErrorLogPage extends StatelessWidget {
@@ -10,63 +11,68 @@ class ErrorLogPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logger = context.watch<Logger>();
-    final entries =
-        logger.entriesForLevel(LogLevel.error).toList().reversed.toList();
-    final canCopy = entries.isNotEmpty;
-
-    return NavigationShell(
-      title: '错误日志',
-      selectedRoute: '/settings',
-      onBack: () => Navigator.of(context).pop(),
-      actions: [
-        IconButton(
-          tooltip: '一键复制',
-          onPressed: canCopy
-              ? () {
-                  final payload = logger.exportText(level: LogLevel.error);
-                  Clipboard.setData(ClipboardData(text: payload));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('错误日志已复制')),
-                  );
-                }
-              : null,
-          icon: const Icon(Icons.copy_all),
-        ),
-        IconButton(
-          tooltip: '清空',
-          onPressed: entries.isNotEmpty
-              ? () {
-                  logger.clear();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已清空错误日志')),
-                  );
-                }
-              : null,
-          icon: const Icon(Icons.delete_outline),
-        ),
-      ],
-      child: SelectionArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              '共 ${entries.length} 条记录',
-              style: Theme.of(context).textTheme.titleSmall,
+    return ChangeNotifierProvider(
+      create: (context) =>
+          ErrorLogViewModel(logger: context.read<Logger>()),
+      child: Consumer<ErrorLogViewModel>(
+        builder: (context, model, _) {
+          final entries = model.entries;
+          return NavigationShell(
+            title: '错误日志',
+            selectedRoute: '/settings',
+            onBack: () => Navigator.of(context).pop(),
+            actions: [
+              IconButton(
+                tooltip: '一键复制',
+                onPressed: model.canCopy
+                    ? () {
+                        final payload = model.exportText();
+                        Clipboard.setData(ClipboardData(text: payload));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('错误日志已复制')),
+                        );
+                      }
+                    : null,
+                icon: const Icon(Icons.copy_all),
+              ),
+              IconButton(
+                tooltip: '清空',
+                onPressed: entries.isNotEmpty
+                    ? () {
+                        model.clear();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('已清空错误日志')),
+                        );
+                      }
+                    : null,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+            child: SelectionArea(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Text(
+                    '共 ${entries.length} 条记录',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 12),
+                  if (entries.isEmpty)
+                    _buildEmptyState(context)
+                  else
+                    ...entries.map((entry) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _buildLogCard(context, entry),
+                        )),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            if (entries.isEmpty)
-              _buildEmptyState(context)
-            else
-              ...entries.map((entry) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildLogCard(context, entry),
-                  )),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
+
 
   Widget _buildEmptyState(BuildContext context) {
     return Container(

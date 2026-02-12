@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -8,8 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app/app_services.dart';
 import '../app/app_settings.dart';
 import '../config/bangumi_oauth_config.dart';
-import '../models/bangumi_models.dart';
-import '../services/bangumi_oauth.dart';
+import '../view_models/settings_view_model.dart';
 import '../widgets/error_detail_dialog.dart';
 import '../widgets/navigation_shell.dart';
 import 'appearance_settings_page.dart';
@@ -24,67 +21,19 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  late final BangumiOAuth _oauth;
+  late final SettingsViewModel _viewModel;
 
   final _bangumiClientIdController = TextEditingController();
   final _bangumiClientSecretController = TextEditingController();
 
-  bool _loading = true;
-  bool _saving = false;
-  String? _errorMessage;
-  String? _successMessage;
-  bool _bangumiLoading = false;
-  bool _bangumiHasToken = false;
-  bool _bangumiTokenValid = false;
-  BangumiUser? _bangumiUser;
-
   @override
   void initState() {
     super.initState();
-    _oauth = context.read<AppServices>().bangumiOAuth;
-    _load();
-  }
-
-  Future<void> _load() async {
-    if (mounted) {
-      setState(() {
-        _loading = false;
-      });
-    }
-    await _refreshBangumiStatus();
-  }
-
-  Future<void> _refreshBangumiStatus() async {
-    final token = context.read<AppSettings>().bangumiAccessToken;
-    if (token.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _bangumiHasToken = false;
-          _bangumiTokenValid = false;
-          _bangumiUser = null;
-        });
-      }
-      return;
-    }
-    try {
-      final api = context.read<AppServices>().bangumiApi;
-      final user = await api.fetchSelf(accessToken: token);
-      if (mounted) {
-        setState(() {
-          _bangumiHasToken = true;
-          _bangumiTokenValid = true;
-          _bangumiUser = user;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _bangumiHasToken = true;
-          _bangumiTokenValid = false;
-          _bangumiUser = null;
-        });
-      }
-    }
+    _viewModel = SettingsViewModel(
+      services: context.read<AppServices>(),
+      settings: context.read<AppSettings>(),
+    );
+    _viewModel.load();
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -100,101 +49,40 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _authorize() async {
-    if (!BangumiOAuthConfig.isConfigured) {
+    if (!_viewModel.isBangumiConfigured) {
       await _showBangumiConfigMissingDialog();
       return;
     }
-    setState(() {
-      _saving = true;
-      _bangumiLoading = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
-
-    try {
-      final result = await _oauth.authorize();
-      if (!mounted) {
-        return;
-      }
-      await context
-          .read<AppSettings>()
-          .saveBangumiAccessToken(result.accessToken);
-      if (mounted) {
-        setState(() {
-          _successMessage = 'Bangumi 授权成功';
-          _bangumiHasToken = true;
-          _bangumiTokenValid = result.isTokenValid;
-          _bangumiUser = result.user;
-        });
-        _showSnackBar('Bangumi 授权成功');
-      }
-    } catch (error, stackTrace) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = '授权失败，请稍后重试';
-        });
-        _showSnackBar('授权失败，请稍后重试', isError: true);
-        await showDialog(
-          context: context,
-          builder: (context) => ErrorDetailDialog(
-            error: error,
-            stackTrace: stackTrace,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-          _bangumiLoading = false;
-        });
-      }
+    final result = await _viewModel.authorize();
+    if (!mounted) {
+      return;
+    }
+    _showSnackBar(result.message, isError: !result.success);
+    if (!result.success && result.error != null) {
+      await showDialog(
+        context: context,
+        builder: (context) => ErrorDetailDialog(
+          error: result.error!,
+          stackTrace: result.stackTrace,
+        ),
+      );
     }
   }
 
   Future<void> _logoutBangumi() async {
-    setState(() {
-      _saving = true;
-      _bangumiLoading = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
-
-    try {
-      await _oauth.logout();
-      if (!mounted) {
-        return;
-      }
-      await context.read<AppSettings>().clearBangumiAccessToken();
-      if (mounted) {
-        setState(() {
-          _bangumiHasToken = false;
-          _bangumiTokenValid = false;
-          _bangumiUser = null;
-          _successMessage = '已退出 Bangumi 授权';
-        });
-        _showSnackBar('已退出 Bangumi 授权');
-      }
-    } catch (error, stackTrace) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = '退出失败，请稍后重试';
-        });
-        await showDialog(
-          context: context,
-          builder: (context) => ErrorDetailDialog(
-            error: error,
-            stackTrace: stackTrace,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-          _bangumiLoading = false;
-        });
-      }
+    final result = await _viewModel.logout();
+    if (!mounted) {
+      return;
+    }
+    _showSnackBar(result.message, isError: !result.success);
+    if (!result.success && result.error != null) {
+      await showDialog(
+        context: context,
+        builder: (context) => ErrorDetailDialog(
+          error: result.error!,
+          stackTrace: result.stackTrace,
+        ),
+      );
     }
   }
 
@@ -246,7 +134,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       return;
                     }
                     try {
-                      await _applyBangumiEnvVariables(
+                      await _viewModel.applyBangumiEnvVariables(
                         clientId: clientId,
                         clientSecret: clientSecret,
                       );
@@ -302,83 +190,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _applyBangumiEnvVariables({
-    required String clientId,
-    required String clientSecret,
-  }) async {
-    if (Platform.isWindows) {
-      final resultId = await Process.run(
-        'cmd',
-        ['/c', 'setx', 'BANGUMI_CLIENT_ID', clientId],
-      );
-      final resultSecret = await Process.run(
-        'cmd',
-        ['/c', 'setx', 'BANGUMI_CLIENT_SECRET', clientSecret],
-      );
-      if (resultId.exitCode != 0 || resultSecret.exitCode != 0) {
-        throw Exception('写入 Windows 环境变量失败');
-      }
-      return;
-    }
-
-    if (Platform.isMacOS) {
-      final resultId = await Process.run(
-        'launchctl',
-        ['setenv', 'BANGUMI_CLIENT_ID', clientId],
-      );
-      final resultSecret = await Process.run(
-        'launchctl',
-        ['setenv', 'BANGUMI_CLIENT_SECRET', clientSecret],
-      );
-      if (resultId.exitCode != 0 || resultSecret.exitCode != 0) {
-        throw Exception('写入 macOS 环境变量失败');
-      }
-      return;
-    }
-
-    if (Platform.isLinux) {
-      final home = Platform.environment['HOME'];
-      if (home == null || home.isEmpty) {
-        throw Exception('无法获取 HOME 目录，无法写入 ~/.profile');
-      }
-      final profile = File('$home/.profile');
-      final content =
-          await profile.exists() ? await profile.readAsString() : '';
-      var updated = _upsertEnvLine(
-        content,
-        key: 'BANGUMI_CLIENT_ID',
-        value: clientId,
-      );
-      updated = _upsertEnvLine(
-        updated,
-        key: 'BANGUMI_CLIENT_SECRET',
-        value: clientSecret,
-      );
-      await profile.writeAsString(updated);
-      return;
-    }
-
-    throw Exception('当前平台不支持自动写入环境变量');
-  }
-
-  String _upsertEnvLine(
-    String content, {
-    required String key,
-    required String value,
-  }) {
-    final escapedValue = value.replaceAll('"', r'\"');
-    final line = 'export $key="$escapedValue"';
-    final pattern = '^export\\s+${RegExp.escape(key)}=.*';
-    final regex = RegExp(pattern, multiLine: true);
-    if (regex.hasMatch(content)) {
-      return content.replaceAll(regex, '$line\n');
-    }
-    if (content.isNotEmpty && !content.endsWith('\n')) {
-      content += '\n';
-    }
-    return '$content$line\n';
-  }
-
   void _openPage(Widget page) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => page),
@@ -387,6 +198,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
+    _viewModel.dispose();
     _bangumiClientIdController.dispose();
     _bangumiClientSecretController.dispose();
     super.dispose();
@@ -394,92 +206,111 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return NavigationShell(
-      title: '设置',
-      selectedRoute: '/settings',
-      child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _sectionTitle('账号与同步'),
-                _buildBangumiCard(),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _errorMessage!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
+      child: Consumer<SettingsViewModel>(
+        builder: (context, model, _) {
+          return NavigationShell(
+            title: '设置',
+            selectedRoute: '/settings',
+            child: model.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _sectionTitle('账号与同步'),
+                      _buildBangumiCard(model),
+                      if (model.errorMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          model.errorMessage!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ],
+                      if (model.successMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          model.successMessage!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      _sectionTitle('应用与外观'),
+                      _buildGroup(
+                        context,
+                        [
+                          _buildNavTile(
+                            icon: Icons.storage_rounded,
+                            title: '数据库设置',
+                            subtitle: '配置 Notion Token 与数据库 ID',
+                            onTap: () =>
+                                _openPage(const DatabaseSettingsPage()),
+                          ),
+                          _buildNavTile(
+                            icon: Icons.map_outlined,
+                            title: '映射设置',
+                            subtitle: 'Bangumi/Notion 字段绑定',
+                            onTap: () =>
+                                Navigator.of(context).pushNamed('/mapping'),
+                          ),
+                          _buildNavTile(
+                            icon: Icons.palette_outlined,
+                            title: '外观设置',
+                            subtitle: '主题、配色、字体等',
+                            onTap: () =>
+                                _openPage(const AppearanceSettingsPage()),
+                          ),
+                          _buildNavTile(
+                            icon: Icons.bug_report_outlined,
+                            title: '错误日志',
+                            subtitle: '查看错误日志与复制',
+                            onTap: () => _openPage(const ErrorLogPage()),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _sectionTitle('开发者'),
+                      _buildGroup(
+                        context,
+                        [
+                          _buildCopyableTile(
+                            context,
+                            label: 'OAuth 回调地址',
+                            value: 'http://localhost:8080/auth/callback',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '请在 Bangumi 开发者后台登记该回调地址，授权时会通过本地回调接收 code。',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-                if (_successMessage != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _successMessage!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                _sectionTitle('应用与外观'),
-                _buildGroup(
-                  context,
-                  [
-                    _buildNavTile(
-                      icon: Icons.storage_rounded,
-                      title: '数据库设置',
-                      subtitle: '配置 Notion Token 与数据库 ID',
-                      onTap: () => _openPage(const DatabaseSettingsPage()),
-                    ),
-                    _buildNavTile(
-                      icon: Icons.palette_outlined,
-                      title: '外观设置',
-                      subtitle: '主题、配色、字体等',
-                      onTap: () => _openPage(const AppearanceSettingsPage()),
-                    ),
-                    _buildNavTile(
-                      icon: Icons.bug_report_outlined,
-                      title: '错误日志',
-                      subtitle: '查看错误日志与复制',
-                      onTap: () => _openPage(const ErrorLogPage()),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _sectionTitle('开发者'),
-                _buildGroup(
-                  context,
-                  [
-                    _buildCopyableTile(
-                      context,
-                      label: 'OAuth 回调地址',
-                      value: 'http://localhost:8080/auth/callback',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '请在 Bangumi 开发者后台登记该回调地址，授权时会通过本地回调接收 code。',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildBangumiCard() {
-    final hasToken = _bangumiHasToken;
-    final userLabel = _bangumiUser == null
+  Widget _buildBangumiCard(SettingsViewModel model) {
+    final hasToken = model.bangumiHasToken;
+    final userLabel = model.bangumiUser == null
         ? '未获取到用户信息'
-        : (_bangumiUser!.nickname.isNotEmpty ? _bangumiUser!.nickname : '已登录');
-    final statusText =
-        hasToken ? (_bangumiTokenValid ? '已登录' : 'Token 无效或已过期') : '未登录';
-    final statusColor = _bangumiTokenValid
+        : (model.bangumiUser!.nickname.isNotEmpty
+            ? model.bangumiUser!.nickname
+            : '已登录');
+    final statusText = hasToken
+        ? (model.bangumiTokenValid ? '已登录' : 'Token 无效或已过期')
+        : '未登录';
+    final statusColor = model.bangumiTokenValid
         ? Colors.green
         : (hasToken ? Colors.orange : Colors.grey);
     final colorScheme = Theme.of(context).colorScheme;
@@ -509,7 +340,8 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             trailing: TextButton.icon(
-              onPressed: _bangumiLoading ? null : _refreshBangumiStatus,
+              onPressed:
+                  model.isBangumiLoading ? null : model.refreshBangumiStatus,
               icon: const Icon(Icons.refresh, size: 16),
               label: const Text('刷新'),
             ),
@@ -523,8 +355,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: _saving ? null : _authorize,
-                        icon: _bangumiLoading
+                        onPressed: model.isSaving ? null : _authorize,
+                        icon: model.isBangumiLoading
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
@@ -537,8 +369,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     const SizedBox(width: 12),
                     OutlinedButton.icon(
-                      onPressed:
-                          (_saving || !_bangumiHasToken) ? null : _logoutBangumi,
+                      onPressed: (model.isSaving || !model.bangumiHasToken)
+                          ? null
+                          : _logoutBangumi,
                       icon: const Icon(Icons.logout),
                       label: const Text('登出'),
                     ),
@@ -666,3 +499,4 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+

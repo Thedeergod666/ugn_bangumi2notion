@@ -1,364 +1,182 @@
-import 'package:cached_network_image/cached_network_image.dart';
+﻿import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app/app_services.dart';
 import '../app/app_settings.dart';
 import '../models/bangumi_models.dart';
-import '../models/mapping_config.dart';
-import '../services/bangumi_api.dart';
-import '../services/notion_api.dart';
-import '../services/settings_storage.dart';
+import '../view_models/calendar_view_model.dart';
 import '../widgets/navigation_shell.dart';
 import 'detail_page.dart';
 
-class CalendarPage extends StatefulWidget {
+class CalendarPage extends StatelessWidget {
   const CalendarPage({super.key});
 
   @override
-  State<CalendarPage> createState() => _CalendarPageState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (context) => CalendarViewModel(
+        bangumiApi: context.read<AppServices>().bangumiApi,
+        notionApi: context.read<AppServices>().notionApi,
+      )..load(context.read<AppSettings>()),
+      child: const _CalendarView(),
+    );
+  }
 }
 
-class _CalendarPageState extends State<CalendarPage> {
-  late final BangumiApi _bangumiApi;
-  late final NotionApi _notionApi;
-  final SettingsStorage _settingsStorage = SettingsStorage();
-
-  bool _loading = true;
-  String? _errorMessage;
-  List<BangumiCalendarDay> _days = [];
-  Set<int> _boundIds = {};
-  Map<int, int> _watchedEpisodes = {};
-  Map<int, double?> _yougnScores = {};
-  Map<int, BangumiSubjectDetail> _detailCache = {};
-  final Set<int> _detailLoading = {};
-  Map<int, int> _latestEpisodeCache = {};
-  final Set<int> _latestEpisodeLoading = {};
-  Map<int, List<BangumiCalendarItem>> _weekdayItems = {};
-  Map<int, int> _weekdayBoundCounts = {};
-  List<BangumiCalendarItem> _boundItems = [];
-  bool _notionConfigured = false;
-  int _selectedWeekday = DateTime.now().weekday;
-
-  @override
-  void initState() {
-    super.initState();
-    final services = context.read<AppServices>();
-    _bangumiApi = services.bangumiApi;
-    _notionApi = services.notionApi;
-    _loadCalendar();
-  }
-
-  Future<void> _loadCalendar() async {
-    if (!mounted) return;
-    final appSettings = context.read<AppSettings>();
-    setState(() {
-      _loading = true;
-      _errorMessage = null;
-      _days = [];
-      _boundIds = {};
-      _boundItems = [];
-      _watchedEpisodes = {};
-      _yougnScores = {};
-      _detailCache = {};
-      _detailLoading.clear();
-      _latestEpisodeCache = {};
-      _latestEpisodeLoading.clear();
-      _notionConfigured = false;
-    });
-
-    try {
-      final calendar = await _bangumiApi.fetchCalendar();
-      final filteredDays = _filterCalendarDays(calendar);
-
-      final notionToken = appSettings.notionToken;
-      final notionDbId = appSettings.notionDatabaseId;
-      final mappingConfig = await _settingsStorage.getMappingConfig();
-      final notionPropertyName = _resolveBangumiIdProperty(mappingConfig);
-
-      final dailyBindings = await _settingsStorage.getDailyRecommendationBindings();
-      final yougnScoreProperty = dailyBindings.yougnScore.isNotEmpty
-          ? dailyBindings.yougnScore
-          : mappingConfig.dailyRecommendationBindings.yougnScore;
-
-      Set<int> boundIds = {};
-      Map<int, int> watchedEpisodes = {};
-      Map<int, double?> yougnScores = {};
-      bool notionReady = false;
-      if (notionToken.isNotEmpty &&
-          notionDbId.isNotEmpty &&
-          notionPropertyName.isNotEmpty) {
-        notionReady = true;
-        final progressMap = await _notionApi.getBangumiProgressInfo(
-          token: notionToken,
-          databaseId: notionDbId,
-          idPropertyName: notionPropertyName,
-          watchedEpisodesProperty: mappingConfig.watchedEpisodes,
-          yougnScoreProperty: yougnScoreProperty,
-          statusPropertyName: mappingConfig.watchingStatus,
-          statusValue: mappingConfig.watchingStatusValue,
-        );
-        watchedEpisodes = {
-          for (final entry in progressMap.entries)
-            entry.key: entry.value.watchedEpisodes
-        };
-        yougnScores = {
-          for (final entry in progressMap.entries)
-            entry.key: entry.value.yougnScore
-        };
-        boundIds = progressMap.keys.toSet();
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _days = filteredDays;
-        _boundIds = boundIds;
-        _watchedEpisodes = watchedEpisodes;
-        _yougnScores = yougnScores;
-        _weekdayItems = _buildWeekdayItems(filteredDays, boundIds);
-        _weekdayBoundCounts = _buildWeekdayBoundCounts(filteredDays, boundIds);
-        _boundItems = _buildBoundItems(filteredDays, boundIds);
-        _notionConfigured = notionReady;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _errorMessage = '加载放送列表失败，请稍后重试';
-      });
-    }
-  }
-
-  String _resolveBangumiIdProperty(MappingConfig config) {
-    if (config.bangumiId.trim().isNotEmpty) {
-      return config.bangumiId.trim();
-    }
-    return config.idPropertyName.trim();
-  }
-
-  List<BangumiCalendarDay> _filterCalendarDays(List<BangumiCalendarDay> days) {
-    final filtered = <BangumiCalendarDay>[];
-    for (final day in days) {
-      final items = day.items.where((item) => item.type == 2).toList();
-      if (items.isEmpty) continue;
-      filtered.add(BangumiCalendarDay(weekday: day.weekday, items: items));
-    }
-    return filtered;
-  }
-
-  int _normalizeWeekdayId(int id) {
-    if (id == 0) return 7;
-    return id;
-  }
-
-  Map<int, List<BangumiCalendarItem>> _buildWeekdayItems(
-    List<BangumiCalendarDay> days,
-    Set<int> boundIds,
-  ) {
-    final result = <int, List<BangumiCalendarItem>>{};
-    for (final day in days) {
-      final items = [...day.items];
-      items.sort((a, b) {
-        final aBound = boundIds.contains(a.id);
-        final bBound = boundIds.contains(b.id);
-        if (aBound == bBound) return 0;
-        return aBound ? -1 : 1;
-      });
-      result[_normalizeWeekdayId(day.weekday.id)] = items;
-    }
-    return result;
-  }
-
-  Map<int, int> _buildWeekdayBoundCounts(
-    List<BangumiCalendarDay> days,
-    Set<int> boundIds,
-  ) {
-    final counts = <int, int>{};
-    for (final day in days) {
-      int count = 0;
-      for (final item in day.items) {
-        if (boundIds.contains(item.id)) count += 1;
-      }
-      counts[_normalizeWeekdayId(day.weekday.id)] = count;
-    }
-    return counts;
-  }
-
-  List<BangumiCalendarItem> _buildBoundItems(
-    List<BangumiCalendarDay> days,
-    Set<int> boundIds,
-  ) {
-    final result = <BangumiCalendarItem>[];
-    final seen = <int>{};
-    for (final day in days) {
-      for (final item in day.items) {
-        if (!boundIds.contains(item.id)) continue;
-        if (seen.add(item.id)) {
-          result.add(item);
-        }
-      }
-    }
-    return result;
-  }
-
-  DateTime _nextDateForWeekday(int weekday, DateTime now) {
-    final base = DateTime(now.year, now.month, now.day);
-    int diff = weekday - now.weekday;
-    if (diff < 0) diff += 7;
-    return base.add(Duration(days: diff));
-  }
-
-  void _scheduleDetailLoad(int subjectId) {
-    if (_detailCache.containsKey(subjectId) ||
-        _detailLoading.contains(subjectId)) {
-      return;
-    }
-    _detailLoading.add(subjectId);
-    _loadDetail(subjectId);
-  }
-
-  void _scheduleLatestEpisodeLoad(int subjectId, int currentLatest) {
-    if (currentLatest > 0 ||
-        _latestEpisodeCache.containsKey(subjectId) ||
-        _latestEpisodeLoading.contains(subjectId)) {
-      return;
-    }
-    _latestEpisodeLoading.add(subjectId);
-    _loadLatestEpisode(subjectId);
-  }
-
-  Future<void> _loadLatestEpisode(int subjectId) async {
-    try {
-      final token = context.read<AppSettings>().bangumiAccessToken;
-      final latest = await _bangumiApi.fetchLatestEpisodeNumber(
-        subjectId: subjectId,
-        accessToken: token.isEmpty ? null : token,
-      );
-      if (!mounted) return;
-      if (latest > 0) {
-        setState(() {
-          _latestEpisodeCache[subjectId] = latest;
-        });
-      }
-    } catch (_) {
-      // Ignore latest episode fetch failures for list rendering.
-    } finally {
-      _latestEpisodeLoading.remove(subjectId);
-    }
-  }
-
-  Future<void> _loadDetail(int subjectId) async {
-    try {
-      final token = context.read<AppSettings>().bangumiAccessToken;
-      final detail = await _bangumiApi.fetchSubjectBase(
-        subjectId: subjectId,
-        accessToken: token.isEmpty ? null : token,
-      );
-      if (!mounted) return;
-      setState(() {
-        _detailCache[subjectId] = detail;
-      });
-    } catch (_) {
-      // Ignore detail fetch failures for list rendering.
-    } finally {
-      _detailLoading.remove(subjectId);
-    }
-  }
+class _CalendarView extends StatelessWidget {
+  const _CalendarView();
 
   @override
   Widget build(BuildContext context) {
+    final model = context.watch<CalendarViewModel>();
     return NavigationShell(
       title: '新番放送',
       selectedRoute: '/calendar',
       actions: [
         IconButton(
           tooltip: '刷新',
-          onPressed: _loading ? null : _loadCalendar,
+          onPressed: model.isLoading
+              ? null
+              : () => model.load(context.read<AppSettings>()),
           icon: const Icon(Icons.refresh),
         ),
       ],
-      child: _buildBody(context),
+      child: _buildBody(context, model),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody(BuildContext context, CalendarViewModel model) {
     final showRatings = context.watch<AppSettings>().showRatings;
-    if (_loading) {
+    if (model.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_errorMessage != null) {
+    if (model.errorMessage != null) {
       return _buildCenteredMessage(
         context,
         icon: Icons.error_outline,
-        title: _errorMessage!,
+        title: model.errorMessage!,
         actionLabel: '重试',
-        onAction: _loadCalendar,
+        onAction: () => model.load(context.read<AppSettings>()),
       );
     }
 
-    if (_days.isEmpty) {
+    if (model.days.isEmpty) {
       return _buildCenteredMessage(
         context,
         icon: Icons.inbox_outlined,
-        title: '暂时没有放送数据',
+        title: '暂无放送数据',
         actionLabel: '刷新',
-        onAction: _loadCalendar,
+        onAction: () => model.load(context.read<AppSettings>()),
       );
     }
 
-    final selectedDay = _days.firstWhere(
-      (day) => _normalizeWeekdayId(day.weekday.id) == _selectedWeekday,
+    final selectedDay = model.days.firstWhere(
+      (day) => model.normalizeWeekdayId(day.weekday.id) == model.selectedWeekday,
       orElse: () => const BangumiCalendarDay(
         weekday: BangumiCalendarWeekday(id: 0, en: '', cn: '', ja: ''),
         items: [],
       ),
     );
-    final selectedItems = _weekdayItems[_selectedWeekday] ?? selectedDay.items;
+    final selectedItems =
+        model.weekdayItems[model.selectedWeekday] ?? selectedDay.items;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        if (!_notionConfigured) _buildNoticeBanner(context),
-        if (_notionConfigured) ...[
-          _buildBoundSection(context, showRatings: showRatings),
+        if (!model.notionConfigured) _buildNoticeBanner(context),
+        if (model.notionConfigured) ...[
+          _buildBoundSection(context, model, showRatings: showRatings),
           const SizedBox(height: 12),
         ],
-        _buildWeekdaySelector(context),
+        _buildWeekdaySelector(context, model),
         const SizedBox(height: 12),
         if (selectedItems.isEmpty)
           _buildEmptyDay(context)
         else ...[
           _buildDayHeader(context, selectedDay.weekday),
           const SizedBox(height: 8),
-          for (final item in selectedItems)
-            Builder(
-              builder: (context) {
-                _scheduleDetailLoad(item.id);
-                _scheduleLatestEpisodeLoad(item.id, item.eps);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _CalendarItemCard(
-                    item: item,
-                    detail: _detailCache[item.id],
-                    isBound: _boundIds.contains(item.id),
-                    watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
-                    latestEpisodes: _latestEpisodeCache[item.id] ?? 0,
-                    showRatings: showRatings,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => DetailPage(subjectId: item.id),
-                        ),
-                      );
-                    },
+          _buildDayItems(context, model, selectedItems, showRatings),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDayItems(
+    BuildContext context,
+    CalendarViewModel model,
+    List<BangumiCalendarItem> items,
+    bool showRatings,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final crossAxisCount = width >= 1100 ? 2 : 1;
+        if (crossAxisCount == 1) {
+          return Column(
+            children: [
+              for (final item in items)
+                Builder(
+                  builder: (context) {
+                    model.scheduleDetailLoad(item.id);
+                    model.scheduleLatestEpisodeLoad(item.id, item.eps);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _CalendarItemCard(
+                        item: item,
+                        detail: model.detailCache[item.id],
+                        isBound: model.boundIds.contains(item.id),
+                        watchedEpisodes: model.watchedEpisodes[item.id] ?? 0,
+                        latestEpisodes: model.latestEpisodeCache[item.id] ?? 0,
+                        showRatings: showRatings,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => DetailPage(subjectId: item.id),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+            ],
+          );
+        }
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 3.2,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            model.scheduleDetailLoad(item.id);
+            model.scheduleLatestEpisodeLoad(item.id, item.eps);
+            return _CalendarItemCard(
+              item: item,
+              detail: model.detailCache[item.id],
+              isBound: model.boundIds.contains(item.id),
+              watchedEpisodes: model.watchedEpisodes[item.id] ?? 0,
+              latestEpisodes: model.latestEpisodeCache[item.id] ?? 0,
+              showRatings: showRatings,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => DetailPage(subjectId: item.id),
                   ),
                 );
               },
-            ),
-        ],
-      ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -376,7 +194,7 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
-  Widget _buildWeekdaySelector(BuildContext context) {
+  Widget _buildWeekdaySelector(BuildContext context, CalendarViewModel model) {
     const labels = <int, String>{
       1: '周一',
       2: '周二',
@@ -391,9 +209,9 @@ class _CalendarPageState extends State<CalendarPage> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: labels.entries.map((entry) {
-          final isSelected = _selectedWeekday == entry.key;
-          final boundCount = _weekdayBoundCounts[entry.key] ?? 0;
-          final date = _nextDateForWeekday(entry.key, now);
+          final isSelected = model.selectedWeekday == entry.key;
+          final boundCount = model.weekdayBoundCounts[entry.key] ?? 0;
+          final date = model.nextDateForWeekday(entry.key, now);
           final dateLabel = '${date.month}月${date.day}日';
           final label = entry.key == now.weekday ? '今天' : entry.value;
           return Padding(
@@ -405,11 +223,7 @@ class _CalendarPageState extends State<CalendarPage> {
                 dateLabel: dateLabel,
               ),
               selected: isSelected,
-              onSelected: (_) {
-                setState(() {
-                  _selectedWeekday = entry.key;
-                });
-              },
+              onSelected: (_) => model.selectWeekday(entry.key),
             ),
           );
         }).toList(),
@@ -447,12 +261,13 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   Widget _buildBoundSection(
-    BuildContext context, {
+    BuildContext context,
+    CalendarViewModel model, {
     required bool showRatings,
   }) {
     final now = DateTime.now();
     final dateLabel = '${now.year}-${now.month}-${now.day}';
-    final hasBound = _boundItems.isNotEmpty;
+    final hasBound = model.boundItems.isNotEmpty;
     final headerText = hasBound ? '$dateLabel · 已追' : dateLabel;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -479,18 +294,18 @@ class _CalendarPageState extends State<CalendarPage> {
             height: 144,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: _boundItems.length,
+              itemCount: model.boundItems.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
-                final item = _boundItems[index];
-                _scheduleDetailLoad(item.id);
-                _scheduleLatestEpisodeLoad(item.id, item.eps);
+                final item = model.boundItems[index];
+                model.scheduleDetailLoad(item.id);
+                model.scheduleLatestEpisodeLoad(item.id, item.eps);
                 return _BoundBangumiCard(
                   item: item,
-                  watchedEpisodes: _watchedEpisodes[item.id] ?? 0,
-                  yougnScore: _yougnScores[item.id],
-                  detail: _detailCache[item.id],
-                  latestEpisodes: _latestEpisodeCache[item.id] ?? 0,
+                  watchedEpisodes: model.watchedEpisodes[item.id] ?? 0,
+                  yougnScore: model.yougnScores[item.id],
+                  detail: model.detailCache[item.id],
+                  latestEpisodes: model.latestEpisodeCache[item.id] ?? 0,
                   showRatings: showRatings,
                   onTap: () {
                     Navigator.of(context).push(
@@ -695,7 +510,7 @@ class _BoundBangumiCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (showRatings && yougnScore != null)
-                            Text('悠GN ${yougnScore!.toStringAsFixed(1)}'),
+                            Text('悠gn ${yougnScore!.toStringAsFixed(1)}'),
                           if (showRatings && yougnScore != null)
                             const SizedBox(height: 4),
                           Text('已追 $watchedText'),
@@ -841,8 +656,8 @@ class _CalendarItemCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       isBound
-                          ? '\u5df2\u8ffd $watchedText / \u5df2\u66f4 $latestText / \u603b\u5171 $totalText'
-                          : '\u5df2\u66f4 $latestText / \u603b\u5171 $totalText',
+                          ? '已追 $watchedText / 已更 $latestText / 总共 $totalText'
+                          : '已更 $latestText / 总共 $totalText',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     if (tags.isNotEmpty) ...[

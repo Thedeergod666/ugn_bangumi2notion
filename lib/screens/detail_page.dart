@@ -1,4 +1,5 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -7,192 +8,184 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app/app_services.dart';
 import '../app/app_settings.dart';
 import '../models/bangumi_models.dart';
-import '../services/bangumi_api.dart';
-import '../services/settings_storage.dart';
-import '../services/notion_api.dart';
-import '../models/mapping_config.dart';
+import '../view_models/detail_view_model.dart';
 import '../widgets/error_detail_dialog.dart';
 
 part 'detail_page_sections.dart';
 part 'detail_page_widgets.dart';
 
-class DetailPage extends StatefulWidget {
+class DetailPage extends StatelessWidget {
   const DetailPage({super.key, required this.subjectId});
 
   final int subjectId;
 
   @override
-  State<DetailPage> createState() => _DetailPageState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (context) => DetailViewModel(
+        subjectId: subjectId,
+        bangumiApi: context.read<AppServices>().bangumiApi,
+        notionApi: context.read<AppServices>().notionApi,
+        settings: context.read<AppSettings>(),
+      )..load(),
+      child: const _DetailView(),
+    );
+  }
 }
 
-class _DetailPageState extends State<DetailPage> with _DetailPageSections {
-  late final BangumiApi _api;
-  late final NotionApi _notionApi;
-  final _storage = SettingsStorage();
-
-  BangumiSubjectDetail? _detail;
-  @override
-  List<BangumiComment> _comments = [];
-  bool _loading = true;
-  @override
-  bool _commentsLoading = true;
-  bool _importing = false;
-  @override
-  bool _isSummaryExpanded = false;
-  String? _errorMessage;
+class _DetailView extends StatelessWidget with _DetailPageSections {
+  const _DetailView();
 
   @override
-  void initState() {
-    super.initState();
-    final services = context.read<AppServices>();
-    _api = services.bangumiApi;
-    _notionApi = services.notionApi;
-    _load();
-  }
+  Widget build(BuildContext context) {
+    final model = context.watch<DetailViewModel>();
 
-  Future<void> _load() async {
-    try {
-      final token = context.read<AppSettings>().bangumiAccessToken;
-      // 不再强制要求 Token，支持未登录查看
-      final detail = await _api.fetchDetail(
-        subjectId: widget.subjectId,
-        accessToken: token.isEmpty ? null : token,
+    if (model.isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
       );
-      if (mounted) {
-        setState(() {
-          _detail = detail;
-          _loading = false;
-        });
-      }
-      _loadComments(token);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = '加载失败，请稍后重试: $e';
-          _loading = false;
-        });
-      }
     }
-  }
 
-  @override
-  Future<void> _loadComments(String token) async {
-    try {
-      final comments = await _api.fetchSubjectComments(
-        subjectId: widget.subjectId,
-        accessToken: token.isEmpty ? null : token,
+    if (model.errorMessage != null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline,
+                    size: 64, color: Theme.of(context).colorScheme.error),
+                const SizedBox(height: 16),
+                Text(
+                  model.errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: model.load,
+                  child: const Text('重试'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
-      if (mounted) {
-        setState(() {
-          _comments = comments;
-          _commentsLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to load comments: $e');
-      if (mounted) {
-        setState(() => _commentsLoading = false);
-      }
     }
+
+    final detail = model.detail;
+    if (detail == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: Text('暂无详情数据')),
+      );
+    }
+
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+            return [
+              _buildSliverAppBar(context, detail),
+            ];
+          },
+          body: TabBarView(
+            children: [
+              _buildOverviewTab(context, model, detail),
+              _buildStaffTab(context, detail),
+              _buildCommentsTab(context, model),
+            ],
+          ),
+        ),
+        floatingActionButton: model.isImporting
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: () => _showImportConfirmDialog(context, model),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                icon: const Icon(Icons.auto_awesome_rounded),
+                label: Text(
+                  '导入到 Notion',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
+              ),
+      ),
+    );
   }
 
-  Future<void> _showImportConfirmDialog() async {
-    if (_detail == null) return;
+  Future<void> _showImportConfirmDialog(
+    BuildContext context,
+    DetailViewModel model,
+  ) async {
+    final detail = model.detail;
+    if (detail == null) return;
 
-    setState(() => _importing = true);
+    final preparation = await model.prepareImport();
+    if (!context.mounted) return;
 
-    String? existingPageId;
-    MappingConfig? mappingConfig;
-
-    try {
-      final settings = context.read<AppSettings>();
-      final token = settings.notionToken;
-      final databaseId = settings.notionDatabaseId;
-      mappingConfig = await _storage.getMappingConfig();
-
-      if (token.isNotEmpty && databaseId.isNotEmpty) {
-        // 妫€鏌ユ槸鍚﹀凡瀛樺湪
-        existingPageId = await _notionApi.findPageByBangumiId(
-          token: token,
-          databaseId: databaseId,
-          bangumiId: _detail!.id,
-          propertyName: mappingConfig.bangumiId.isNotEmpty
-              ? mappingConfig.bangumiId
-              : 'Bangumi ID',
-        );
-      }
-    } catch (_) {
-      debugPrint('Pre-check failed');
-    } finally {
-      if (mounted) setState(() => _importing = false);
-    }
-
-    if (!mounted) return;
+    final mappingConfig = preparation.mappingConfig;
+    final existingPageId = preparation.existingPageId;
 
     String formatLabel(String bangumiLabel, String? notionLabel) {
       if (notionLabel == null || notionLabel.trim().isEmpty) return '';
-      // 移除 Bangumi 灞炴€т腑鎷彿鍙婂叾鍚庨潰鐨勫唴瀹?
       final cleanBangumi =
-          bangumiLabel.split('(').first.split('（').first.trim();
-      // Notion 灞炴€у悕宸茬粡鏄竻娲楄繃鐨勶紝鐩存帴鎷兼帴
-      return '$cleanBangumi（$notionLabel）';
+          bangumiLabel.split('(').first.split('?').first.trim();
+      return '$cleanBangumi?$notionLabel?';
     }
 
     final Map<String, String> fieldLabels = {
-      'title': formatLabel('标题', mappingConfig?.title),
-      'airDate': formatLabel('放送开始', mappingConfig?.airDate),
-      'airDateRange': formatLabel('\u653e\u9001\u5f00\u59cb-\u542b\u7ed3\u675f', mappingConfig?.airDateRange),
-      'tags': formatLabel('标签', mappingConfig?.tags),
-      'imageUrl': formatLabel('封面', mappingConfig?.imageUrl),
-      'bangumiId': formatLabel('Bangumi ID', mappingConfig?.bangumiId),
-      'score': formatLabel('评分', mappingConfig?.score),
-      'totalEpisodes': formatLabel('\u603b\u96c6\u6570', mappingConfig?.totalEpisodes),
-      'link': formatLabel('链接', mappingConfig?.link),
+      'title': formatLabel('标题', mappingConfig.title),
+      'airDate': formatLabel('放送开始', mappingConfig.airDate),
+      'airDateRange': formatLabel('放送开始-含结束', mappingConfig.airDateRange),
+      'tags': formatLabel('标签', mappingConfig.tags),
+      'imageUrl': formatLabel('封面', mappingConfig.imageUrl),
+      'bangumiId': formatLabel('Bangumi ID', mappingConfig.bangumiId),
+      'score': formatLabel('评分', mappingConfig.score),
+      'totalEpisodes': formatLabel('总集数', mappingConfig.totalEpisodes),
+      'link': formatLabel('链接', mappingConfig.link),
       'animationProduction':
-          formatLabel('动画制作', mappingConfig?.animationProduction),
-      'director': formatLabel('导演', mappingConfig?.director),
-      'script': formatLabel('脚本', mappingConfig?.script),
-      'storyboard': formatLabel('分镜', mappingConfig?.storyboard),
-      'description': formatLabel('简介/描述', mappingConfig?.description),
+          formatLabel('动画制作', mappingConfig.animationProduction),
+      'director': formatLabel('导演', mappingConfig.director),
+      'script': formatLabel('脚本', mappingConfig.script),
+      'storyboard': formatLabel('分镜', mappingConfig.storyboard),
+      'description': formatLabel('简介/描述', mappingConfig.description),
     };
 
-    // 绉婚櫎涓虹┖鐨勫瓧娈碉紙濡傛灉娌℃湁鍦?mappingConfig 涓畾涔夛紝璇存槑璇ュ瓧娈典笉鍙敤锛?
-    if (mappingConfig != null) {
-      fieldLabels.removeWhere((key, value) {
-        return value.trim().isEmpty;
-      });
-    }
+    fieldLabels.removeWhere((key, value) => value.trim().isEmpty);
 
-    // 初始选择逻辑
     final Set<String> selectedFields = {};
-    if (mappingConfig != null) {
-      if (mappingConfig.titleEnabled) selectedFields.add('title');
-      if (mappingConfig.airDateEnabled) selectedFields.add('airDate');
-      if (mappingConfig.airDateRangeEnabled) selectedFields.add('airDateRange');
-      if (mappingConfig.tagsEnabled) selectedFields.add('tags');
-      if (mappingConfig.imageUrlEnabled) selectedFields.add('imageUrl');
-      if (mappingConfig.bangumiIdEnabled) selectedFields.add('bangumiId');
-      if (mappingConfig.scoreEnabled) selectedFields.add('score');
-      if (mappingConfig.totalEpisodesEnabled) selectedFields.add('totalEpisodes');
-      if (mappingConfig.linkEnabled) selectedFields.add('link');
-      if (mappingConfig.animationProductionEnabled) {
-        selectedFields.add('animationProduction');
-      }
-      if (mappingConfig.directorEnabled) selectedFields.add('director');
-      if (mappingConfig.scriptEnabled) selectedFields.add('script');
-      if (mappingConfig.storyboardEnabled) selectedFields.add('storyboard');
-      if (mappingConfig.descriptionEnabled) selectedFields.add('description');
-    } else {
+    if (mappingConfig.titleEnabled) selectedFields.add('title');
+    if (mappingConfig.airDateEnabled) selectedFields.add('airDate');
+    if (mappingConfig.airDateRangeEnabled) selectedFields.add('airDateRange');
+    if (mappingConfig.tagsEnabled) selectedFields.add('tags');
+    if (mappingConfig.imageUrlEnabled) selectedFields.add('imageUrl');
+    if (mappingConfig.bangumiIdEnabled) selectedFields.add('bangumiId');
+    if (mappingConfig.scoreEnabled) selectedFields.add('score');
+    if (mappingConfig.totalEpisodesEnabled) selectedFields.add('totalEpisodes');
+    if (mappingConfig.linkEnabled) selectedFields.add('link');
+    if (mappingConfig.animationProductionEnabled) {
+      selectedFields.add('animationProduction');
+    }
+    if (mappingConfig.directorEnabled) selectedFields.add('director');
+    if (mappingConfig.scriptEnabled) selectedFields.add('script');
+    if (mappingConfig.storyboardEnabled) selectedFields.add('storyboard');
+    if (mappingConfig.descriptionEnabled) selectedFields.add('description');
+
+    if (selectedFields.isEmpty) {
       if (existingPageId == null) {
-        // 鏂板缓妯″紡榛樿鍏ㄩ€?
         selectedFields.addAll(fieldLabels.keys);
       } else {
-        // 鏇存柊妯″紡榛樿鍕鹃€?
         selectedFields.addAll(['score', 'link', 'bangumiId']);
       }
     }
 
-    final List<String> topTags = _detail!.tags.take(30).toList();
+    final List<String> topTags = detail.tags.take(30).toList();
     final Set<String> selectedTags = {};
 
     final TextEditingController bangumiIdController = TextEditingController();
@@ -215,7 +208,6 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 区域 A: 目标定位
                       _buildDialogSectionTitle('目标定位'),
                       if (isUpdateMode)
                         ListTile(
@@ -253,14 +245,16 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                         if (isBindMode)
                           Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
                             child: Row(
                               children: [
                                 Expanded(
                                   child: TextField(
                                     controller: bangumiIdController,
                                     enabled: notionIdController.text.isEmpty,
-                                    onChanged: (val) => setDialogState(() {}),
+                                    onChanged: (_) => setDialogState(() {}),
                                     decoration: const InputDecoration(
                                       labelText: 'Bangumi ID',
                                       hintText: 'Bangumi ID',
@@ -274,7 +268,7 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                                   child: TextField(
                                     controller: notionIdController,
                                     enabled: bangumiIdController.text.isEmpty,
-                                    onChanged: (val) => setDialogState(() {}),
+                                    onChanged: (_) => setDialogState(() {}),
                                     decoration: const InputDecoration(
                                       labelText: 'Notion ID',
                                       hintText: 'Notion ID',
@@ -288,8 +282,6 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                           ),
                       ],
                       const Divider(),
-
-                      // 区域 B: 字段更新选择
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
@@ -344,8 +336,6 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                         }).toList(),
                       ),
                       const Divider(),
-
-                      // 区域 C: 标签选择
                       Row(
                         children: [
                           _buildDialogSectionTitle('标签选择 (Top 30)'),
@@ -378,7 +368,8 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                       ),
                       if (topTags.isEmpty)
                         const Text('暂无标签',
-                            style: TextStyle(fontSize: 12, color: Colors.grey))
+                            style:
+                                TextStyle(fontSize: 12, color: Colors.grey))
                       else
                         AbsorbPointer(
                           absorbing: !selectedFields.contains('tags'),
@@ -435,71 +426,78 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
       },
     );
 
-    if (!mounted) {
+    if (!context.mounted || result == null) {
       return;
     }
 
-    if (result != null && mappingConfig != null) {
-      final Set<String> fields = result['fields'];
-      final Set<String> tags = result['tags'];
-      final String? bangumiIdStr = result['bangumiId'];
-      final String? notionIdStr = result['notionId'];
-      final String? existingPageIdResult = result['existingPageId'];
+    final Set<String> fields = result['fields'];
+    final Set<String> tags = result['tags'];
+    final String? bangumiIdStr = result['bangumiId'];
+    final String? notionIdStr = result['notionId'];
+    final String? existingPageIdResult = result['existingPageId'];
 
-      // 濡傛灉鏄粦瀹氭ā寮忥紝闇€瑕佹牴鎹?ID 查找页面
-      String? targetPageId = existingPageIdResult;
-      if (result['isBind'] == true) {
-        setState(() => _importing = true);
-        try {
-          final settings = context.read<AppSettings>();
-          final token = settings.notionToken;
-          final databaseId = settings.notionDatabaseId;
-
-          if (bangumiIdStr != null && bangumiIdStr.isNotEmpty) {
-            targetPageId = await _notionApi.findPageByProperty(
-              token: token,
-              databaseId: databaseId,
-              propertyName: mappingConfig.idPropertyName,
-              value: int.tryParse(bangumiIdStr) ?? 0,
-              type: 'number',
-            );
-          } else if (notionIdStr != null && notionIdStr.isNotEmpty) {
-            targetPageId = await _notionApi.findPageByProperty(
-              token: token,
-              databaseId: databaseId,
-              propertyName: mappingConfig.notionId,
-              value: notionIdStr,
-              type: 'rich_text',
-            );
-          }
-
-          if (targetPageId == null) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('未找到对应的 Notion 页面，请检查输入')),
-              );
-            }
-            setState(() => _importing = false);
-            return;
-          }
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('查找页面失败: $e')),
-            );
-          }
-          setState(() => _importing = false);
+    String? targetPageId = existingPageIdResult;
+    if (result['isBind'] == true) {
+      try {
+        targetPageId = await model.resolveBindingTargetPageId(
+          mappingConfig: mappingConfig,
+          bangumiId: bangumiIdStr,
+          notionId: notionIdStr,
+        );
+        if (!context.mounted) return;
+        if (targetPageId == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未找到对应的 Notion 页面，请检查输入。')),
+          );
           return;
         }
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('查找页面失败: $e')),
+        );
+        return;
       }
-
-      _importToNotion(
-        enabledFields: fields,
-        mappingConfig: mappingConfig,
-        selectedTags: tags.toList(),
-        targetPageId: targetPageId,
-      );
     }
+
+    final importResult = await model.importToNotion(
+      enabledFields: fields,
+      mappingConfig: mappingConfig,
+      selectedTags: tags.toList(),
+      targetPageId: targetPageId,
+    );
+
+    if (!context.mounted) return;
+
+    if (importResult.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(importResult.message)),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(importResult.message),
+        backgroundColor: Theme.of(context).colorScheme.error,
+        duration: const Duration(seconds: 5),
+        action: importResult.error == null
+            ? null
+            : SnackBarAction(
+                label: '查看详情',
+                textColor: Colors.white,
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => ErrorDetailDialog(
+                      error: importResult.error!,
+                      stackTrace: importResult.stackTrace,
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
   }
 
   Widget _buildDialogSectionTitle(String title) {
@@ -508,171 +506,6 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
       child: Text(
         title,
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-      ),
-    );
-  }
-
-  Future<void> _importToNotion({
-    required Set<String> enabledFields,
-    required MappingConfig mappingConfig,
-    List<String>? selectedTags,
-    String? targetPageId,
-  }) async {
-    setState(() {
-      _importing = true;
-    });
-
-    try {
-      final settings = context.read<AppSettings>();
-      final token = settings.notionToken;
-      final databaseId = settings.notionDatabaseId;
-
-      if (token.isEmpty || databaseId.isEmpty) {
-        throw Exception('请先在设置页配置 Notion Token 和 Database ID');
-      }
-
-      // 鏋勯€犱复鏃剁殑 detail 瀵硅薄锛屽寘鍚€変腑鐨勬爣绛?
-      final detailToImport = BangumiSubjectDetail(
-        id: _detail!.id,
-        name: _detail!.name,
-        nameCn: _detail!.nameCn,
-        summary: _detail!.summary,
-        imageUrl: _detail!.imageUrl,
-        airDate: _detail!.airDate,
-        epsCount: _detail!.epsCount,
-        tags: selectedTags ?? [], // 浣跨敤閫変腑鐨勬爣绛?
-        tagDetails: _detail!.tagDetails,
-        studio: _detail!.studio,
-        director: _detail!.director,
-        script: _detail!.script,
-        storyboard: _detail!.storyboard,
-        animationProduction: _detail!.animationProduction,
-        score: _detail!.score,
-        ratingTotal: _detail!.ratingTotal,
-        ratingCount: _detail!.ratingCount,
-        rank: _detail!.rank,
-        infoboxMap: _detail!.infoboxMap,
-      );
-
-      await _notionApi.createAnimePage(
-        token: token,
-        databaseId: databaseId,
-        detail: detailToImport,
-        mappingConfig: mappingConfig,
-        enabledFields: enabledFields,
-        existingPageId: targetPageId,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('操作成功')),
-        );
-      }
-    } catch (e, stackTrace) {
-      if (mounted) {
-        // 鎻愬彇寮傚父娑堟伅锛岀Щ闄?"Exception: " 前缀
-        final errorMessage = e.toString().replaceAll('Exception: ', '');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            // 鏄剧ず鍏蜂綋鐨勯敊璇師鍥狅紝鑰屼笉鏄€氱敤鐨勨€滄搷浣滃け璐モ€?
-            content: Text(errorMessage),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: '查看详情',
-              textColor: Colors.white,
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => ErrorDetailDialog(
-                    error: e,
-                    stackTrace: stackTrace,
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _importing = false;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_errorMessage != null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline,
-                    size: 64, color: Theme.of(context).colorScheme.error),
-                const SizedBox(height: 16),
-                Text(
-                  _errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(onPressed: _load, child: const Text('重试')),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_detail == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('暂无详情数据')),
-      );
-    }
-
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        body: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) {
-            return [
-              _buildSliverAppBar(context, _detail!),
-            ];
-          },
-          body: TabBarView(
-            children: [
-              _buildOverviewTab(context, _detail!),
-              _buildStaffTab(context, _detail!),
-              _buildCommentsTab(context),
-            ],
-          ),
-        ),
-        floatingActionButton: _importing
-            ? null
-            : FloatingActionButton.extended(
-                onPressed: _showImportConfirmDialog,
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                icon: const Icon(Icons.auto_awesome_rounded),
-                label: Text('导入到 Notion',
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimary)),
-              ),
       ),
     );
   }
@@ -701,7 +534,6 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
         background: Stack(
           fit: StackFit.expand,
           children: [
-            // Backdrop with blur
             if (detail.imageUrl.isNotEmpty)
               ImageFiltered(
                 imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
@@ -710,7 +542,6 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                   child: Image.network(detail.imageUrl, fit: BoxFit.cover),
                 ),
               ),
-            // Gradient Overlay
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -723,13 +554,11 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                 ),
               ),
             ),
-            // Content
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 100, 16, 60),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Left: Poster
                   Hero(
                     tag: 'subject-${detail.id}',
                     child: Container(
@@ -758,7 +587,6 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  // Middle: Info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -832,11 +660,10 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                           const SizedBox(height: 16),
                         ] else
                           const SizedBox(height: 16),
-                        // Action Button: View on Bangumi
                         InkWell(
                           onTap: () async {
                             final url = Uri.parse(
-                                'https://bgm.tv/subject/${widget.subjectId}');
+                                'https://bgm.tv/subject/${detail.id}');
                             if (await canLaunchUrl(url)) {
                               await launchUrl(url);
                             }
@@ -876,7 +703,6 @@ class _DetailPageState extends State<DetailPage> with _DetailPageSections {
                       ],
                     ),
                   ),
-                  // Right: Rating Distribution
                   if (showRatings)
                     Expanded(
                       child: RatingChart(

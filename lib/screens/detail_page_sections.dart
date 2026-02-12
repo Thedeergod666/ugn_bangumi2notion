@@ -1,13 +1,11 @@
 part of 'detail_page.dart';
 
-mixin _DetailPageSections on State<DetailPage> {
-  bool get _isSummaryExpanded;
-  set _isSummaryExpanded(bool value);
-  bool get _commentsLoading;
-  List<BangumiComment> get _comments;
-  Future<void> _loadComments(String token);
-
-  Widget _buildOverviewTab(BuildContext context, BangumiSubjectDetail detail) {
+mixin _DetailPageSections {
+  Widget _buildOverviewTab(
+    BuildContext context,
+    DetailViewModel model,
+    BangumiSubjectDetail detail,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     return SingleChildScrollView(
@@ -18,16 +16,15 @@ mixin _DetailPageSections on State<DetailPage> {
           _buildSectionTitle(context, '简介'),
           const SizedBox(height: 12),
           InkWell(
-            onTap: () =>
-                setState(() => _isSummaryExpanded = !_isSummaryExpanded),
+            onTap: model.toggleSummaryExpanded,
             borderRadius: BorderRadius.circular(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   detail.summary.isEmpty ? '暂无简介' : detail.summary,
-                  maxLines: _isSummaryExpanded ? null : 6,
-                  overflow: _isSummaryExpanded
+                  maxLines: model.isSummaryExpanded ? null : 6,
+                  overflow: model.isSummaryExpanded
                       ? TextOverflow.visible
                       : TextOverflow.ellipsis,
                   style: textTheme.bodyMedium?.copyWith(
@@ -40,7 +37,7 @@ mixin _DetailPageSections on State<DetailPage> {
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      _isSummaryExpanded ? '收起' : '展开全部',
+                      model.isSummaryExpanded ? '收起' : '展开全部',
                       style: TextStyle(
                         color: colorScheme.primary,
                         fontWeight: FontWeight.bold,
@@ -54,7 +51,7 @@ mixin _DetailPageSections on State<DetailPage> {
           const SizedBox(height: 32),
           _buildSectionTitle(context, '制作人员'),
           const SizedBox(height: 12),
-          _buildSimplifiedInfoGrid(detail),
+          _buildSimplifiedInfoGrid(context, detail),
           const SizedBox(height: 32),
           _buildSectionTitle(context, '标签'),
           const SizedBox(height: 12),
@@ -97,7 +94,7 @@ mixin _DetailPageSections on State<DetailPage> {
                         ))
                     .toList(),
           ),
-          const SizedBox(height: 100), // Bottom padding for FAB
+          const SizedBox(height: 100),
         ],
       ),
     );
@@ -111,27 +108,24 @@ mixin _DetailPageSections on State<DetailPage> {
         children: [
           _buildSectionTitle(context, '全制作人员'),
           const SizedBox(height: 12),
-          _buildInfoGrid(detail),
+          _buildInfoGrid(context, detail),
           const SizedBox(height: 100),
         ],
       ),
     );
   }
 
-  Widget _buildCommentsTab(BuildContext context) {
+  Widget _buildCommentsTab(BuildContext context, DetailViewModel model) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final showRatings = context.watch<AppSettings>().showRatings;
-    if (_commentsLoading) {
+    if (model.isCommentsLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_comments.isEmpty) {
+    if (model.comments.isEmpty) {
       return RefreshIndicator(
-        onRefresh: () async {
-          final token = context.read<AppSettings>().bangumiAccessToken;
-          await _loadComments(token);
-        },
+        onRefresh: model.loadComments,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: SizedBox(
@@ -146,17 +140,14 @@ mixin _DetailPageSections on State<DetailPage> {
     }
 
     return RefreshIndicator(
-      onRefresh: () async {
-        final token = context.read<AppSettings>().bangumiAccessToken;
-        await _loadComments(token);
-      },
+      onRefresh: model.loadComments,
       child: ListView.separated(
         padding: const EdgeInsets.all(20),
-        itemCount: _comments.length,
+        itemCount: model.comments.length,
         separatorBuilder: (context, index) =>
             Divider(height: 32, color: colorScheme.outlineVariant),
         itemBuilder: (context, index) {
-          final comment = _comments[index];
+          final comment = model.comments[index];
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -263,8 +254,7 @@ mixin _DetailPageSections on State<DetailPage> {
     );
   }
 
-  Widget _buildInfoGrid(BangumiSubjectDetail detail) {
-    // 杩囨护鎺変竴浜涗笉闇€瑕佸湪鍒朵綔浜哄憳鍒楄〃涓噸澶嶆樉绀虹殑瀛楁锛堝鏋滄湁鐨勮瘽锛?
+  Widget _buildInfoGrid(BuildContext context, BangumiSubjectDetail detail) {
     final skipKeys = {
       '中文名',
       '别名',
@@ -274,7 +264,7 @@ mixin _DetailPageSections on State<DetailPage> {
       '官方网站',
       '播放电视台',
       '其他电视台',
-      'Copyright'
+      'Copyright',
     };
 
     final items = detail.infoboxMap.entries
@@ -282,16 +272,17 @@ mixin _DetailPageSections on State<DetailPage> {
         .map((e) => MapEntry(e.key, e.value))
         .toList();
 
-    // 确保 Bangumi ID 鎬绘槸鏄剧ず鍦ㄦ渶鍚?
     items.add(MapEntry('Bangumi ID', detail.id.toString()));
 
-    return _buildInfoListContainer(items);
+    return _buildInfoListContainer(context, items);
   }
 
-  Widget _buildSimplifiedInfoGrid(BangumiSubjectDetail detail) {
+  Widget _buildSimplifiedInfoGrid(
+    BuildContext context,
+    BangumiSubjectDetail detail,
+  ) {
     final items = <MapEntry<String, String>>[];
 
-    // Bangumi ID should be at the top
     items.add(MapEntry('Bangumi ID', detail.id.toString()));
 
     if (detail.animationProduction.isNotEmpty) {
@@ -307,10 +298,13 @@ mixin _DetailPageSections on State<DetailPage> {
       items.add(MapEntry('分镜', detail.storyboard));
     }
 
-    return _buildInfoListContainer(items);
+    return _buildInfoListContainer(context, items);
   }
 
-  Widget _buildInfoListContainer(List<MapEntry<String, String>> items) {
+  Widget _buildInfoListContainer(
+    BuildContext context,
+    List<MapEntry<String, String>> items,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
