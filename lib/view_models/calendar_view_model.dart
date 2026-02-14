@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 
 import '../app/app_settings.dart';
@@ -33,6 +35,9 @@ class CalendarViewModel extends ChangeNotifier {
   final Set<int> _detailLoading = {};
   Map<int, int> _latestEpisodeCache = {};
   final Set<int> _latestEpisodeLoading = {};
+  final Queue<int> _latestEpisodeQueue = Queue<int>();
+  int _latestEpisodeInFlight = 0;
+  static const int _latestEpisodeMaxConcurrency = 3;
   Map<int, List<BangumiCalendarItem>> _weekdayItems = {};
   Map<int, int> _weekdayBoundCounts = {};
   List<BangumiCalendarItem> _boundItems = [];
@@ -77,6 +82,8 @@ class CalendarViewModel extends ChangeNotifier {
     _detailLoading.clear();
     _latestEpisodeCache = {};
     _latestEpisodeLoading.clear();
+    _latestEpisodeQueue.clear();
+    _latestEpisodeInFlight = 0;
     _notionConfigured = false;
     _notify();
 
@@ -153,14 +160,29 @@ class CalendarViewModel extends ChangeNotifier {
     _loadDetail(subjectId);
   }
 
-  void scheduleLatestEpisodeLoad(int subjectId, int currentLatest) {
-    if (currentLatest > 0 ||
-        _latestEpisodeCache.containsKey(subjectId) ||
+  void scheduleLatestEpisodeLoad(int subjectId) {
+    if (_latestEpisodeCache.containsKey(subjectId) ||
         _latestEpisodeLoading.contains(subjectId)) {
       return;
     }
     _latestEpisodeLoading.add(subjectId);
-    _loadLatestEpisode(subjectId);
+    _latestEpisodeQueue.add(subjectId);
+    _drainLatestEpisodeQueue();
+  }
+
+  void _drainLatestEpisodeQueue() {
+    if (_latestEpisodeInFlight >= _latestEpisodeMaxConcurrency) {
+      return;
+    }
+    if (_latestEpisodeQueue.isEmpty) {
+      return;
+    }
+    final subjectId = _latestEpisodeQueue.removeFirst();
+    _latestEpisodeInFlight += 1;
+    _loadLatestEpisode(subjectId).whenComplete(() {
+      _latestEpisodeInFlight -= 1;
+      _drainLatestEpisodeQueue();
+    });
   }
 
   DateTime nextDateForWeekday(int weekday, DateTime now) {
@@ -243,21 +265,29 @@ class CalendarViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadLatestEpisode(int subjectId) async {
+    int latest = 0;
     try {
       final token = _settings?.bangumiAccessToken ?? '';
-      final latest = await _bangumiApi.fetchLatestEpisodeNumber(
+      latest = await _bangumiApi.fetchLatestEpisodeNumber(
         subjectId: subjectId,
         accessToken: token.isEmpty ? null : token,
+        type: 0,
       );
-      if (latest > 0) {
-        _latestEpisodeCache[subjectId] = latest;
-        _notify();
-      }
     } catch (_) {
-      // Ignore
+      try {
+        latest = await _bangumiApi.fetchLatestEpisodeNumber(
+          subjectId: subjectId,
+          accessToken: null,
+          type: null,
+        );
+      } catch (_) {
+        latest = 0;
+      }
     } finally {
       _latestEpisodeLoading.remove(subjectId);
     }
+    _latestEpisodeCache[subjectId] = latest;
+    _notify();
   }
 
   Future<void> _loadDetail(int subjectId) async {

@@ -272,11 +272,12 @@ class BangumiApi {
   Future<int> fetchLatestEpisodeNumber({
     required int subjectId,
     String? accessToken,
+    int? type = 0,
   }) async {
     final episodes = await fetchSubjectEpisodes(
       subjectId: subjectId,
       accessToken: accessToken,
-      type: 0,
+      type: type,
     );
     if (episodes.isEmpty) return 0;
 

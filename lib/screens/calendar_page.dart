@@ -120,7 +120,7 @@ class _CalendarView extends StatelessWidget {
                 Builder(
                   builder: (context) {
                     model.scheduleDetailLoad(item.id);
-                    model.scheduleLatestEpisodeLoad(item.id, item.eps);
+                    model.scheduleLatestEpisodeLoad(item.id);
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _CalendarItemCard(
@@ -128,7 +128,7 @@ class _CalendarView extends StatelessWidget {
                         detail: model.detailCache[item.id],
                         isBound: model.boundIds.contains(item.id),
                         watchedEpisodes: model.watchedEpisodes[item.id] ?? 0,
-                        latestEpisodes: model.latestEpisodeCache[item.id] ?? 0,
+                        latestEpisodes: model.latestEpisodeCache[item.id],
                         showRatings: showRatings,
                         onTap: () {
                           Navigator.of(context).push(
@@ -158,13 +158,13 @@ class _CalendarView extends StatelessWidget {
           itemBuilder: (context, index) {
             final item = items[index];
             model.scheduleDetailLoad(item.id);
-            model.scheduleLatestEpisodeLoad(item.id, item.eps);
+            model.scheduleLatestEpisodeLoad(item.id);
             return _CalendarItemCard(
               item: item,
               detail: model.detailCache[item.id],
               isBound: model.boundIds.contains(item.id),
               watchedEpisodes: model.watchedEpisodes[item.id] ?? 0,
-              latestEpisodes: model.latestEpisodeCache[item.id] ?? 0,
+              latestEpisodes: model.latestEpisodeCache[item.id],
               showRatings: showRatings,
               onTap: () {
                 Navigator.of(context).push(
@@ -299,13 +299,13 @@ class _CalendarView extends StatelessWidget {
               itemBuilder: (context, index) {
                 final item = model.boundItems[index];
                 model.scheduleDetailLoad(item.id);
-                model.scheduleLatestEpisodeLoad(item.id, item.eps);
+                model.scheduleLatestEpisodeLoad(item.id);
                 return _BoundBangumiCard(
                   item: item,
                   watchedEpisodes: model.watchedEpisodes[item.id] ?? 0,
                   yougnScore: model.yougnScores[item.id],
                   detail: model.detailCache[item.id],
-                  latestEpisodes: model.latestEpisodeCache[item.id] ?? 0,
+                  latestEpisodes: model.latestEpisodeCache[item.id],
                   showRatings: showRatings,
                   onTap: () {
                     Navigator.of(context).push(
@@ -458,15 +458,16 @@ class _BoundBangumiCard extends StatelessWidget {
   final int watchedEpisodes;
   final double? yougnScore;
   final BangumiSubjectDetail? detail;
-  final int latestEpisodes;
+  final int? latestEpisodes;
   final bool showRatings;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
-    final latestValue = item.eps > 0 ? item.eps : latestEpisodes;
-    final latestText = latestValue > 0 ? latestValue.toString() : '-';
+    final latestSegment = latestEpisodes == null
+        ? '已更 -'
+        : (latestEpisodes! > 0 ? '已更 ${latestEpisodes!}' : '未放送');
     final totalValue = detail?.epsCount ?? item.epsCount;
     final totalText = totalValue > 0 ? totalValue.toString() : '-';
     final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
@@ -515,7 +516,7 @@ class _BoundBangumiCard extends StatelessWidget {
                             const SizedBox(height: 4),
                           Text('已追 $watchedText'),
                           const SizedBox(height: 4),
-                          Text('已更 $latestText'),
+                          Text(latestSegment),
                           const SizedBox(height: 4),
                           Text('总共 $totalText'),
                         ],
@@ -547,7 +548,7 @@ class _CalendarItemCard extends StatelessWidget {
   final BangumiSubjectDetail? detail;
   final bool isBound;
   final int watchedEpisodes;
-  final int latestEpisodes;
+  final int? latestEpisodes;
   final bool showRatings;
   final VoidCallback onTap;
 
@@ -555,8 +556,9 @@ class _CalendarItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
     final airDate = item.airDate.isNotEmpty ? item.airDate : '待定';
-    final latestValue = item.eps > 0 ? item.eps : latestEpisodes;
-    final latestText = latestValue > 0 ? latestValue.toString() : '-';
+    final latestSegment = latestEpisodes == null
+        ? '已更 -'
+        : (latestEpisodes! > 0 ? '已更 ${latestEpisodes!}' : '未放送');
     final totalValue = detail?.epsCount ?? item.epsCount;
     final totalText = totalValue > 0 ? totalValue.toString() : '-';
     final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
@@ -656,8 +658,8 @@ class _CalendarItemCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       isBound
-                          ? '已追 $watchedText / 已更 $latestText / 总共 $totalText'
-                          : '已更 $latestText / 总共 $totalText',
+                          ? '已追 $watchedText / $latestSegment / 总共 $totalText'
+                          : '$latestSegment / 总共 $totalText',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     if (tags.isNotEmpty) ...[
