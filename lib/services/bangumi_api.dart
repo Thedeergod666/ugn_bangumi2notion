@@ -96,23 +96,35 @@ class BangumiApi {
       throw Exception('关键词无效');
     }
     final uri = Uri.parse('$_baseUrl/v0/search/subjects');
-    final response = await sendWithRetry(
-      logger: _logger,
-      label: 'Bangumi search',
-      request: () => _client
-          .post(
-            uri,
-            headers: _buildHeaders(accessToken: accessToken),
-            body: jsonEncode({
-              'keyword': limitedKeyword,
-              'sort': 'match',
-              'filter': {
-                'type': [2], // 2 = ??
-              },
-            }),
-          )
-          .timeout(_timeout),
-    );
+    Future<http.Response> performSearch({String? token}) {
+      return sendWithRetry(
+        logger: _logger,
+        label: 'Bangumi search',
+        request: () => _client
+            .post(
+              uri,
+              headers: _buildHeaders(accessToken: token),
+              body: jsonEncode({
+                'keyword': limitedKeyword,
+                'sort': 'match',
+                'filter': {
+                  'type': [2], // 2 = 动画
+                },
+              }),
+            )
+            .timeout(_timeout),
+      );
+    }
+
+    var response = await performSearch(token: accessToken);
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        accessToken != null &&
+        accessToken.isNotEmpty) {
+      _logger.info(
+        '[BangumiApi] search unauthorized, retrying without access token',
+      );
+      response = await performSearch(token: null);
+    }
 
     if (response.statusCode != 200) {
       throw Exception(_mapBangumiError('Bangumi 搜索', response));

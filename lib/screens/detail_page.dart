@@ -135,8 +135,10 @@ class _DetailView extends StatelessWidget with _DetailPageSections {
     String formatLabel(String bangumiLabel, String? notionLabel) {
       if (notionLabel == null || notionLabel.trim().isEmpty) return '';
       final cleanBangumi =
-          bangumiLabel.split('(').first.split('?').first.trim();
-      return '$cleanBangumi?$notionLabel?';
+          bangumiLabel.split('(').first.split('（').first.trim();
+      final cleanNotion =
+          notionLabel.split('(').first.split('（').first.trim();
+      return '$cleanBangumi → $cleanNotion';
     }
 
     final Map<String, String> fieldLabels = {
