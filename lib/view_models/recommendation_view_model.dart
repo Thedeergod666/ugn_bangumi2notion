@@ -89,6 +89,10 @@ class RecommendationViewModel extends ChangeNotifier {
   List<NotionScoreEntry> _scoreEntries = [];
   List<RecommendationScoreBin> _scoreBins = [];
   int _scoreTotal = 0;
+  bool _recentLoading = false;
+  String? _recentMessage;
+  List<NotionWatchEntry> _recentWatching = [];
+  List<NotionWatchEntry> _recentWatched = [];
 
   String _notionToken = '';
   String _notionDatabaseId = '';
@@ -110,6 +114,10 @@ class RecommendationViewModel extends ChangeNotifier {
   Map<int, BangumiSubjectDetail> get bangumiDetailCache => _bangumiDetailCache;
   List<RecommendationScoreBin> get scoreBins => _scoreBins;
   int get scoreTotal => _scoreTotal;
+  bool get isRecentLoading => _recentLoading;
+  String? get recentMessage => _recentMessage;
+  List<NotionWatchEntry> get recentWatching => _recentWatching;
+  List<NotionWatchEntry> get recentWatched => _recentWatched;
 
   bool get hasHero => _heroIndices.isNotEmpty;
 
@@ -134,6 +142,9 @@ class RecommendationViewModel extends ChangeNotifier {
       _configurationRoute = null;
       _error = null;
       _stackTrace = null;
+      _recentMessage = null;
+      _recentWatching = [];
+      _recentWatched = [];
       notifyListeners();
     }
 
@@ -170,6 +181,7 @@ class RecommendationViewModel extends ChangeNotifier {
             bindings: bindings,
           );
         }
+        _loadRecentWatchEntries();
         return;
       }
 
@@ -226,6 +238,7 @@ class RecommendationViewModel extends ChangeNotifier {
         databaseId: _notionDatabaseId,
         bindings: bindings,
       );
+      _loadRecentWatchEntries();
     } catch (error, stackTrace) {
       final isTimeout = error is TimeoutException;
       _loading = false;
@@ -482,6 +495,80 @@ class RecommendationViewModel extends ChangeNotifier {
       _scoreTotal = 0;
     } finally {
       _statsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadRecentWatchEntries() async {
+    if (_recentLoading) return;
+    if (_notionToken.isEmpty || _notionDatabaseId.isEmpty) {
+      _recentMessage = '未配置 Notion Token 或 Database ID';
+      notifyListeners();
+      return;
+    }
+
+    _recentLoading = true;
+    _recentMessage = null;
+    notifyListeners();
+
+    try {
+      final mappingConfig = await _settingsStorage.getMappingConfig();
+      final bindings = await _loadBindings();
+
+      final titleProperty = mappingConfig.title.trim().isNotEmpty
+          ? mappingConfig.title.trim()
+          : (bindings?.title.trim() ?? '');
+      final coverProperty = mappingConfig.imageUrl.trim().isNotEmpty
+          ? mappingConfig.imageUrl.trim()
+          : (bindings?.cover.trim() ?? '');
+
+      final idProperty = mappingConfig.bangumiId.trim().isNotEmpty
+          ? mappingConfig.bangumiId.trim()
+          : mappingConfig.idPropertyName.trim();
+      final statusProperty = mappingConfig.watchingStatus.trim();
+      final watchingValue = mappingConfig.watchingStatusValue.trim();
+      if (statusProperty.isEmpty || watchingValue.isEmpty) {
+        _recentMessage = '请在映射配置中设置追番状态';
+        _recentWatching = [];
+        _recentWatched = [];
+        return;
+      }
+
+      const watchedValue = '已看';
+      final watching = await _notionApi.getRecentWatchEntries(
+        token: _notionToken,
+        databaseId: _notionDatabaseId,
+        idPropertyName: idProperty,
+        titlePropertyName: titleProperty,
+        coverPropertyName: coverProperty,
+        watchedEpisodesProperty: mappingConfig.watchedEpisodes,
+        totalEpisodesProperty: mappingConfig.totalEpisodes,
+        statusPropertyName: statusProperty,
+        statusValue: watchingValue,
+        limit: 10,
+      );
+      final watched = await _notionApi.getRecentWatchEntries(
+        token: _notionToken,
+        databaseId: _notionDatabaseId,
+        idPropertyName: idProperty,
+        titlePropertyName: titleProperty,
+        coverPropertyName: coverProperty,
+        watchedEpisodesProperty: mappingConfig.watchedEpisodes,
+        totalEpisodesProperty: mappingConfig.totalEpisodes,
+        statusPropertyName: statusProperty,
+        statusValue: watchedValue,
+        limit: 10,
+      );
+
+      _recentWatching = watching;
+      _recentWatched = watched;
+      if (watching.isEmpty && watched.isEmpty) {
+        _recentMessage = '暂无最近观看条目';
+      }
+    } catch (_) {
+      _recentMessage = '最近观看加载失败';
+    } finally {
+      _recentLoading = false;
       notifyListeners();
     }
   }

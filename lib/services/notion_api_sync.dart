@@ -385,6 +385,201 @@ extension NotionApiSync on NotionApi {
     return progress;
   }
 
+  Future<List<NotionWatchEntry>> getRecentWatchEntries({
+    required String token,
+    required String databaseId,
+    required String idPropertyName,
+    String? titlePropertyName,
+    String? coverPropertyName,
+    String? watchedEpisodesProperty,
+    String? totalEpisodesProperty,
+    String? statusPropertyName,
+    String? statusValue,
+    int limit = 10,
+  }) async {
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
+    if (idPropertyName.trim().isEmpty) {
+      return <NotionWatchEntry>[];
+    }
+
+    String idPropertyType = 'number';
+    String watchedPropertyType = 'number';
+    String totalPropertyType = 'number';
+    String statusPropertyType = '';
+    String resolvedTitleProperty = titlePropertyName?.trim() ?? '';
+    String resolvedCoverProperty = coverPropertyName?.trim() ?? '';
+
+    try {
+      final properties = await getDatabaseProperties(
+        token: token,
+        databaseId: normalizedDatabaseId,
+      );
+      final typeMap = _buildPropertyTypeMap(properties);
+      idPropertyType = typeMap[idPropertyName] ?? 'number';
+      if (watchedEpisodesProperty != null &&
+          watchedEpisodesProperty.trim().isNotEmpty) {
+        watchedPropertyType = typeMap[watchedEpisodesProperty] ?? 'number';
+      }
+      if (totalEpisodesProperty != null &&
+          totalEpisodesProperty.trim().isNotEmpty) {
+        totalPropertyType = typeMap[totalEpisodesProperty] ?? 'number';
+      }
+      if (statusPropertyName != null && statusPropertyName.trim().isNotEmpty) {
+        statusPropertyType = typeMap[statusPropertyName] ?? '';
+      }
+      if (resolvedTitleProperty.isEmpty) {
+        final titleProp = properties.firstWhere(
+          (p) => p.type == 'title',
+          orElse: () => NotionProperty(name: '', type: ''),
+        );
+        resolvedTitleProperty = titleProp.name;
+      }
+    } catch (e) {
+      _logger.debug('Schema fetch failed in getRecentWatchEntries: $e');
+    }
+
+    if (resolvedTitleProperty.isEmpty) {
+      resolvedTitleProperty = 'Name';
+    }
+
+    final statusFilter = (statusPropertyName != null &&
+            statusValue != null &&
+            statusPropertyName.trim().isNotEmpty &&
+            statusValue.trim().isNotEmpty)
+        ? _buildStatusFilter(
+            propertyName: statusPropertyName,
+            propertyType: statusPropertyType,
+            value: statusValue.trim(),
+          )
+        : null;
+
+    if (statusFilter == null) {
+      return <NotionWatchEntry>[];
+    }
+
+    final url = Uri.parse(NotionApi._baseUrl).replace(
+      pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query'],
+    );
+
+    final items = <NotionWatchEntry>[];
+    String? nextCursor;
+    bool hasMore = true;
+
+    while (hasMore && items.length < limit) {
+      final body = <String, dynamic>{
+        'page_size': 30,
+        'sorts': [
+          {
+            'timestamp': 'last_edited_time',
+            'direction': 'descending',
+          }
+        ],
+        'filter': statusFilter,
+      };
+      if (nextCursor != null && nextCursor.isNotEmpty) {
+        body['start_cursor'] = nextCursor;
+      }
+
+      final response = await sendWithRetry(
+        logger: _logger,
+        label: 'Notion post',
+        request: () => _client
+            .post(
+              url,
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Notion-Version': NotionApi._notionVersion,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(NotionApi._queryTimeout),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(_mapNotionError('读取最近观看', response));
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final results = data['results'] as List<dynamic>? ?? [];
+      for (final item in results) {
+        if (items.length >= limit) break;
+        if (item is! Map<String, dynamic>) continue;
+        final properties = item['properties'] as Map<String, dynamic>? ?? {};
+
+        String readText(String key) {
+          if (key.isEmpty) return '';
+          final property = properties[key] as Map<String, dynamic>?;
+          if (property == null) return '';
+          return _extractPlainText(property) ?? '';
+        }
+
+        int? readInt(String key, String type) {
+          if (key.isEmpty) return null;
+          final property = properties[key] as Map<String, dynamic>?;
+          if (property == null) return null;
+          if (type == 'number') {
+            return _extractIntValue(property);
+          }
+          return _extractIntValue(property);
+        }
+
+        String? readCover(String key) {
+          if (key.isEmpty) return null;
+          final property = properties[key] as Map<String, dynamic>?;
+          if (property == null) return null;
+          return _extractFilesUrl(property) ??
+              _extractUrl(property) ??
+              _extractPlainText(property);
+        }
+
+        int? idValue;
+        final idProperty = properties[idPropertyName] as Map<String, dynamic>?;
+        if (idProperty != null) {
+          idValue = _extractBangumiIdFromProperty(
+            idProperty,
+            idPropertyType,
+          );
+        }
+
+        final title = readText(resolvedTitleProperty);
+        if (title.isEmpty) continue;
+
+        final watched = watchedEpisodesProperty == null
+            ? null
+            : readInt(watchedEpisodesProperty, watchedPropertyType);
+        final total = totalEpisodesProperty == null
+            ? null
+            : readInt(totalEpisodesProperty, totalPropertyType);
+
+        final lastEditedRaw = item['last_edited_time']?.toString();
+        final lastEdited =
+            lastEditedRaw != null ? DateTime.tryParse(lastEditedRaw) : null;
+
+        items.add(
+          NotionWatchEntry(
+            id: item['id']?.toString() ?? '',
+            title: title,
+            coverUrl: readCover(resolvedCoverProperty),
+            watchedEpisodes: watched,
+            totalEpisodes: total,
+            bangumiId: idValue?.toString(),
+            pageUrl: item['url']?.toString(),
+            lastEditedAt: lastEdited,
+          ),
+        );
+      }
+
+      hasMore = data['has_more'] == true;
+      nextCursor = data['next_cursor']?.toString();
+    }
+
+    return items;
+  }
+
   Future<List<NotionSearchItem>> searchDatabase({
     required String token,
     required String databaseId,

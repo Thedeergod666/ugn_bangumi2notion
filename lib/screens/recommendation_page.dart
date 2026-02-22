@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,6 +8,7 @@ import '../models/notion_models.dart';
 import '../view_models/recommendation_view_model.dart';
 import '../widgets/error_detail_dialog.dart';
 import '../widgets/navigation_shell.dart';
+import 'notion_detail_page.dart';
 
 class RecommendationPage extends StatefulWidget {
   const RecommendationPage({super.key});
@@ -90,6 +91,71 @@ class _RecommendationPageState extends State<RecommendationPage> {
     final uri = Uri.tryParse(trimmed);
     if (uri == null) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  void _openNotionDetail(
+    BuildContext context, {
+    required DailyRecommendation recommendation,
+    required String coverUrl,
+    required String longReview,
+    required List<String> tags,
+    required double? bangumiScore,
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => NotionDetailPage(
+          recommendation: recommendation,
+          coverUrl: coverUrl,
+          longReview: longReview,
+          tags: tags,
+          bangumiScore: bangumiScore,
+        ),
+      ),
+    );
+  }
+
+  DailyRecommendation _buildRecommendationFromWatchEntry(
+    NotionWatchEntry entry,
+  ) {
+    final bangumiId = entry.bangumiId?.trim();
+    return DailyRecommendation(
+      title: entry.title,
+      yougnScore: null,
+      bangumiScore: null,
+      airDate: null,
+      airEndDate: null,
+      followDate: null,
+      tags: const [],
+      type: null,
+      shortReview: null,
+      longReview: null,
+      cover: entry.coverUrl,
+      contentCoverUrl: null,
+      contentLongReview: null,
+      bangumiId: bangumiId,
+      subjectId: bangumiId,
+      pageId: entry.id,
+      pageUrl: entry.pageUrl,
+      animationProduction: null,
+      director: null,
+      script: null,
+      storyboard: null,
+    );
+  }
+
+  void _openNotionDetailFromWatchEntry(
+    BuildContext context,
+    NotionWatchEntry entry,
+  ) {
+    final recommendation = _buildRecommendationFromWatchEntry(entry);
+    _openNotionDetail(
+      context,
+      recommendation: recommendation,
+      coverUrl: entry.coverUrl ?? '',
+      longReview: '',
+      tags: const [],
+      bangumiScore: null,
+    );
   }
 
   @override
@@ -260,6 +326,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
     final tags = model.resolveTags(recommendation, detail);
     final longReview = model.resolveLongReview(recommendation, notionContent);
+    final notionTags = recommendation.tags;
 
     final bangumiScore = detail != null && detail.score > 0
         ? detail.score
@@ -297,9 +364,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
           context,
           coverUrl: coverUrl,
           stretch: isMedium,
-          onTap: recommendation.pageUrl?.isNotEmpty == true
-              ? () => _openNotionPage(recommendation.pageUrl)
-              : null,
+          onTap: null,
         );
         final infoContent = _buildInfoContent(
           context,
@@ -322,6 +387,14 @@ class _RecommendationPageState extends State<RecommendationPage> {
           cover: coverImage,
           info: infoContent,
           horizontal: true,
+          onTap: () => _openNotionDetail(
+            context,
+            recommendation: recommendation,
+            coverUrl: coverUrl,
+            longReview: longReview,
+            tags: notionTags,
+            bangumiScore: bangumiScore,
+          ),
         );
         final rightPanel = _buildRightPanel(
           context,
@@ -401,6 +474,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
               ],
               const SizedBox(height: 16),
               content,
+              const SizedBox(height: 20),
+              _buildRecentSection(context, model),
               if (isCompact) const SizedBox(height: 24),
             ],
           ),
@@ -500,6 +575,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     required Widget cover,
     required Widget info,
     required bool horizontal,
+    VoidCallback? onTap,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final content = horizontal
@@ -529,15 +605,18 @@ class _RecommendationPageState extends State<RecommendationPage> {
               ),
             ],
           );
-
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(20),
+      side: BorderSide(color: colorScheme.outlineVariant),
+    );
+    return Material(
+      color: colorScheme.surfaceContainerLow,
+      shape: shape,
       clipBehavior: Clip.antiAlias,
-      child: content,
+      child: InkWell(
+        onTap: onTap,
+        child: content,
+      ),
     );
   }
 
@@ -1046,6 +1125,246 @@ class _RecommendationPageState extends State<RecommendationPage> {
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: child,
+    );
+  }
+
+  Widget _buildRecentSection(
+    BuildContext context,
+    RecommendationViewModel model,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final watching = model.recentWatching;
+    final watched = model.recentWatched;
+
+    return _buildPanel(
+      context,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '最近观看',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const Spacer(),
+              if (model.isRecentLoading)
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colorScheme.primary,
+                  ),
+                ),
+            ],
+          ),
+          if (model.recentMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              model.recentMessage!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          _buildRecentRow(
+            context,
+            label: '在看',
+            items: watching,
+            showProgress: true,
+          ),
+          const SizedBox(height: 16),
+          _buildRecentRow(
+            context,
+            label: '已看',
+            items: watched,
+            showProgress: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentRow(
+    BuildContext context, {
+    required String label,
+    required List<NotionWatchEntry> items,
+    required bool showProgress,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (items.isEmpty) {
+      return Text(
+        '$label：暂无数据',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 150,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final entry = items[index];
+              return _buildRecentCard(
+                context,
+                entry: entry,
+                showProgress: showProgress,
+                onTap: () => _openNotionDetailFromWatchEntry(context, entry),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentCard(
+    BuildContext context, {
+    required NotionWatchEntry entry,
+    required bool showProgress,
+    VoidCallback? onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final watched = entry.watchedEpisodes ?? 0;
+    final total = entry.totalEpisodes ?? 0;
+    final progress =
+        (total > 0 && watched >= 0) ? watched / total : null;
+    final progressText = total > 0 ? '$watched / $total' : '已追 $watched';
+
+    return SizedBox(
+      width: 240,
+      child: Card(
+        color: colorScheme.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildRecentCover(context, entry.coverUrl ?? ''),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const Spacer(),
+                      if (showProgress) ...[
+                        Text(
+                          progressText,
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                        ),
+                        const SizedBox(height: 6),
+                        LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 6,
+                          color: colorScheme.primary,
+                          backgroundColor:
+                              colorScheme.surfaceContainerHighest,
+                        ),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '已看',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          progressText,
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentCover(BuildContext context, String url) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (url.isEmpty) {
+      return Container(
+        width: 62,
+        height: 86,
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Icon(Icons.image_outlined, size: 28),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Image.network(
+        url,
+        width: 62,
+        height: 86,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: 62,
+          height: 86,
+          color: colorScheme.surfaceContainerLow,
+          child: const Icon(Icons.broken_image_outlined, size: 28),
+        ),
+      ),
     );
   }
 }

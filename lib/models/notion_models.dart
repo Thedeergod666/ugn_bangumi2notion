@@ -177,3 +177,25 @@ class BangumiProgressInfo {
     this.yougnScore,
   });
 }
+
+class NotionWatchEntry {
+  final String id;
+  final String title;
+  final String? coverUrl;
+  final int? watchedEpisodes;
+  final int? totalEpisodes;
+  final String? bangumiId;
+  final String? pageUrl;
+  final DateTime? lastEditedAt;
+
+  const NotionWatchEntry({
+    required this.id,
+    required this.title,
+    this.coverUrl,
+    this.watchedEpisodes,
+    this.totalEpisodes,
+    this.bangumiId,
+    this.pageUrl,
+    this.lastEditedAt,
+  });
+}

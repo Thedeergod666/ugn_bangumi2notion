@@ -484,7 +484,7 @@ class CalendarViewModel extends ChangeNotifier {
           hasFuture = true;
           continue;
         }
-        if (latestAiredDate == null || airDate.isAfter(latestAiredDate!)) {
+        if (latestAiredDate == null || airDate.isAfter(latestAiredDate)) {
           latestAiredDate = airDate;
           latestAiredNumber = number;
         }
@@ -502,7 +502,7 @@ class CalendarViewModel extends ChangeNotifier {
       if (hasFuture) return true;
 
       if (latestAiredDate != null) {
-        final diff = today.difference(latestAiredDate!).inDays;
+        final diff = today.difference(latestAiredDate).inDays;
         return diff <= 21;
       }
 

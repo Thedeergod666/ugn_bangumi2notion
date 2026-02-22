@@ -13,6 +13,7 @@ import 'screens/search_page.dart';
 import 'screens/settings_page.dart';
 import 'screens/mapping_page.dart';
 import 'screens/calendar_page.dart';
+import 'screens/notion_detail_page.dart';
 import 'services/logging.dart';
 import 'theme/kazumi_theme.dart';
 
@@ -98,6 +99,8 @@ class MyApp extends StatelessWidget {
         return _buildSlideRoute(const SearchPage(), settings);
       case '/calendar':
         return _buildSlideRoute(const CalendarPage(), settings);
+      case '/notion-detail':
+        return _buildSlideRoute(const NotionDetailPage(), settings);
       case '/recommendation':
       default:
         return _buildSlideRoute(const RecommendationPage(), settings);
