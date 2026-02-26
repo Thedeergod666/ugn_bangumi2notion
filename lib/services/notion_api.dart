@@ -103,9 +103,34 @@ class NotionApi {
   String? normalizePageId(String input) => _normalizePageId(input);
 
   double? _extractNumberValue(Map<String, dynamic> property) {
+    double? parseNumber(dynamic value) {
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value);
+      return null;
+    }
+
     final number = property['number'];
-    if (number is num) return number.toDouble();
-    if (number is String) return double.tryParse(number);
+    final direct = parseNumber(number);
+    if (direct != null) return direct;
+
+    final formula = property['formula'];
+    if (formula is Map<String, dynamic>) {
+      final type = formula['type']?.toString();
+      if (type == 'number') {
+        final value = parseNumber(formula['number']);
+        if (value != null) return value;
+      }
+    }
+
+    final rollup = property['rollup'];
+    if (rollup is Map<String, dynamic>) {
+      final type = rollup['type']?.toString();
+      if (type == 'number') {
+        final value = parseNumber(rollup['number']);
+        if (value != null) return value;
+      }
+    }
+
     return null;
   }
 
@@ -129,6 +154,38 @@ class NotionApi {
       final List<dynamic>? text = property['rich_text'];
       if (text == null || text.isEmpty) return null;
       return text.map((e) => e['plain_text'] ?? '').join().trim();
+    }
+    final formula = property['formula'];
+    if (formula is Map<String, dynamic>) {
+      final type = formula['type']?.toString();
+      if (type == 'string') {
+        final text = formula['string']?.toString().trim() ?? '';
+        return text.isEmpty ? null : text;
+      }
+      if (type == 'number') {
+        final number = formula['number'];
+        if (number is num) return number.toString();
+        if (number is String) {
+          final text = number.trim();
+          return text.isEmpty ? null : text;
+        }
+      }
+    }
+    final rollup = property['rollup'];
+    if (rollup is Map<String, dynamic>) {
+      final type = rollup['type']?.toString();
+      if (type == 'number') {
+        final number = rollup['number'];
+        if (number is num) return number.toString();
+        if (number is String) {
+          final text = number.trim();
+          return text.isEmpty ? null : text;
+        }
+      }
+      if (type == 'string') {
+        final text = rollup['string']?.toString().trim() ?? '';
+        return text.isEmpty ? null : text;
+      }
     }
     return null;
   }

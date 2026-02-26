@@ -44,6 +44,7 @@ class RecommendationViewModel extends ChangeNotifier {
 
   static const double minScore = 6.5;
   static const int heroSize = 3;
+  static const int dailyCacheVersion = 4;
   static const int logTextLimit = 200;
   static const Duration rotationInterval = Duration(seconds: 20);
   static const List<String> scoreLabels = [
@@ -602,6 +603,11 @@ class RecommendationViewModel extends ChangeNotifier {
     try {
       final decoded = jsonDecode(payload);
       if (decoded is! Map<String, dynamic>) return null;
+      final version =
+          int.tryParse(decoded['version']?.toString() ?? '') ?? 0;
+      if (version < dailyCacheVersion) {
+        return null;
+      }
       if (decoded['candidates'] is List) {
         final rawList = decoded['candidates'] as List;
         final candidates = rawList
@@ -662,7 +668,7 @@ class RecommendationViewModel extends ChangeNotifier {
     required int currentIndex,
   }) async {
     final payload = jsonEncode({
-      'version': 3,
+      'version': dailyCacheVersion,
       'currentIndex': currentIndex,
       'indices': indices,
       'candidates': candidates.map((item) => item.toJson()).toList(),

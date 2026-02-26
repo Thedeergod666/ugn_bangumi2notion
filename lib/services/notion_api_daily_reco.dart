@@ -183,6 +183,11 @@ extension NotionApiDailyRecommendation on NotionApi {
         _extractUrl(property);
   }
 
+  double? _extractScoreValue(Map<String, dynamic> property) {
+    return _extractNumberValue(property) ??
+        _parseScoreFromText(_extractFallbackText(property));
+  }
+
   Map<String, String> _buildPropertyTypeMap(List<NotionProperty> properties) {
     return {
       for (final property in properties) property.name: property.type,
@@ -388,8 +393,7 @@ extension NotionApiDailyRecommendation on NotionApi {
         final scoreProperty =
             properties[bindings.yougnScore] as Map<String, dynamic>?;
         if (scoreProperty == null) return false;
-        final rawText = _extractPlainText(scoreProperty);
-        final score = _parseScoreFromText(rawText);
+        final score = _extractScoreValue(scoreProperty);
         return score != null && score >= minScore;
       }).toList();
     }
@@ -440,7 +444,7 @@ extension NotionApiDailyRecommendation on NotionApi {
       if (key.isEmpty) return null;
       final property = properties[key] as Map<String, dynamic>?;
       if (property == null) return null;
-      return _parseScoreFromText(_extractPlainText(property));
+      return _extractScoreValue(property);
     }
 
     DateTime? readDate(String key) {
@@ -676,8 +680,7 @@ extension NotionApiDailyRecommendation on NotionApi {
         final scoreProperty =
             properties[bindings.yougnScore] as Map<String, dynamic>?;
         if (scoreProperty == null) return false;
-        final rawText = _extractPlainText(scoreProperty);
-        final score = _parseScoreFromText(rawText);
+        final score = _extractScoreValue(scoreProperty);
         return score != null && score >= minScore;
       }).toList();
     }
@@ -724,7 +727,7 @@ extension NotionApiDailyRecommendation on NotionApi {
       if (key.isEmpty) return null;
       final property = properties[key] as Map<String, dynamic>?;
       if (property == null) return null;
-      return _parseScoreFromText(_extractPlainText(property));
+      return _extractScoreValue(property);
     }
 
     DateTime? readDate(Map<String, dynamic> properties, String key) {
