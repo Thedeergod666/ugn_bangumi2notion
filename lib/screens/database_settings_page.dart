@@ -19,6 +19,8 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
 
   final _notionTokenController = TextEditingController();
   final _notionDbController = TextEditingController();
+  final _notionMovieDbController = TextEditingController();
+  final _notionGameDbController = TextEditingController();
   bool _initialized = false;
 
   @override
@@ -39,6 +41,9 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
     _initialized = true;
     _notionTokenController.text = _viewModel.notionToken;
     _notionDbController.text = _viewModel.notionDatabaseId;
+    final settings = context.read<AppSettings>();
+    _notionMovieDbController.text = settings.notionMovieDatabaseId;
+    _notionGameDbController.text = settings.notionGameDatabaseId;
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -57,6 +62,14 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
     _viewModel.updateToken(_notionTokenController.text);
     _viewModel.updateDatabaseId(_notionDbController.text);
     await _viewModel.autoSave();
+  }
+
+  Future<void> _autoSaveExtraDatabases() async {
+    final settings = context.read<AppSettings>();
+    await settings.saveAdditionalNotionDatabases(
+      movieDatabaseId: _notionMovieDbController.text.trim(),
+      gameDatabaseId: _notionGameDbController.text.trim(),
+    );
   }
 
   Future<void> _saveAll() async {
@@ -89,6 +102,8 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
     _viewModel.dispose();
     _notionTokenController.dispose();
     _notionDbController.dispose();
+    _notionMovieDbController.dispose();
+    _notionGameDbController.dispose();
     super.dispose();
   }
 
@@ -99,7 +114,7 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
       child: Consumer<DatabaseSettingsViewModel>(
         builder: (context, model, _) {
           return NavigationShell(
-            title: '数据库设置',
+            title: '数据绑定',
             selectedRoute: '/settings',
             onBack: () => Navigator.of(context).pop(),
             child: model.isLoading
@@ -188,6 +203,24 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
               border: OutlineInputBorder(),
             ),
             onChanged: (_) => _autoSaveNotionSettings(),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _notionMovieDbController,
+            decoration: const InputDecoration(
+              labelText: '影视 Database ID (豆瓣)',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => _autoSaveExtraDatabases(),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _notionGameDbController,
+            decoration: const InputDecoration(
+              labelText: '游戏 Database ID (Steam)',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => _autoSaveExtraDatabases(),
           ),
           const SizedBox(height: 16),
           Row(

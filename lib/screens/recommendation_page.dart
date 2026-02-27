@@ -1,6 +1,5 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_services.dart';
 import '../app/app_settings.dart';
@@ -8,6 +7,8 @@ import '../models/notion_models.dart';
 import '../view_models/recommendation_view_model.dart';
 import '../widgets/error_detail_dialog.dart';
 import '../widgets/navigation_shell.dart';
+import '../widgets/progress_segments_bar.dart';
+import '../widgets/view_mode_toggle.dart';
 import 'notion_detail_page.dart';
 
 class RecommendationPage extends StatefulWidget {
@@ -85,14 +86,6 @@ class _RecommendationPageState extends State<RecommendationPage> {
     return '$y-$m-$d';
   }
 
-  Future<void> _openNotionPage(String? url) async {
-    final trimmed = url?.trim() ?? '';
-    if (trimmed.isEmpty) return;
-    final uri = Uri.tryParse(trimmed);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
   void _openNotionDetail(
     BuildContext context, {
     required DailyRecommendation recommendation,
@@ -158,6 +151,38 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
   }
 
+  Future<void> _handleRecentIncrement(
+    BuildContext context,
+    RecommendationViewModel model,
+    NotionWatchEntry entry,
+  ) async {
+    try {
+      final result = await model.incrementRecentWatch(entry);
+      if (result == null) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未配置 Notion 追番字段')),
+        );
+        return;
+      }
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('已追集数 +1'),
+          action: SnackBarAction(
+            label: '撤销',
+            onPressed: () => model.revertRecentWatch(result),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('更新失败，请稍后重试')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
@@ -165,7 +190,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
       child: Consumer<RecommendationViewModel>(
         builder: (context, model, _) {
           return NavigationShell(
-            title: '每日推荐',
+            title: '今日安利',
             selectedRoute: '/recommendation',
             child: _buildBody(context, model),
           );
@@ -488,7 +513,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     return Row(
       children: [
         Text(
-          '今日推荐',
+          '今日安利',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -1135,6 +1160,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final watching = model.recentWatching;
     final watched = model.recentWatched;
+    final settings = context.watch<AppSettings>();
+    final viewMode = settings.recentViewMode;
 
     return _buildPanel(
       context,
@@ -1150,6 +1177,12 @@ class _RecommendationPageState extends State<RecommendationPage> {
                     ),
               ),
               const Spacer(),
+              ViewModeToggle(
+                mode: viewMode,
+                compact: true,
+                onChanged: (mode) => settings.setRecentViewMode(mode),
+              ),
+              const SizedBox(width: 8),
               if (model.isRecentLoading)
                 SizedBox(
                   width: 18,
@@ -1176,6 +1209,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
             label: '在看',
             items: watching,
             showProgress: true,
+            viewMode: viewMode,
+            model: model,
           ),
           const SizedBox(height: 16),
           _buildRecentRow(
@@ -1183,6 +1218,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
             label: '已看',
             items: watched,
             showProgress: false,
+            viewMode: viewMode,
+            model: model,
           ),
         ],
       ),
@@ -1194,6 +1231,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
     required String label,
     required List<NotionWatchEntry> items,
     required bool showProgress,
+    required String viewMode,
+    required RecommendationViewModel model,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     if (items.isEmpty) {
@@ -1216,39 +1255,72 @@ class _RecommendationPageState extends State<RecommendationPage> {
               ),
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          height: 168,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final entry = items[index];
-              return _buildRecentCard(
-                context,
-                entry: entry,
-                showProgress: showProgress,
-                onTap: () => _openNotionDetailFromWatchEntry(context, entry),
-              );
-            },
+        if (viewMode == 'list')
+          Column(
+            children: [
+              for (final entry in items)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _buildRecentCard(
+                    context,
+                    model: model,
+                    entry: entry,
+                    showProgress: showProgress,
+                    onTap: () =>
+                        _openNotionDetailFromWatchEntry(context, entry),
+                  ),
+                ),
+            ],
+          )
+        else
+          SizedBox(
+            height: 180,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final entry = items[index];
+                return _buildRecentCard(
+                  context,
+                  model: model,
+                  entry: entry,
+                  showProgress: showProgress,
+                  onTap: () => _openNotionDetailFromWatchEntry(context, entry),
+                );
+              },
+            ),
           ),
-        ),
       ],
     );
   }
 
   Widget _buildRecentCard(
     BuildContext context, {
+    required RecommendationViewModel model,
     required NotionWatchEntry entry,
     required bool showProgress,
     VoidCallback? onTap,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final watched = entry.watchedEpisodes ?? 0;
-    final total = entry.totalEpisodes ?? 0;
+    final subjectId = int.tryParse(entry.bangumiId ?? '');
+    if (subjectId != null) {
+      model.scheduleBangumiDetailLoad(subjectId);
+      model.scheduleRecentLatestEpisodeLoad(subjectId);
+    }
+    final detail = subjectId != null ? model.bangumiDetailCache[subjectId] : null;
+    final latest = subjectId != null ? model.latestEpisodeFor(subjectId) : null;
+    final total = detail?.epsCount ?? entry.totalEpisodes ?? 0;
+    final updated = latest ?? 0;
     final progress =
         (total > 0 && watched >= 0) ? watched / total : null;
     final progressText = total > 0 ? '已追 $watched / $total' : '已追 $watched';
+    final serialStatus = showProgress
+        ? (total > 0 && updated >= total
+            ? '已完结'
+            : (updated > 0 ? '连载中' : '未放送'))
+        : '已看完';
 
     final Widget infoBlock = showProgress
         ? Column(
@@ -1262,11 +1334,26 @@ class _RecommendationPageState extends State<RecommendationPage> {
                     ),
               ),
               const SizedBox(height: 6),
-              LinearProgressIndicator(
-                value: progress,
-                minHeight: 5,
-                color: colorScheme.primary,
-                backgroundColor: colorScheme.surfaceContainerHighest,
+              if (updated > 0 || total > 0)
+                ProgressSegmentsBar(
+                  watched: watched,
+                  updated: updated,
+                  total: total > 0 ? total : (updated > 0 ? updated : watched),
+                )
+              else
+                LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 5,
+                  color: colorScheme.primary,
+                  backgroundColor: colorScheme.surfaceContainerHighest,
+                ),
+              const SizedBox(height: 6),
+              Text(
+                serialStatus,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
             ],
           )
@@ -1284,7 +1371,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  '已看',
+                  serialStatus,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: colorScheme.primary,
                         fontWeight: FontWeight.w600,
@@ -1302,7 +1389,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
           );
 
     return SizedBox(
-      width: 240,
+      width: showProgress ? 260 : 240,
       child: Card(
         color: colorScheme.surfaceContainerHighest,
         shape: RoundedRectangleBorder(
@@ -1336,6 +1423,16 @@ class _RecommendationPageState extends State<RecommendationPage> {
                     ],
                   ),
                 ),
+                if (showProgress)
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    tooltip: '+1',
+                    onPressed: () => _handleRecentIncrement(
+                      context,
+                      model,
+                      entry,
+                    ),
+                  ),
               ],
             ),
           ),

@@ -35,6 +35,7 @@ class MappingViewModel extends ChangeNotifier {
   MappingConfig _config = MappingConfig();
   NotionDailyRecommendationBindings _bindings =
       const NotionDailyRecommendationBindings();
+  NotionWatchBindings _watchBindings = const NotionWatchBindings();
   List<NotionProperty> _notionProperties = [];
   final Map<MappingFieldType, List<NotionProperty>> _optionsCache = {};
   String _notionToken = '';
@@ -44,6 +45,7 @@ class MappingViewModel extends ChangeNotifier {
   Object? get error => _error;
   MappingConfig get config => _config;
   NotionDailyRecommendationBindings get bindings => _bindings;
+  NotionWatchBindings get watchBindings => _watchBindings;
   List<NotionProperty> get notionProperties => _notionProperties;
   bool get isConfigured =>
       _notionToken.isNotEmpty && _notionDatabaseId.isNotEmpty;
@@ -63,6 +65,7 @@ class MappingViewModel extends ChangeNotifier {
       _bindings = _config.dailyRecommendationBindings.isEmpty
           ? await _settingsStorage.getDailyRecommendationBindings()
           : _config.dailyRecommendationBindings;
+      _watchBindings = _config.watchBindings;
 
       if (isConfigured) {
         if (!forceRefresh) {
@@ -93,7 +96,10 @@ class MappingViewModel extends ChangeNotifier {
 
   Future<void> saveBindings() async {
     await _settingsStorage.saveDailyRecommendationBindings(_bindings);
-    _config = _config.copyWith(dailyRecommendationBindings: _bindings);
+    _config = _config.copyWith(
+      dailyRecommendationBindings: _bindings,
+      watchBindings: _watchBindings,
+    );
     await _settingsStorage.saveMappingConfig(_config);
   }
 
@@ -104,6 +110,11 @@ class MappingViewModel extends ChangeNotifier {
 
   void updateBindings(NotionDailyRecommendationBindings bindings) {
     _bindings = bindings;
+    notifyListeners();
+  }
+
+  void updateWatchBindings(NotionWatchBindings bindings) {
+    _watchBindings = bindings;
     notifyListeners();
   }
 
@@ -212,6 +223,21 @@ class MappingViewModel extends ChangeNotifier {
             allowedTypes: _allowedNotionTypes(MappingFieldType.number),
           ) ??
           updated.watchedEpisodes,
+      followDate: _pickPropertyName(
+            candidates: const ['追番日期', '追番时间', 'follow', 'start watch'],
+            allowedTypes: _allowedNotionTypes(MappingFieldType.date),
+          ) ??
+          updated.followDate,
+      lastWatchedAt: _pickPropertyName(
+            candidates: const ['最近观看', '最后观看', 'last watch', 'last viewed'],
+            allowedTypes: _allowedNotionTypes(MappingFieldType.date),
+          ) ??
+          updated.lastWatchedAt,
+      bangumiUpdatedAt: _pickPropertyName(
+            candidates: const ['bangumi更新日期', '更新日期', '更新时间'],
+            allowedTypes: _allowedNotionTypes(MappingFieldType.date),
+          ) ??
+          updated.bangumiUpdatedAt,
       watchingStatus: _pickPropertyName(
             candidates: const ['追番状态', '在看', '状态', 'status'],
             allowedTypes: _allowedNotionTypes(MappingFieldType.status),

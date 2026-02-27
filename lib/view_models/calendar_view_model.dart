@@ -32,8 +32,12 @@ class CalendarViewModel extends ChangeNotifier {
   Set<int> _boundIds = {};
   Map<int, int> _watchedEpisodes = {};
   Map<int, double?> _yougnScores = {};
+  Map<int, DateTime?> _lastWatchedAt = {};
+  Map<int, String> _notionPageIds = {};
   Map<int, BangumiSubjectDetail> _detailCache = {};
   final Set<int> _detailLoading = {};
+  Map<int, String?> _airEndDateCache = {};
+  final Set<int> _airEndDateLoading = {};
   Map<int, int> _latestEpisodeCache = {};
   final Set<int> _latestEpisodeLoading = {};
   final Queue<int> _latestEpisodeQueue = Queue<int>();
@@ -52,7 +56,9 @@ class CalendarViewModel extends ChangeNotifier {
   Set<int> get boundIds => _boundIds;
   Map<int, int> get watchedEpisodes => _watchedEpisodes;
   Map<int, double?> get yougnScores => _yougnScores;
+  Map<int, DateTime?> get lastWatchedAt => _lastWatchedAt;
   Map<int, BangumiSubjectDetail> get detailCache => _detailCache;
+  Map<int, String?> get airEndDateCache => _airEndDateCache;
   Map<int, int> get latestEpisodeCache => _latestEpisodeCache;
   Map<int, List<BangumiCalendarItem>> get weekdayItems => _weekdayItems;
   Map<int, int> get weekdayBoundCounts => _weekdayBoundCounts;
@@ -81,8 +87,12 @@ class CalendarViewModel extends ChangeNotifier {
     _boundItems = [];
     _watchedEpisodes = {};
     _yougnScores = {};
+    _lastWatchedAt = {};
+    _notionPageIds = {};
     _detailCache = {};
     _detailLoading.clear();
+    _airEndDateCache = {};
+    _airEndDateLoading.clear();
     _latestEpisodeCache = {};
     _latestEpisodeLoading.clear();
     _latestEpisodeQueue.clear();
@@ -99,17 +109,37 @@ class CalendarViewModel extends ChangeNotifier {
       final notionToken = settings.notionToken;
       final notionDbId = settings.notionDatabaseId;
       final mappingConfig = await _settingsStorage.getMappingConfig();
-      final notionPropertyName = _resolveBangumiIdProperty(mappingConfig);
+      final watchBindings = mappingConfig.watchBindings;
+      final notionPropertyName = watchBindings.bangumiId.trim().isNotEmpty
+          ? watchBindings.bangumiId.trim()
+          : _resolveBangumiIdProperty(mappingConfig);
 
       final dailyBindings =
           await _settingsStorage.getDailyRecommendationBindings();
-      final yougnScoreProperty = dailyBindings.yougnScore.isNotEmpty
-          ? dailyBindings.yougnScore
-          : mappingConfig.dailyRecommendationBindings.yougnScore;
+      final yougnScoreProperty = watchBindings.yougnScore.trim().isNotEmpty
+          ? watchBindings.yougnScore.trim()
+          : (dailyBindings.yougnScore.isNotEmpty
+              ? dailyBindings.yougnScore
+              : mappingConfig.dailyRecommendationBindings.yougnScore);
+
+      final watchedEpisodesProperty = watchBindings.watchedEpisodes.isNotEmpty
+          ? watchBindings.watchedEpisodes
+          : mappingConfig.watchedEpisodes;
+      final lastWatchedAtProperty = watchBindings.lastWatchedAt.isNotEmpty
+          ? watchBindings.lastWatchedAt
+          : mappingConfig.lastWatchedAt;
+      final followDateProperty = watchBindings.followDate.isNotEmpty
+          ? watchBindings.followDate
+          : mappingConfig.followDate;
+      final statusProperty = watchBindings.watchingStatus.isNotEmpty
+          ? watchBindings.watchingStatus
+          : mappingConfig.watchingStatus;
 
       Set<int> boundIds = {};
       Map<int, int> watchedEpisodes = {};
       Map<int, double?> yougnScores = {};
+      Map<int, DateTime?> lastWatchedAt = {};
+      Map<int, String> notionPageIds = {};
       bool notionReady = false;
       if (notionToken.isNotEmpty &&
           notionDbId.isNotEmpty &&
@@ -119,9 +149,11 @@ class CalendarViewModel extends ChangeNotifier {
           token: notionToken,
           databaseId: notionDbId,
           idPropertyName: notionPropertyName,
-          watchedEpisodesProperty: mappingConfig.watchedEpisodes,
+          watchedEpisodesProperty: watchedEpisodesProperty,
           yougnScoreProperty: yougnScoreProperty,
-          statusPropertyName: mappingConfig.watchingStatus,
+          lastWatchedAtProperty: lastWatchedAtProperty,
+          followDateProperty: followDateProperty,
+          statusPropertyName: statusProperty,
           statusValue: mappingConfig.watchingStatusValue,
         );
         watchedEpisodes = {
@@ -132,6 +164,15 @@ class CalendarViewModel extends ChangeNotifier {
           for (final entry in progressMap.entries)
             entry.key: entry.value.yougnScore
         };
+        lastWatchedAt = {
+          for (final entry in progressMap.entries)
+            entry.key: entry.value.lastWatchedAt
+        };
+        notionPageIds = {
+          for (final entry in progressMap.entries)
+            if ((entry.value.pageId ?? '').isNotEmpty)
+              entry.key: entry.value.pageId!,
+        };
         boundIds = progressMap.keys.toSet();
 
         _crossSeasonCandidateIds = boundIds;
@@ -141,6 +182,8 @@ class CalendarViewModel extends ChangeNotifier {
       _boundIds = boundIds;
       _watchedEpisodes = watchedEpisodes;
       _yougnScores = yougnScores;
+      _lastWatchedAt = lastWatchedAt;
+      _notionPageIds = notionPageIds;
       _weekdayItems = _buildWeekdayItems(filteredDays, boundIds);
       _weekdayBoundCounts = _buildWeekdayBoundCounts(filteredDays, boundIds);
       _boundItems = _buildBoundItems(filteredDays, boundIds);
@@ -173,6 +216,15 @@ class CalendarViewModel extends ChangeNotifier {
     }
     _detailLoading.add(subjectId);
     _loadDetail(subjectId);
+  }
+
+  void scheduleAirEndDateLoad(int subjectId, {int? totalEpisodes}) {
+    if (_airEndDateCache.containsKey(subjectId) ||
+        _airEndDateLoading.contains(subjectId)) {
+      return;
+    }
+    _airEndDateLoading.add(subjectId);
+    _loadAirEndDate(subjectId, totalEpisodes: totalEpisodes);
   }
 
   void scheduleLatestEpisodeLoad(int subjectId) {
@@ -313,12 +365,200 @@ class CalendarViewModel extends ChangeNotifier {
         accessToken: token.isEmpty ? null : token,
       );
       _detailCache[subjectId] = detail;
+      final endFromInfobox = _extractEndDateFromInfobox(detail.infoboxMap);
+      if (endFromInfobox != null && endFromInfobox.isNotEmpty) {
+        _airEndDateCache[subjectId] = endFromInfobox;
+      }
       _notify();
     } catch (_) {
       // Ignore
     } finally {
       _detailLoading.remove(subjectId);
     }
+  }
+
+  Future<void> _loadAirEndDate(int subjectId, {int? totalEpisodes}) async {
+    try {
+      final end = await _bangumiApi.fetchLastEpisodeAirDate(
+        subjectId: subjectId,
+        totalEpisodes: totalEpisodes,
+        accessToken: _settings?.bangumiAccessToken,
+      );
+      if (end != null && end.trim().isNotEmpty) {
+        _airEndDateCache[subjectId] = end.trim();
+        _notify();
+      }
+    } catch (_) {
+      // ignore
+    } finally {
+      _airEndDateLoading.remove(subjectId);
+    }
+  }
+
+  String? _extractEndDateFromInfobox(Map<String, String> infobox) {
+    final keys = [
+      '放送结束',
+      '放送完毕',
+      '放送终了',
+      '播放结束',
+      '播出结束',
+      '上映结束',
+    ];
+    for (final key in keys) {
+      final value = infobox[key];
+      final extracted = value == null ? null : _extractFirstDateString(value);
+      if (extracted != null) return extracted;
+    }
+    // fallback: try to extract date range
+    for (final entry in infobox.entries) {
+      if (entry.key.contains('放送') || entry.key.contains('播出')) {
+        final dates = _extractDates(entry.value);
+        if (dates.length >= 2) return dates.last;
+      }
+    }
+    return null;
+  }
+
+  String? _extractFirstDateString(String raw) {
+    final dates = _extractDates(raw);
+    return dates.isEmpty ? null : dates.first;
+  }
+
+  List<String> _extractDates(String raw) {
+    if (raw.trim().isEmpty) return const [];
+    final results = <String>[];
+    final seen = <String>{};
+    void add(String y, String m, String d) {
+      final value =
+          '${y.padLeft(4, '0')}-${m.padLeft(2, '0')}-${d.padLeft(2, '0')}';
+      if (seen.add(value)) {
+        results.add(value);
+      }
+    }
+
+    final iso = RegExp(r'(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})');
+    for (final match in iso.allMatches(raw)) {
+      add(match.group(1)!, match.group(2)!, match.group(3)!);
+    }
+    final cjk =
+        RegExp(r'(\\d{4})\\u5e74(\\d{1,2})\\u6708(\\d{1,2})\\u65e5');
+    for (final match in cjk.allMatches(raw)) {
+      add(match.group(1)!, match.group(2)!, match.group(3)!);
+    }
+    return results;
+  }
+
+  Future<WatchUpdateResult?> incrementWatchedEpisodes(int subjectId) async {
+    final settings = _settings;
+    if (settings == null) return null;
+    final token = settings.notionToken;
+    final databaseId = settings.notionDatabaseId;
+    if (token.isEmpty || databaseId.isEmpty) return null;
+
+    final mappingConfig = await _settingsStorage.getMappingConfig();
+    final watchBindings = mappingConfig.watchBindings;
+    final watchedProperty = watchBindings.watchedEpisodes.isNotEmpty
+        ? watchBindings.watchedEpisodes
+        : mappingConfig.watchedEpisodes;
+    final lastWatchedProperty = watchBindings.lastWatchedAt.isNotEmpty
+        ? watchBindings.lastWatchedAt
+        : mappingConfig.lastWatchedAt;
+    final idPropertyName = watchBindings.bangumiId.trim().isNotEmpty
+        ? watchBindings.bangumiId.trim()
+        : _resolveBangumiIdProperty(mappingConfig);
+
+    if (watchedProperty.trim().isEmpty) return null;
+
+    final currentWatched = _watchedEpisodes[subjectId] ?? 0;
+    final newWatched = currentWatched + 1;
+    final previousWatchedAt = _lastWatchedAt[subjectId];
+    final now = DateTime.now();
+
+    String? pageId = _notionPageIds[subjectId];
+    if (pageId == null || pageId.isEmpty) {
+      pageId = await _notionApi.findPageByBangumiId(
+        token: token,
+        databaseId: databaseId,
+        bangumiId: subjectId,
+        propertyName: idPropertyName,
+      );
+      if (pageId != null && pageId.isNotEmpty) {
+        _notionPageIds[subjectId] = pageId;
+      }
+    }
+    if (pageId == null || pageId.isEmpty) return null;
+
+    await _notionApi.updateWatchProgress(
+      token: token,
+      pageId: pageId,
+      watchedEpisodesProperty: watchedProperty,
+      watchedEpisodes: newWatched,
+      lastWatchedAtProperty:
+          lastWatchedProperty.trim().isEmpty ? null : lastWatchedProperty,
+      lastWatchedAt:
+          lastWatchedProperty.trim().isEmpty ? null : now,
+    );
+
+    _watchedEpisodes[subjectId] = newWatched;
+    _lastWatchedAt[subjectId] =
+        lastWatchedProperty.trim().isEmpty ? previousWatchedAt : now;
+    _notify();
+
+    final bangumiToken = settings.bangumiAccessToken;
+    if (bangumiToken.isNotEmpty) {
+      try {
+        await _bangumiApi.updateEpisodeProgress(
+          subjectId: subjectId,
+          watchedEpisodes: newWatched,
+          accessToken: bangumiToken,
+        );
+      } catch (_) {
+        // ignore sync failures
+      }
+    }
+
+    return WatchUpdateResult(
+      subjectId: subjectId,
+      oldWatched: currentWatched,
+      newWatched: newWatched,
+      oldLastWatchedAt: previousWatchedAt,
+      newLastWatchedAt: now,
+    );
+  }
+
+  Future<void> revertWatchedEpisodes(WatchUpdateResult result) async {
+    final settings = _settings;
+    if (settings == null) return;
+    final token = settings.notionToken;
+    if (token.isEmpty) return;
+
+    final mappingConfig = await _settingsStorage.getMappingConfig();
+    final watchBindings = mappingConfig.watchBindings;
+    final watchedProperty = watchBindings.watchedEpisodes.isNotEmpty
+        ? watchBindings.watchedEpisodes
+        : mappingConfig.watchedEpisodes;
+    final lastWatchedProperty = watchBindings.lastWatchedAt.isNotEmpty
+        ? watchBindings.lastWatchedAt
+        : mappingConfig.lastWatchedAt;
+
+    if (watchedProperty.trim().isEmpty) return;
+
+    final pageId = _notionPageIds[result.subjectId];
+    if (pageId == null || pageId.isEmpty) return;
+
+    await _notionApi.updateWatchProgress(
+      token: token,
+      pageId: pageId,
+      watchedEpisodesProperty: watchedProperty,
+      watchedEpisodes: result.oldWatched,
+      lastWatchedAtProperty:
+          lastWatchedProperty.trim().isEmpty ? null : lastWatchedProperty,
+      lastWatchedAt: result.oldLastWatchedAt,
+    );
+
+    _watchedEpisodes[result.subjectId] = result.oldWatched;
+    _lastWatchedAt[result.subjectId] = result.oldLastWatchedAt;
+    _notify();
   }
 
   Future<void> _appendBoundItemsFromNotion(int token) async {
@@ -779,4 +1019,20 @@ class CalendarViewModel extends ChangeNotifier {
       ja: '',
     );
   }
+}
+
+class WatchUpdateResult {
+  final int subjectId;
+  final int oldWatched;
+  final int newWatched;
+  final DateTime? oldLastWatchedAt;
+  final DateTime? newLastWatchedAt;
+
+  const WatchUpdateResult({
+    required this.subjectId,
+    required this.oldWatched,
+    required this.newWatched,
+    required this.oldLastWatchedAt,
+    required this.newLastWatchedAt,
+  });
 }

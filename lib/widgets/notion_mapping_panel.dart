@@ -8,6 +8,8 @@ class NotionMappingPanel extends StatelessWidget {
   final List<NotionProperty> properties;
   final NotionDailyRecommendationBindings bindings;
   final ValueChanged<NotionDailyRecommendationBindings> onBindingsChanged;
+  final NotionWatchBindings watchBindings;
+  final ValueChanged<NotionWatchBindings> onWatchBindingsChanged;
   final bool embedInScroll;
 
   const NotionMappingPanel({
@@ -17,6 +19,8 @@ class NotionMappingPanel extends StatelessWidget {
     required this.properties,
     required this.bindings,
     required this.onBindingsChanged,
+    required this.watchBindings,
+    required this.onWatchBindingsChanged,
     this.embedInScroll = false,
   });
 
@@ -143,14 +147,16 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '标题 (title)',
           value: bindings.title,
+          helpText: '用于推荐卡片标题',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(title: value),
           ),
         ),
         _buildBindingRow(
           context,
-          label: '评分 (yougnScore)',
+          label: '悠gn评分 (yougnScore)',
           value: bindings.yougnScore,
+          helpText: '用于悠gn评分与排名',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(yougnScore: value),
           ),
@@ -159,6 +165,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: 'Bangumi评分 (bangumiScore)',
           value: bindings.bangumiScore,
+          helpText: '用于展示 Bangumi 评分',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(bangumiScore: value),
           ),
@@ -167,6 +174,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: 'Bangumi排名 (bangumiRank)',
           value: bindings.bangumiRank,
+          helpText: '用于展示 Bangumi 排名',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(bangumiRank: value),
           ),
@@ -177,6 +185,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '追番日期 (followDate)',
           value: bindings.followDate,
+          helpText: '用于显示追番日期',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(followDate: value),
           ),
@@ -185,6 +194,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '放送日期 (airDate)',
           value: bindings.airDate,
+          helpText: '用于显示放送日期',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(airDate: value),
           ),
@@ -193,6 +203,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '放送日期范围 (airDateRange)',
           value: bindings.airDateRange,
+          helpText: '用于显示放送区间',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(airDateRange: value),
           ),
@@ -201,6 +212,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '标签 (tags)',
           value: bindings.tags,
+          helpText: '用于推荐卡片标签',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(tags: value),
           ),
@@ -209,6 +221,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '类型 (type)',
           value: bindings.type,
+          helpText: '用于推荐筛选/类型',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(type: value),
           ),
@@ -219,6 +232,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '动画制作 (animationProduction)',
           value: bindings.animationProduction,
+          helpText: '用于制作信息展示',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(animationProduction: value),
           ),
@@ -227,6 +241,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '导演 (director)',
           value: bindings.director,
+          helpText: '用于制作信息展示',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(director: value),
           ),
@@ -235,6 +250,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '脚本 (script)',
           value: bindings.script,
+          helpText: '用于制作信息展示',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(script: value),
           ),
@@ -243,6 +259,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '分镜 (storyboard)',
           value: bindings.storyboard,
+          helpText: '用于制作信息展示',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(storyboard: value),
           ),
@@ -253,6 +270,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '短评 (shortReview)',
           value: bindings.shortReview,
+          helpText: '用于推荐卡片悠简评',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(shortReview: value),
           ),
@@ -262,6 +280,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: 'Bangumi ID (bangumiId)',
           value: bindings.bangumiId ?? '',
+          helpText: '用于关联 Bangumi 条目',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(bangumiId: value.isEmpty ? null : value),
           ),
@@ -270,6 +289,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: 'Subject ID (subjectId)',
           value: bindings.subjectId ?? '',
+          helpText: '用于关联 Bangumi 条目',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(subjectId: value.isEmpty ? null : value),
           ),
@@ -278,6 +298,7 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '封面 (cover)',
           value: bindings.cover,
+          helpText: '用于推荐卡片封面',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(cover: value),
           ),
@@ -286,8 +307,101 @@ class NotionMappingPanel extends StatelessWidget {
           context,
           label: '长评 (longReview)',
           value: bindings.longReview,
+          helpText: '用于长评展示',
           onChanged: (value) => onBindingsChanged(
             bindings.copyWith(longReview: value),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildSectionTitle('追番 / 最近观看'),
+        _buildBindingRow(
+          context,
+          label: '标题 (title)',
+          value: watchBindings.title,
+          helpText: '用于追番/最近观看标题',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(title: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '封面 (cover)',
+          value: watchBindings.cover,
+          helpText: '用于追番/最近观看封面',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(cover: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: 'Bangumi ID (bangumiId)',
+          value: watchBindings.bangumiId,
+          helpText: '用于关联 Bangumi 条目',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(bangumiId: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '已追集数 (watchedEpisodes)',
+          value: watchBindings.watchedEpisodes,
+          helpText: '用于进度条与 +1 更新',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(watchedEpisodes: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '总集数 (totalEpisodes)',
+          value: watchBindings.totalEpisodes,
+          helpText: '用于进度条展示总集数',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(totalEpisodes: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '追番状态 (watchingStatus)',
+          value: watchBindings.watchingStatus,
+          helpText: '用于区分在看/已看',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(watchingStatus: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '追番日期 (followDate)',
+          value: watchBindings.followDate,
+          helpText: '用于显示追番日期',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(followDate: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '最近观看时间 (lastWatchedAt)',
+          value: watchBindings.lastWatchedAt,
+          helpText: '用于最近观看排序与展示',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(lastWatchedAt: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '标签 (tags)',
+          value: watchBindings.tags,
+          helpText: '用于追番标签',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(tags: value),
+          ),
+        ),
+        _buildBindingRow(
+          context,
+          label: '悠gn评分 (yougnScore)',
+          value: watchBindings.yougnScore,
+          helpText: '用于悠gn评分显示',
+          onChanged: (value) => onWatchBindingsChanged(
+            watchBindings.copyWith(yougnScore: value),
           ),
         ),
       ],
@@ -313,8 +427,32 @@ class NotionMappingPanel extends StatelessWidget {
     required String label,
     required String value,
     required ValueChanged<String> onChanged,
+    String? helpText,
   }) {
     final items = _buildPropertyItems(value);
+    final labelWidget = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+        if (helpText != null) ...[
+          const SizedBox(width: 6),
+          Tooltip(
+            message: helpText,
+            child: Icon(
+              Icons.help_outline,
+              size: 16,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ],
+      ],
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: LayoutBuilder(
@@ -360,8 +498,7 @@ class NotionMappingPanel extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                labelWidget,
                 const SizedBox(height: 8),
                 dropdown,
               ],
@@ -372,11 +509,7 @@ class NotionMappingPanel extends StatelessWidget {
             children: [
               Expanded(
                 flex: 3,
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+                child: labelWidget,
               ),
               const SizedBox(width: 16),
               Expanded(

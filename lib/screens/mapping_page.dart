@@ -528,12 +528,14 @@ class _MappingPageState extends State<MappingPage> {
   }
 
   Widget _buildNotionMapping(BuildContext context, MappingViewModel model) {
-    return NotionMappingPanel(
+      return NotionMappingPanel(
       isLoading: model.isLoading,
       isConfigured: model.isConfigured,
       properties: model.notionProperties,
       bindings: model.bindings,
       onBindingsChanged: model.updateBindings,
+      watchBindings: model.watchBindings,
+      onWatchBindingsChanged: model.updateWatchBindings,
       embedInScroll: true,
     );
   }
@@ -636,6 +638,11 @@ class _MappingPageState extends State<MappingPage> {
   }
 
   List<_MappingSection> _buildSections() {
+    const importHelp = '用于 Bangumi 详情页导入/更新时写入 Notion。';
+    const dateHelp = '用于 Bangumi 详情页导入/更新时写入放送日期。';
+    const updatedAtHelp = '导入/更新时写入 Bangumi 数据更新日期。';
+    const watchHelp = '用于放送页/推荐页展示追番进度。';
+    const statusHelp = '用于筛选在看/已看与最近观看模块。';
     return [
       _MappingSection(
         title: '核心字段',
@@ -646,6 +653,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '标题',
             sourceType: 'String',
             type: MappingFieldType.title,
+            helpText: importHelp,
             getValue: (config) => config.title,
             setValue: (config, value) => config.copyWith(title: value),
             isEnabled: (config) => config.titleEnabled,
@@ -657,6 +665,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '评分',
             sourceType: 'Number',
             type: MappingFieldType.number,
+            helpText: importHelp,
             getValue: (config) => config.score,
             setValue: (config, value) => config.copyWith(score: value),
             isEnabled: (config) => config.scoreEnabled,
@@ -668,6 +677,7 @@ class _MappingPageState extends State<MappingPage> {
             label: 'Bangumi ID',
             sourceType: 'Number',
             type: MappingFieldType.number,
+            helpText: importHelp,
             getValue: (config) => config.bangumiId,
             setValue: (config, value) => config.copyWith(bangumiId: value),
             isEnabled: (config) => config.bangumiIdEnabled,
@@ -679,6 +689,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '封面',
             sourceType: 'Files',
             type: MappingFieldType.cover,
+            helpText: importHelp,
             getValue: (config) => config.imageUrl,
             setValue: (config, value) => config.copyWith(imageUrl: value),
             isEnabled: (config) => config.imageUrlEnabled,
@@ -690,6 +701,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '标签',
             sourceType: 'Tags',
             type: MappingFieldType.tags,
+            helpText: importHelp,
             getValue: (config) => config.tags,
             setValue: (config, value) => config.copyWith(tags: value),
             isEnabled: (config) => config.tagsEnabled,
@@ -700,6 +712,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '总集数',
             sourceType: 'Number',
             type: MappingFieldType.number,
+            helpText: importHelp,
             getValue: (config) => config.totalEpisodes,
             setValue: (config, value) =>
                 config.copyWith(totalEpisodes: value),
@@ -712,6 +725,7 @@ class _MappingPageState extends State<MappingPage> {
             label: 'Bangumi 链接',
             sourceType: 'URL',
             type: MappingFieldType.url,
+            helpText: importHelp,
             getValue: (config) => config.link,
             setValue: (config, value) => config.copyWith(link: value),
             isEnabled: (config) => config.linkEnabled,
@@ -728,6 +742,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '放送开始',
             sourceType: 'Date',
             type: MappingFieldType.date,
+            helpText: dateHelp,
             getValue: (config) => config.airDate,
             setValue: (config, value) => config.copyWith(airDate: value),
             isEnabled: (config) => config.airDateEnabled,
@@ -739,12 +754,26 @@ class _MappingPageState extends State<MappingPage> {
             label: '放送区间',
             sourceType: 'Date',
             type: MappingFieldType.dateRange,
+            helpText: dateHelp,
             getValue: (config) => config.airDateRange,
             setValue: (config, value) =>
                 config.copyWith(airDateRange: value),
             isEnabled: (config) => config.airDateRangeEnabled,
             setEnabled: (config, value) =>
                 config.copyWith(airDateRangeEnabled: value),
+          ),
+          _MappingFieldDefinition.dropdown(
+            key: 'bangumiUpdatedAt',
+            label: 'Bangumi 更新日期',
+            sourceType: 'Date',
+            type: MappingFieldType.date,
+            helpText: updatedAtHelp,
+            getValue: (config) => config.bangumiUpdatedAt,
+            setValue: (config, value) =>
+                config.copyWith(bangumiUpdatedAt: value),
+            isEnabled: (config) => true,
+            setEnabled: (config, value) => config,
+            toggleable: false,
           ),
         ],
       ),
@@ -757,6 +786,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '动画制作',
             sourceType: 'Text',
             type: MappingFieldType.richText,
+            helpText: importHelp,
             getValue: (config) => config.animationProduction,
             setValue: (config, value) =>
                 config.copyWith(animationProduction: value),
@@ -769,6 +799,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '导演',
             sourceType: 'Text',
             type: MappingFieldType.richText,
+            helpText: importHelp,
             getValue: (config) => config.director,
             setValue: (config, value) => config.copyWith(director: value),
             isEnabled: (config) => config.directorEnabled,
@@ -780,6 +811,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '脚本',
             sourceType: 'Text',
             type: MappingFieldType.richText,
+            helpText: importHelp,
             getValue: (config) => config.script,
             setValue: (config, value) => config.copyWith(script: value),
             isEnabled: (config) => config.scriptEnabled,
@@ -790,6 +822,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '分镜',
             sourceType: 'Text',
             type: MappingFieldType.richText,
+            helpText: importHelp,
             getValue: (config) => config.storyboard,
             setValue: (config, value) => config.copyWith(storyboard: value),
             isEnabled: (config) => config.storyboardEnabled,
@@ -807,6 +840,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '简介/正文',
             sourceType: 'Text',
             type: MappingFieldType.richText,
+            helpText: importHelp,
             getValue: (config) => config.description,
             setValue: (config, value) => config.copyWith(description: value),
             isEnabled: (config) => config.descriptionEnabled,
@@ -831,6 +865,16 @@ class _MappingPageState extends State<MappingPage> {
                 config.copyWith(idPropertyName: value),
           ),
           _MappingFieldDefinition.text(
+            key: 'globalIdPropertyName',
+            label: '全局唯一 ID 字段',
+            sourceType: 'Text',
+            type: MappingFieldType.richText,
+            helpText: '批量导入/更新时用于匹配的唯一字段。',
+            getValue: (config) => config.globalIdPropertyName,
+            setValue: (config, value) =>
+                config.copyWith(globalIdPropertyName: value),
+          ),
+          _MappingFieldDefinition.text(
             key: 'notionId',
             label: 'Notion ID 字段',
             sourceType: 'Text',
@@ -850,6 +894,7 @@ class _MappingPageState extends State<MappingPage> {
             label: '追番状态字段',
             sourceType: 'Status',
             type: MappingFieldType.status,
+            helpText: statusHelp,
             getValue: (config) => config.watchingStatus,
             setValue: (config, value) =>
                 config.copyWith(watchingStatus: value),
@@ -862,18 +907,56 @@ class _MappingPageState extends State<MappingPage> {
             label: '追番状态值',
             sourceType: 'Text',
             type: MappingFieldType.statusValue,
+            helpText: statusHelp,
             getValue: (config) => config.watchingStatusValue,
             setValue: (config, value) =>
                 config.copyWith(watchingStatusValue: value),
+          ),
+          _MappingFieldDefinition.text(
+            key: 'watchingStatusValueWatched',
+            label: '已看状态值',
+            sourceType: 'Text',
+            type: MappingFieldType.statusValue,
+            helpText: statusHelp,
+            getValue: (config) => config.watchingStatusValueWatched,
+            setValue: (config, value) =>
+                config.copyWith(watchingStatusValueWatched: value),
           ),
           _MappingFieldDefinition.dropdown(
             key: 'watchedEpisodes',
             label: '已追集数字段',
             sourceType: 'Number',
             type: MappingFieldType.number,
+            helpText: watchHelp,
             getValue: (config) => config.watchedEpisodes,
             setValue: (config, value) =>
                 config.copyWith(watchedEpisodes: value),
+            isEnabled: (config) => true,
+            setEnabled: (config, value) => config,
+            toggleable: false,
+          ),
+          _MappingFieldDefinition.dropdown(
+            key: 'followDate',
+            label: '追番日期字段',
+            sourceType: 'Date',
+            type: MappingFieldType.date,
+            helpText: watchHelp,
+            getValue: (config) => config.followDate,
+            setValue: (config, value) =>
+                config.copyWith(followDate: value),
+            isEnabled: (config) => true,
+            setEnabled: (config, value) => config,
+            toggleable: false,
+          ),
+          _MappingFieldDefinition.dropdown(
+            key: 'lastWatchedAt',
+            label: '最近观看时间字段',
+            sourceType: 'DateTime',
+            type: MappingFieldType.date,
+            helpText: watchHelp,
+            getValue: (config) => config.lastWatchedAt,
+            setValue: (config, value) =>
+                config.copyWith(lastWatchedAt: value),
             isEnabled: (config) => true,
             setEnabled: (config, value) => config,
             toggleable: false,

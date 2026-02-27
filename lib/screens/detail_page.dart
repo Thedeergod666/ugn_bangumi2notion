@@ -151,6 +151,8 @@ class _DetailView extends StatelessWidget with _DetailPageSections {
       'score': formatLabel('评分', mappingConfig.score),
       'totalEpisodes': formatLabel('总集数', mappingConfig.totalEpisodes),
       'link': formatLabel('链接', mappingConfig.link),
+      'bangumiUpdatedAt':
+          formatLabel('Bangumi 更新日期', mappingConfig.bangumiUpdatedAt),
       'animationProduction':
           formatLabel('动画制作', mappingConfig.animationProduction),
       'director': formatLabel('导演', mappingConfig.director),
@@ -178,13 +180,13 @@ class _DetailView extends StatelessWidget with _DetailPageSections {
     if (mappingConfig.scriptEnabled) selectedFields.add('script');
     if (mappingConfig.storyboardEnabled) selectedFields.add('storyboard');
     if (mappingConfig.descriptionEnabled) selectedFields.add('description');
+    if (mappingConfig.bangumiUpdatedAt.isNotEmpty) {
+      selectedFields.add('bangumiUpdatedAt');
+    }
 
     if (selectedFields.isEmpty) {
-      if (existingPageId == null) {
-        selectedFields.addAll(fieldLabels.keys);
-      } else {
-        selectedFields.addAll(['score', 'link', 'bangumiId']);
-      }
+      selectedFields.addAll(fieldLabels.keys);
+      selectedFields.remove('tags');
     }
 
     final List<String> topTags = detail.tags.take(30).toList();

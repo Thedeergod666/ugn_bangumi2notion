@@ -90,14 +90,14 @@ class NavigationShell extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Breakpoints.sizeForWidth(constraints.maxWidth);
-        final isNarrow = size == ScreenSize.narrow;
-        final isWide = size == ScreenSize.wide;
-        final useRail = !isNarrow;
-        final useBottomNav = isNarrow && onBack == null;
+        final isCompact = size == ScreenSize.narrow;
+        final isExpanded = size == ScreenSize.wide;
+        final useRail = !isCompact;
+        final useBottomNav = isCompact && onBack == null;
 
         final contentRadius =
-            isNarrow ? BorderRadius.zero : BorderRadius.circular(28);
-        final surfaceBorder = isNarrow
+            isCompact ? BorderRadius.zero : BorderRadius.circular(28);
+        final surfaceBorder = isCompact
             ? null
             : Border.all(color: colorScheme.outlineVariant);
 
@@ -192,7 +192,7 @@ class NavigationShell extends StatelessWidget {
                                   Expanded(
                                     child: NavigationRail(
                                       selectedIndex: _selectedIndex(),
-                                      extended: isWide,
+                                      extended: isExpanded,
                                       groupAlignment: -1.0,
                                       useIndicator: true,
                                       indicatorShape: const StadiumBorder(),
@@ -225,55 +225,50 @@ class NavigationShell extends StatelessWidget {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 12),
                                     child: SidebarRecommendationCard(
-                                      extended: isWide,
-                                      compact: !isWide,
+                                      extended: isExpanded,
+                                      compact: !isExpanded,
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12),
-                                    child: Consumer<AppSettings>(
-                                      builder: (context, settings, _) {
-                                        final mode = settings.themeMode;
-                                        final isDark = mode == ThemeMode.dark ||
-                                            (mode == ThemeMode.system &&
-                                                MediaQuery.of(context)
-                                                        .platformBrightness ==
-                                                    Brightness.dark);
-                                        final icon = isDark
-                                            ? Icons.light_mode
-                                            : Icons.dark_mode;
-                                        final label =
-                                            isDark ? '浅色模式' : '深色模式';
+                                  if (isExpanded) ...[
+                                    const SizedBox(height: 12),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12),
+                                      child: Consumer<AppSettings>(
+                                        builder: (context, settings, _) {
+                                          final mode = settings.themeMode;
+                                          final isDark = mode ==
+                                                  ThemeMode.dark ||
+                                              (mode == ThemeMode.system &&
+                                                  MediaQuery.of(context)
+                                                          .platformBrightness ==
+                                                      Brightness.dark);
+                                          final icon = isDark
+                                              ? Icons.light_mode
+                                              : Icons.dark_mode;
+                                          final label =
+                                              isDark ? '浅色模式' : '深色模式';
 
-                                        return isWide
-                                            ? TextButton.icon(
-                                                onPressed: () =>
-                                                    _toggleTheme(context),
-                                                icon: Icon(icon),
-                                                label: Text(label),
-                                                style: TextButton.styleFrom(
-                                                  alignment:
-                                                      Alignment.centerLeft,
-                                                  minimumSize: const Size(
-                                                      double.infinity, 48),
-                                                  backgroundColor: colorScheme
-                                                      .surfaceContainerLow,
-                                                  foregroundColor: colorScheme
-                                                      .onSurfaceVariant,
-                                                ),
-                                              )
-                                            : IconButton(
-                                                tooltip: label,
-                                                icon: Icon(icon),
-                                                onPressed: () =>
-                                                    _toggleTheme(context),
-                                              );
-                                      },
+                                          return TextButton.icon(
+                                            onPressed: () =>
+                                                _toggleTheme(context),
+                                            icon: Icon(icon),
+                                            label: Text(label),
+                                            style: TextButton.styleFrom(
+                                              alignment: Alignment.centerLeft,
+                                              minimumSize:
+                                                  const Size(double.infinity, 48),
+                                              backgroundColor: colorScheme
+                                                  .surfaceContainerLow,
+                                              foregroundColor: colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                          );
+                                        },
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 16),
+                                    const SizedBox(height: 16),
+                                  ],
                                 ],
                               ),
                             ),

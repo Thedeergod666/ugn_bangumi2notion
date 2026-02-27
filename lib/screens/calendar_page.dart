@@ -1,4 +1,6 @@
-﻿import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:math';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,7 +8,10 @@ import '../app/app_services.dart';
 import '../app/app_settings.dart';
 import '../models/bangumi_models.dart';
 import '../view_models/calendar_view_model.dart';
+import '../widgets/episode_badge.dart';
 import '../widgets/navigation_shell.dart';
+import '../widgets/progress_segments_bar.dart';
+import '../widgets/view_mode_toggle.dart';
 import 'detail_page.dart';
 
 class CalendarPage extends StatelessWidget {
@@ -47,7 +52,9 @@ class _CalendarView extends StatelessWidget {
   }
 
   Widget _buildBody(BuildContext context, CalendarViewModel model) {
-    final showRatings = context.watch<AppSettings>().showRatings;
+    final settings = context.watch<AppSettings>();
+    final showRatings = settings.showRatings;
+    final calendarViewMode = settings.calendarViewMode;
     if (model.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -91,14 +98,41 @@ class _CalendarView extends StatelessWidget {
           const SizedBox(height: 12),
         ],
         _buildWeekdaySelector(context, model),
+        const SizedBox(height: 8),
+        _buildViewModeToggle(context, settings),
         const SizedBox(height: 12),
         if (selectedItems.isEmpty)
           _buildEmptyDay(context)
         else ...[
           _buildDayHeader(context, selectedDay.weekday),
           const SizedBox(height: 8),
-          _buildDayItems(context, model, selectedItems, showRatings),
+          _buildDayItems(
+            context,
+            model,
+            selectedItems,
+            showRatings,
+            calendarViewMode: calendarViewMode,
+          ),
         ],
+      ],
+    );
+  }
+
+  Widget _buildViewModeToggle(BuildContext context, AppSettings settings) {
+    return Row(
+      children: [
+        Text(
+          '视图',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(width: 8),
+        ViewModeToggle(
+          mode: settings.calendarViewMode,
+          compact: true,
+          onChanged: (mode) => settings.setCalendarViewMode(mode),
+        ),
       ],
     );
   }
@@ -108,11 +142,13 @@ class _CalendarView extends StatelessWidget {
     CalendarViewModel model,
     List<BangumiCalendarItem> items,
     bool showRatings,
+    {required String calendarViewMode}
   ) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final crossAxisCount = width >= 1100 ? 2 : 1;
+        final isGallery = calendarViewMode == 'gallery';
+        final crossAxisCount = isGallery ? (width >= 1100 ? 2 : 1) : 1;
         if (crossAxisCount == 1) {
           return Column(
             children: [
@@ -121,14 +157,22 @@ class _CalendarView extends StatelessWidget {
                   builder: (context) {
                     model.scheduleDetailLoad(item.id);
                     model.scheduleLatestEpisodeLoad(item.id);
+                    model.scheduleAirEndDateLoad(
+                      item.id,
+                      totalEpisodes:
+                          model.detailCache[item.id]?.epsCount ?? item.epsCount,
+                    );
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _CalendarItemCard(
                         item: item,
                         detail: model.detailCache[item.id],
                         isBound: model.boundIds.contains(item.id),
+                        isGallery: calendarViewMode == 'gallery',
                         watchedEpisodes: model.watchedEpisodes[item.id] ?? 0,
                         latestEpisodes: model.latestEpisodeCache[item.id],
+                        airEndDate: model.airEndDateCache[item.id],
+                        lastWatchedAt: model.lastWatchedAt[item.id],
                         showRatings: showRatings,
                         onTap: () {
                           Navigator.of(context).push(
@@ -159,12 +203,20 @@ class _CalendarView extends StatelessWidget {
             final item = items[index];
             model.scheduleDetailLoad(item.id);
             model.scheduleLatestEpisodeLoad(item.id);
+            model.scheduleAirEndDateLoad(
+              item.id,
+              totalEpisodes:
+                  model.detailCache[item.id]?.epsCount ?? item.epsCount,
+            );
             return _CalendarItemCard(
               item: item,
               detail: model.detailCache[item.id],
               isBound: model.boundIds.contains(item.id),
+              isGallery: calendarViewMode == 'gallery',
               watchedEpisodes: model.watchedEpisodes[item.id] ?? 0,
               latestEpisodes: model.latestEpisodeCache[item.id],
+              airEndDate: model.airEndDateCache[item.id],
+              lastWatchedAt: model.lastWatchedAt[item.id],
               showRatings: showRatings,
               onTap: () {
                 Navigator.of(context).push(
@@ -306,6 +358,7 @@ class _CalendarView extends StatelessWidget {
                   yougnScore: model.yougnScores[item.id],
                   detail: model.detailCache[item.id],
                   latestEpisodes: model.latestEpisodeCache[item.id],
+                  lastWatchedAt: model.lastWatchedAt[item.id],
                   showRatings: showRatings,
                   onTap: () {
                     Navigator.of(context).push(
@@ -314,6 +367,7 @@ class _CalendarView extends StatelessWidget {
                       ),
                     );
                   },
+                  onLongPress: () => _handleIncrement(context, model, item.id),
                 );
               },
             ),
@@ -321,6 +375,37 @@ class _CalendarView extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  Future<void> _handleIncrement(
+    BuildContext context,
+    CalendarViewModel model,
+    int subjectId,
+  ) async {
+    try {
+      final result = await model.incrementWatchedEpisodes(subjectId);
+      if (!context.mounted) return;
+      if (result == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未配置 Notion 追番字段')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('已追集数 +1'),
+          action: SnackBarAction(
+            label: '撤销',
+            onPressed: () => model.revertWatchedEpisodes(result),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('更新失败，请稍后重试')),
+      );
+    }
   }
 
   Widget _buildDayHeader(
@@ -450,8 +535,10 @@ class _BoundBangumiCard extends StatelessWidget {
     required this.yougnScore,
     required this.detail,
     required this.latestEpisodes,
+    required this.lastWatchedAt,
     required this.showRatings,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final BangumiCalendarItem item;
@@ -459,8 +546,10 @@ class _BoundBangumiCard extends StatelessWidget {
   final double? yougnScore;
   final BangumiSubjectDetail? detail;
   final int? latestEpisodes;
+  final DateTime? lastWatchedAt;
   final bool showRatings;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -471,6 +560,12 @@ class _BoundBangumiCard extends StatelessWidget {
     final totalValue = detail?.epsCount ?? item.epsCount;
     final totalText = totalValue > 0 ? totalValue.toString() : '-';
     final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
+    final updatedValue = latestEpisodes ?? 0;
+    final missingCount =
+        updatedValue > watchedEpisodes ? updatedValue - watchedEpisodes : 0;
+    final lastWatchedText = lastWatchedAt == null
+        ? '-'
+        : '${lastWatchedAt!.year}-${lastWatchedAt!.month.toString().padLeft(2, '0')}-${lastWatchedAt!.day.toString().padLeft(2, '0')}';
     return IntrinsicWidth(
       child: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 180, maxWidth: 280),
@@ -487,19 +582,28 @@ class _BoundBangumiCard extends StatelessWidget {
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: onTap,
+            onLongPress: onLongPress,
             child: Padding(
               padding: const EdgeInsets.all(10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                         ),
+                      ),
+                      EpisodeBadge(count: missingCount),
+                    ],
                   ),
                   const SizedBox(height: 6),
                   Row(
@@ -519,9 +623,18 @@ class _BoundBangumiCard extends StatelessWidget {
                           Text(latestSegment),
                           const SizedBox(height: 4),
                           Text('总共 $totalText'),
+                          const SizedBox(height: 4),
+                          Text('最近观看 $lastWatchedText'),
                         ],
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  ProgressSegmentsBar(
+                    watched: watchedEpisodes,
+                    updated: updatedValue,
+                    total: totalValue > 0 ? totalValue : max(watchedEpisodes, updatedValue),
+                    showWatched: true,
                   ),
                 ],
               ),
@@ -538,8 +651,11 @@ class _CalendarItemCard extends StatelessWidget {
     required this.item,
     required this.detail,
     required this.isBound,
+    required this.isGallery,
     required this.watchedEpisodes,
     required this.latestEpisodes,
+    required this.airEndDate,
+    required this.lastWatchedAt,
     required this.showRatings,
     required this.onTap,
   });
@@ -547,8 +663,11 @@ class _CalendarItemCard extends StatelessWidget {
   final BangumiCalendarItem item;
   final BangumiSubjectDetail? detail;
   final bool isBound;
+  final bool isGallery;
   final int watchedEpisodes;
   final int? latestEpisodes;
+  final String? airEndDate;
+  final DateTime? lastWatchedAt;
   final bool showRatings;
   final VoidCallback onTap;
 
@@ -556,18 +675,31 @@ class _CalendarItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
     final airDate = item.airDate.isNotEmpty ? item.airDate : '待定';
+    final endDate =
+        (airEndDate != null && airEndDate!.trim().isNotEmpty) ? airEndDate! : '';
+    final airRangeText =
+        endDate.isEmpty || endDate == airDate ? airDate : '$airDate ~ $endDate';
     final latestSegment = latestEpisodes == null
         ? '已更 -'
         : (latestEpisodes! > 0 ? '已更 ${latestEpisodes!}' : '未放送');
     final totalValue = detail?.epsCount ?? item.epsCount;
     final totalText = totalValue > 0 ? totalValue.toString() : '-';
     final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
+    final updatedValue = latestEpisodes ?? 0;
+    final missingCount =
+        updatedValue > watchedEpisodes ? updatedValue - watchedEpisodes : 0;
     final colorScheme = Theme.of(context).colorScheme;
     final score = detail?.score ?? 0;
     final rank = detail?.rank;
     final hasRating =
         showRatings && (score > 0 || (rank != null && rank > 0));
-    final tags = detail?.tags.take(10).toList() ?? <String>[];
+    final sortedTags = [...(detail?.tagDetails ?? const <BangumiTag>[])]
+      ..sort((a, b) => b.count.compareTo(a.count));
+    final tagPool = sortedTags
+        .map((tag) => tag.name)
+        .where((name) => name.isNotEmpty)
+        .take(20)
+        .toList();
     final ratingStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
           color: colorScheme.tertiary,
           fontWeight: FontWeight.w600,
@@ -654,7 +786,7 @@ class _CalendarItemCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                     ],
-                    Text('放送开始：$airDate'),
+                    Text('放送：$airRangeText'),
                     const SizedBox(height: 4),
                     Text(
                       isBound
@@ -662,27 +794,45 @@ class _CalendarItemCard extends StatelessWidget {
                           : '$latestSegment / 总共 $totalText',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    if (tags.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    ProgressSegmentsBar(
+                      watched: watchedEpisodes,
+                      updated: updatedValue,
+                      total: totalValue > 0
+                          ? totalValue
+                          : max(watchedEpisodes, updatedValue),
+                      showWatched: isBound,
+                    ),
+                    if (tagPool.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: tags.map((tag) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              tag,
-                              style: Theme.of(context).textTheme.labelSmall,
-                            ),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final maxPerLine =
+                              max(1, (constraints.maxWidth / 88).floor());
+                          final maxLines = isGallery ? 2 : 1;
+                          final maxTags = max(1, maxPerLine * maxLines);
+                          final tags = tagPool.take(maxTags).toList();
+                          return Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: tags.map((tag) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  tag,
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                ),
+                              );
+                            }).toList(),
                           );
-                        }).toList(),
+                        },
                       ),
                     ],
                     if (item.summary.isNotEmpty) ...[
@@ -694,6 +844,22 @@ class _CalendarItemCard extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
+                      ),
+                    ],
+                    if (isBound && missingCount > 0) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          EpisodeBadge(count: missingCount),
+                          const SizedBox(width: 6),
+                          Text(
+                            '还有 $missingCount 集未看',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ],
                       ),
                     ],
                   ],

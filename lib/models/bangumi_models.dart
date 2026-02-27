@@ -6,6 +6,8 @@ class BangumiSearchItem {
     required this.summary,
     required this.imageUrl,
     required this.airDate,
+    required this.score,
+    required this.rank,
   });
 
   final int id;
@@ -14,6 +16,8 @@ class BangumiSearchItem {
   final String summary;
   final String imageUrl;
   final String airDate;
+  final double score;
+  final int rank;
 
   factory BangumiSearchItem.fromJson(Map<String, dynamic> json) {
     final images = json['images'] as Map<String, dynamic>?;
@@ -24,6 +28,8 @@ class BangumiSearchItem {
       summary: json['summary'] as String? ?? '',
       imageUrl: images?['medium'] as String? ?? '',
       airDate: json['date'] as String? ?? '',
+      score: (json['score'] as num?)?.toDouble() ?? 0,
+      rank: (json['rank'] as num?)?.toInt() ?? 0,
     );
   }
 }

@@ -84,6 +84,8 @@ class RecommendationViewModel extends ChangeNotifier {
 
   final Map<int, BangumiSubjectDetail> _bangumiDetailCache = {};
   final Set<int> _bangumiDetailLoading = {};
+  final Map<int, int> _recentLatestEpisodeCache = {};
+  final Set<int> _recentLatestEpisodeLoading = {};
   final Map<String, RecommendationNotionContent> _notionContentCache = {};
   final Set<String> _notionContentLoading = {};
 
@@ -113,6 +115,8 @@ class RecommendationViewModel extends ChangeNotifier {
   Object? get error => _error;
   StackTrace? get stackTrace => _stackTrace;
   Map<int, BangumiSubjectDetail> get bangumiDetailCache => _bangumiDetailCache;
+  int? latestEpisodeFor(int subjectId) =>
+      _recentLatestEpisodeCache[subjectId];
   List<RecommendationScoreBin> get scoreBins => _scoreBins;
   int get scoreTotal => _scoreTotal;
   bool get isRecentLoading => _recentLoading;
@@ -146,6 +150,8 @@ class RecommendationViewModel extends ChangeNotifier {
       _recentMessage = null;
       _recentWatching = [];
       _recentWatched = [];
+      _recentLatestEpisodeCache.clear();
+      _recentLatestEpisodeLoading.clear();
       notifyListeners();
     }
 
@@ -315,6 +321,15 @@ class RecommendationViewModel extends ChangeNotifier {
     _loadBangumiDetail(subjectId);
   }
 
+  void scheduleRecentLatestEpisodeLoad(int subjectId) {
+    if (_recentLatestEpisodeCache.containsKey(subjectId) ||
+        _recentLatestEpisodeLoading.contains(subjectId)) {
+      return;
+    }
+    _recentLatestEpisodeLoading.add(subjectId);
+    _loadLatestEpisode(subjectId);
+  }
+
   void scheduleNotionContentLoad(String? pageId) {
     if (pageId == null || pageId.trim().isEmpty) return;
     if (_notionContentCache.containsKey(pageId) ||
@@ -440,6 +455,22 @@ class RecommendationViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> _loadLatestEpisode(int subjectId) async {
+    try {
+      final latest = await _bangumiApi.fetchLatestEpisodeNumber(
+        subjectId: subjectId,
+        accessToken: _bangumiToken.isEmpty ? null : _bangumiToken,
+        type: 0,
+      );
+      _recentLatestEpisodeCache[subjectId] = latest;
+      notifyListeners();
+    } catch (_) {
+      _recentLatestEpisodeCache[subjectId] = 0;
+    } finally {
+      _recentLatestEpisodeLoading.remove(subjectId);
+    }
+  }
+
   Future<void> _loadNotionContent(String pageId) async {
     try {
       if (_notionToken.isEmpty) return;
@@ -514,36 +545,59 @@ class RecommendationViewModel extends ChangeNotifier {
 
     try {
       final mappingConfig = await _settingsStorage.getMappingConfig();
+      final watchBindings = mappingConfig.watchBindings;
       final bindings = await _loadBindings();
 
-      final titleProperty = mappingConfig.title.trim().isNotEmpty
-          ? mappingConfig.title.trim()
-          : (bindings?.title.trim() ?? '');
-      final coverProperty = mappingConfig.imageUrl.trim().isNotEmpty
-          ? mappingConfig.imageUrl.trim()
-          : (bindings?.cover.trim() ?? '');
+      final titleProperty = watchBindings.title.trim().isNotEmpty
+          ? watchBindings.title.trim()
+          : (mappingConfig.title.trim().isNotEmpty
+              ? mappingConfig.title.trim()
+              : (bindings?.title.trim() ?? ''));
+      final coverProperty = watchBindings.cover.trim().isNotEmpty
+          ? watchBindings.cover.trim()
+          : (mappingConfig.imageUrl.trim().isNotEmpty
+              ? mappingConfig.imageUrl.trim()
+              : (bindings?.cover.trim() ?? ''));
 
-      final idProperty = mappingConfig.bangumiId.trim().isNotEmpty
-          ? mappingConfig.bangumiId.trim()
-          : mappingConfig.idPropertyName.trim();
-      final statusProperty = mappingConfig.watchingStatus.trim();
+      final idProperty = watchBindings.bangumiId.trim().isNotEmpty
+          ? watchBindings.bangumiId.trim()
+          : (mappingConfig.bangumiId.trim().isNotEmpty
+              ? mappingConfig.bangumiId.trim()
+              : mappingConfig.idPropertyName.trim());
+      final statusProperty = watchBindings.watchingStatus.trim().isNotEmpty
+          ? watchBindings.watchingStatus.trim()
+          : mappingConfig.watchingStatus.trim();
       final watchingValue = mappingConfig.watchingStatusValue.trim();
+      final watchedValue = mappingConfig.watchingStatusValueWatched.trim();
       if (statusProperty.isEmpty || watchingValue.isEmpty) {
-        _recentMessage = '请在映射配置中设置追番状态';
+        _recentMessage = '请先在映射页配置追番状态字段';
         _recentWatching = [];
         _recentWatched = [];
         return;
       }
 
-      const watchedValue = '已看';
       final watching = await _notionApi.getRecentWatchEntries(
         token: _notionToken,
         databaseId: _notionDatabaseId,
         idPropertyName: idProperty,
         titlePropertyName: titleProperty,
         coverPropertyName: coverProperty,
-        watchedEpisodesProperty: mappingConfig.watchedEpisodes,
-        totalEpisodesProperty: mappingConfig.totalEpisodes,
+        watchedEpisodesProperty: watchBindings.watchedEpisodes.isNotEmpty
+            ? watchBindings.watchedEpisodes
+            : mappingConfig.watchedEpisodes,
+        totalEpisodesProperty: watchBindings.totalEpisodes.isNotEmpty
+            ? watchBindings.totalEpisodes
+            : mappingConfig.totalEpisodes,
+        lastWatchedAtProperty: watchBindings.lastWatchedAt.isNotEmpty
+            ? watchBindings.lastWatchedAt
+            : mappingConfig.lastWatchedAt,
+        followDateProperty: watchBindings.followDate.isNotEmpty
+            ? watchBindings.followDate
+            : mappingConfig.followDate,
+        tagsProperty: watchBindings.tags.isNotEmpty ? watchBindings.tags : '',
+        yougnScoreProperty: watchBindings.yougnScore.isNotEmpty
+            ? watchBindings.yougnScore
+            : bindings?.yougnScore,
         statusPropertyName: statusProperty,
         statusValue: watchingValue,
         limit: 10,
@@ -554,15 +608,39 @@ class RecommendationViewModel extends ChangeNotifier {
         idPropertyName: idProperty,
         titlePropertyName: titleProperty,
         coverPropertyName: coverProperty,
-        watchedEpisodesProperty: mappingConfig.watchedEpisodes,
-        totalEpisodesProperty: mappingConfig.totalEpisodes,
+        watchedEpisodesProperty: watchBindings.watchedEpisodes.isNotEmpty
+            ? watchBindings.watchedEpisodes
+            : mappingConfig.watchedEpisodes,
+        totalEpisodesProperty: watchBindings.totalEpisodes.isNotEmpty
+            ? watchBindings.totalEpisodes
+            : mappingConfig.totalEpisodes,
+        lastWatchedAtProperty: watchBindings.lastWatchedAt.isNotEmpty
+            ? watchBindings.lastWatchedAt
+            : mappingConfig.lastWatchedAt,
+        followDateProperty: watchBindings.followDate.isNotEmpty
+            ? watchBindings.followDate
+            : mappingConfig.followDate,
+        tagsProperty: watchBindings.tags.isNotEmpty ? watchBindings.tags : '',
+        yougnScoreProperty: watchBindings.yougnScore.isNotEmpty
+            ? watchBindings.yougnScore
+            : bindings?.yougnScore,
         statusPropertyName: statusProperty,
-        statusValue: watchedValue,
+        statusValue: watchedValue.isEmpty ? '已看' : watchedValue,
         limit: 10,
       );
 
+      final sortedWatched = [...watched]
+        ..sort((a, b) {
+          final ad = a.lastWatchedAt ?? a.lastEditedAt;
+          final bd = b.lastWatchedAt ?? b.lastEditedAt;
+          if (ad == null && bd == null) return 0;
+          if (ad == null) return 1;
+          if (bd == null) return -1;
+          return bd.compareTo(ad);
+        });
+
       _recentWatching = watching;
-      _recentWatched = watched;
+      _recentWatched = sortedWatched;
       if (watching.isEmpty && watched.isEmpty) {
         _recentMessage = '暂无最近观看条目';
       }
@@ -572,6 +650,132 @@ class RecommendationViewModel extends ChangeNotifier {
       _recentLoading = false;
       notifyListeners();
     }
+  }
+
+
+  Future<RecentWatchUpdateResult?> incrementRecentWatch(
+    NotionWatchEntry entry,
+  ) async {
+    if (_notionToken.isEmpty || _notionDatabaseId.isEmpty) return null;
+    if (entry.id.isEmpty) return null;
+
+    final mappingConfig = await _settingsStorage.getMappingConfig();
+    final watchBindings = mappingConfig.watchBindings;
+    final watchedProperty = watchBindings.watchedEpisodes.isNotEmpty
+        ? watchBindings.watchedEpisodes
+        : mappingConfig.watchedEpisodes;
+    final lastWatchedProperty = watchBindings.lastWatchedAt.isNotEmpty
+        ? watchBindings.lastWatchedAt
+        : mappingConfig.lastWatchedAt;
+    if (watchedProperty.trim().isEmpty) return null;
+
+    final currentWatched = entry.watchedEpisodes ?? 0;
+    final nextWatched = currentWatched + 1;
+    final previousWatchedAt = entry.lastWatchedAt;
+    final now = DateTime.now();
+
+    await _notionApi.updateWatchProgress(
+      token: _notionToken,
+      pageId: entry.id,
+      watchedEpisodesProperty: watchedProperty,
+      watchedEpisodes: nextWatched,
+      lastWatchedAtProperty:
+          lastWatchedProperty.trim().isEmpty ? null : lastWatchedProperty,
+      lastWatchedAt: lastWatchedProperty.trim().isEmpty ? null : now,
+    );
+
+    _recentWatching = _recentWatching
+        .map((item) => item.id == entry.id
+            ? _copyWatchEntry(
+                item,
+                watchedEpisodes: nextWatched,
+                lastWatchedAt: lastWatchedProperty.trim().isEmpty
+                    ? item.lastWatchedAt
+                    : now,
+              )
+            : item)
+        .toList();
+    notifyListeners();
+
+    if (_bangumiToken.isNotEmpty && entry.bangumiId != null) {
+      final subjectId = int.tryParse(entry.bangumiId ?? '');
+      if (subjectId != null && subjectId > 0) {
+        try {
+          await _bangumiApi.updateEpisodeProgress(
+            subjectId: subjectId,
+            watchedEpisodes: nextWatched,
+            accessToken: _bangumiToken,
+          );
+        } catch (_) {
+          // ignore sync failures
+        }
+      }
+    }
+
+    return RecentWatchUpdateResult(
+      pageId: entry.id,
+      oldWatched: currentWatched,
+      newWatched: nextWatched,
+      oldLastWatchedAt: previousWatchedAt,
+      newLastWatchedAt: now,
+    );
+  }
+
+  Future<void> revertRecentWatch(RecentWatchUpdateResult result) async {
+    if (_notionToken.isEmpty) return;
+    final mappingConfig = await _settingsStorage.getMappingConfig();
+    final watchBindings = mappingConfig.watchBindings;
+    final watchedProperty = watchBindings.watchedEpisodes.isNotEmpty
+        ? watchBindings.watchedEpisodes
+        : mappingConfig.watchedEpisodes;
+    final lastWatchedProperty = watchBindings.lastWatchedAt.isNotEmpty
+        ? watchBindings.lastWatchedAt
+        : mappingConfig.lastWatchedAt;
+    if (watchedProperty.trim().isEmpty) return;
+
+    await _notionApi.updateWatchProgress(
+      token: _notionToken,
+      pageId: result.pageId,
+      watchedEpisodesProperty: watchedProperty,
+      watchedEpisodes: result.oldWatched,
+      lastWatchedAtProperty:
+          lastWatchedProperty.trim().isEmpty ? null : lastWatchedProperty,
+      lastWatchedAt: result.oldLastWatchedAt,
+    );
+
+    _recentWatching = _recentWatching
+        .map((item) => item.id == result.pageId
+            ? _copyWatchEntry(
+                item,
+                watchedEpisodes: result.oldWatched,
+                lastWatchedAt: result.oldLastWatchedAt,
+              )
+            : item)
+        .toList();
+    notifyListeners();
+  }
+
+  NotionWatchEntry _copyWatchEntry(
+    NotionWatchEntry entry, {
+    int? watchedEpisodes,
+    DateTime? lastWatchedAt,
+  }) {
+    return NotionWatchEntry(
+      id: entry.id,
+      title: entry.title,
+      coverUrl: entry.coverUrl,
+      watchedEpisodes: watchedEpisodes ?? entry.watchedEpisodes,
+      totalEpisodes: entry.totalEpisodes,
+      updatedEpisodes: entry.updatedEpisodes,
+      bangumiId: entry.bangumiId,
+      pageUrl: entry.pageUrl,
+      lastEditedAt: entry.lastEditedAt,
+      lastWatchedAt: lastWatchedAt ?? entry.lastWatchedAt,
+      followDate: entry.followDate,
+      status: entry.status,
+      tags: entry.tags,
+      yougnScore: entry.yougnScore,
+    );
   }
 
   String _buildTodayKey() {
@@ -800,5 +1004,22 @@ class _RecommendationCacheData {
     required this.candidates,
     required this.indices,
     required this.currentIndex,
+  });
+}
+
+
+class RecentWatchUpdateResult {
+  final String pageId;
+  final int oldWatched;
+  final int newWatched;
+  final DateTime? oldLastWatchedAt;
+  final DateTime? newLastWatchedAt;
+
+  const RecentWatchUpdateResult({
+    required this.pageId,
+    required this.oldWatched,
+    required this.newWatched,
+    required this.oldLastWatchedAt,
+    required this.newLastWatchedAt,
   });
 }

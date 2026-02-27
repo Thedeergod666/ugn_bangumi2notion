@@ -5,8 +5,8 @@ enum ScreenSize {
 }
 
 class Breakpoints {
-  static const double narrow = 720;
-  static const double wide = 1100;
+  static const double narrow = 600;
+  static const double wide = 840;
 
   static ScreenSize sizeForWidth(double width) {
     if (width < narrow) {

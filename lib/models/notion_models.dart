@@ -171,10 +171,16 @@ class NotionSearchItem {
 class BangumiProgressInfo {
   final int watchedEpisodes;
   final double? yougnScore;
+  final DateTime? lastWatchedAt;
+  final DateTime? followDate;
+  final String? pageId;
 
   const BangumiProgressInfo({
     required this.watchedEpisodes,
     this.yougnScore,
+    this.lastWatchedAt,
+    this.followDate,
+    this.pageId,
   });
 }
 
@@ -184,9 +190,15 @@ class NotionWatchEntry {
   final String? coverUrl;
   final int? watchedEpisodes;
   final int? totalEpisodes;
+  final int? updatedEpisodes;
   final String? bangumiId;
   final String? pageUrl;
   final DateTime? lastEditedAt;
+  final DateTime? lastWatchedAt;
+  final DateTime? followDate;
+  final String? status;
+  final List<String> tags;
+  final double? yougnScore;
 
   const NotionWatchEntry({
     required this.id,
@@ -194,8 +206,14 @@ class NotionWatchEntry {
     this.coverUrl,
     this.watchedEpisodes,
     this.totalEpisodes,
+    this.updatedEpisodes,
     this.bangumiId,
     this.pageUrl,
     this.lastEditedAt,
+    this.lastWatchedAt,
+    this.followDate,
+    this.status,
+    this.tags = const [],
+    this.yougnScore,
   });
 }

@@ -18,8 +18,14 @@ class AppSettings extends ChangeNotifier {
   bool _useSystemTitleBar = false;
   String _notionToken = '';
   String _notionDatabaseId = '';
+  String _notionMovieDatabaseId = '';
+  String _notionGameDatabaseId = '';
   String _bangumiAccessToken = '';
   String _bangumiRedirectPort = '';
+  String _calendarViewMode = 'list';
+  String _searchViewMode = 'list';
+  String _recentViewMode = 'gallery';
+  String _searchSort = 'match';
 
   bool get loaded => _loaded;
   ThemeMode get themeMode => _themeMode;
@@ -31,8 +37,14 @@ class AppSettings extends ChangeNotifier {
   bool get useSystemTitleBar => _useSystemTitleBar;
   String get notionToken => _notionToken;
   String get notionDatabaseId => _notionDatabaseId;
+  String get notionMovieDatabaseId => _notionMovieDatabaseId;
+  String get notionGameDatabaseId => _notionGameDatabaseId;
   String get bangumiAccessToken => _bangumiAccessToken;
   String get bangumiRedirectPort => _bangumiRedirectPort;
+  String get calendarViewMode => _calendarViewMode;
+  String get searchViewMode => _searchViewMode;
+  String get recentViewMode => _recentViewMode;
+  String get searchSort => _searchSort;
 
   Future<void> load() async {
     await refresh();
@@ -100,6 +112,23 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> saveAdditionalNotionDatabases({
+    String? movieDatabaseId,
+    String? gameDatabaseId,
+  }) async {
+    if (movieDatabaseId != null) {
+      _notionMovieDatabaseId = movieDatabaseId;
+    }
+    if (gameDatabaseId != null) {
+      _notionGameDatabaseId = gameDatabaseId;
+    }
+    await _storage.saveAdditionalNotionDatabases(
+      movieDatabaseId: movieDatabaseId,
+      gameDatabaseId: gameDatabaseId,
+    );
+    notifyListeners();
+  }
+
   Future<void> saveBangumiAccessToken(String token) async {
     _bangumiAccessToken = token;
     await _storage.saveBangumiAccessToken(token);
@@ -118,6 +147,30 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setCalendarViewMode(String value) async {
+    _calendarViewMode = value;
+    await _storage.saveCalendarViewMode(value);
+    notifyListeners();
+  }
+
+  Future<void> setSearchViewMode(String value) async {
+    _searchViewMode = value;
+    await _storage.saveSearchViewMode(value);
+    notifyListeners();
+  }
+
+  Future<void> setRecentViewMode(String value) async {
+    _recentViewMode = value;
+    await _storage.saveRecentViewMode(value);
+    notifyListeners();
+  }
+
+  Future<void> setSearchSort(String value) async {
+    _searchSort = value;
+    await _storage.saveSearchSort(value);
+    notifyListeners();
+  }
+
   void _apply(Map<String, String> data, {bool notify = true}) {
     bool parseBool(String key, bool fallback) {
       final raw = data[key];
@@ -131,6 +184,8 @@ class AppSettings extends ChangeNotifier {
     _bangumiRedirectPort = data[SettingsKeys.bangumiRedirectPort] ?? '';
     _notionToken = data[SettingsKeys.notionToken] ?? '';
     _notionDatabaseId = data[SettingsKeys.notionDatabaseId] ?? '';
+    _notionMovieDatabaseId = data[SettingsKeys.notionMovieDatabaseId] ?? '';
+    _notionGameDatabaseId = data[SettingsKeys.notionGameDatabaseId] ?? '';
     final savedTheme = data[SettingsKeys.themeMode] ?? 'system';
     _themeMode = ThemeMode.values.firstWhere(
       (e) => e.name == savedTheme,
@@ -146,6 +201,13 @@ class AppSettings extends ChangeNotifier {
         parseBool(SettingsKeys.oledOptimization, _oledOptimization);
     _useSystemTitleBar =
         parseBool(SettingsKeys.useSystemTitleBar, _useSystemTitleBar);
+    _calendarViewMode =
+        data[SettingsKeys.calendarViewMode] ?? _calendarViewMode;
+    _searchViewMode =
+        data[SettingsKeys.searchViewMode] ?? _searchViewMode;
+    _recentViewMode =
+        data[SettingsKeys.recentViewMode] ?? _recentViewMode;
+    _searchSort = data[SettingsKeys.searchSort] ?? _searchSort;
     if (notify) {
       notifyListeners();
     }

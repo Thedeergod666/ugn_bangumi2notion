@@ -9,6 +9,7 @@ import '../models/bangumi_models.dart';
 import '../models/notion_models.dart';
 import '../view_models/search_view_model.dart';
 import '../widgets/navigation_shell.dart';
+import '../widgets/view_mode_toggle.dart';
 import 'detail_page.dart';
 
 class SearchPage extends StatefulWidget {
@@ -32,6 +33,7 @@ class _SearchPageState extends State<SearchPage> {
       notionApi: context.read<AppServices>().notionApi,
       settings: context.read<AppSettings>(),
     );
+    _viewModel.initialize();
   }
 
   @override
@@ -73,12 +75,160 @@ class _SearchPageState extends State<SearchPage> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  Widget _buildSearchControls(
+    BuildContext context,
+    SearchViewModel model,
+    AppSettings settings,
+  ) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SegmentedButton<SearchSort>(
+          segments: const [
+            ButtonSegment(
+              value: SearchSort.match,
+              label: Text('最佳适配'),
+            ),
+            ButtonSegment(
+              value: SearchSort.heat,
+              label: Text('最佳热度'),
+            ),
+            ButtonSegment(
+              value: SearchSort.collect,
+              label: Text('最多收藏'),
+            ),
+          ],
+          selected: {model.sort},
+          onSelectionChanged: (values) {
+            if (values.isEmpty) return;
+            model.setSort(values.first);
+          },
+        ),
+        ViewModeToggle(
+          mode: settings.searchViewMode,
+          compact: true,
+          onChanged: (mode) => settings.setSearchViewMode(mode),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSuggestionList(SearchViewModel model) {
+    final input = _controller.text.trim();
+    if (input.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final suggestions = model.suggestionsFor(input);
+    if (suggestions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '搜索建议',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: suggestions.map((item) {
+            return ActionChip(
+              label: Text(item),
+              onPressed: () {
+                _controller.text = item;
+                _viewModel.search(item);
+              },
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHistorySection(SearchViewModel model) {
+    if (model.history.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '搜索历史',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: () => model.clearHistory(),
+              child: const Text('清空'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: model.history.map((item) {
+            return GestureDetector(
+              onLongPress: () => _confirmRemoveHistory(model, item),
+              child: ActionChip(
+                label: Text(item),
+                onPressed: () {
+                  _controller.text = item;
+                  _viewModel.search(item);
+                },
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmRemoveHistory(
+    SearchViewModel model,
+    String keyword,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除搜索记录'),
+        content: Text('是否删除“$keyword”？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (result == true) {
+      await model.removeHistory(keyword);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
       value: _viewModel,
       child: Consumer<SearchViewModel>(
         builder: (context, model, _) {
+          final settings = context.watch<AppSettings>();
           return NavigationShell(
             title: '搜索',
             selectedRoute: '/search',
@@ -121,6 +271,7 @@ class _SearchPageState extends State<SearchPage> {
                             hintText: '输入番剧名称或关键词（最多 50 字）',
                             prefixIcon: Icon(Icons.search),
                           ),
+                          onChanged: (_) => setState(() {}),
                           onSubmitted: (_) => model.search(_controller.text),
                         ),
                       ),
@@ -133,6 +284,13 @@ class _SearchPageState extends State<SearchPage> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  if (model.source == SearchSource.bangumi)
+                    _buildSearchControls(context, model, settings),
+                  const SizedBox(height: 12),
+                  _buildSuggestionList(model),
+                  const SizedBox(height: 12),
+                  _buildHistorySection(model),
                   const SizedBox(height: 16),
                   const Text(
                     '搜索结果',
@@ -159,10 +317,61 @@ class _SearchPageState extends State<SearchPage> {
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final width = constraints.maxWidth;
-                          final gridCount = width >= 1200 ? 3 : (width >= 900 ? 2 : 1);
+                          final gridCount =
+                              width >= 1200 ? 3 : (width >= 900 ? 2 : 1);
+                          final isGallery = settings.searchViewMode == 'gallery';
 
                           if (model.source == SearchSource.bangumi) {
-                            if (gridCount == 1) {
+                            final useGrid = gridCount > 1;
+                            if (isGallery) {
+                              if (!useGrid) {
+                                return ListView.separated(
+                                  itemCount: model.items.length,
+                                  separatorBuilder: (context, index) =>
+                                      const SizedBox(height: 8),
+                                  itemBuilder: (context, index) {
+                                    final item = model.items[index];
+                                    return _ResultGalleryCard(
+                                      item: item,
+                                      onTap: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                DetailPage(subjectId: item.id),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                );
+                              }
+                              return GridView.builder(
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: gridCount,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio: 0.72,
+                                ),
+                                itemCount: model.items.length,
+                                itemBuilder: (context, index) {
+                                  final item = model.items[index];
+                                  return _ResultGalleryCard(
+                                    item: item,
+                                    onTap: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              DetailPage(subjectId: item.id),
+                                        ),
+                                      );
+                                    },
+                                  );
+                                },
+                              );
+                            }
+
+                            if (!useGrid) {
                               return ListView.separated(
                                 itemCount: model.items.length,
                                 separatorBuilder: (context, index) =>
@@ -190,7 +399,7 @@ class _SearchPageState extends State<SearchPage> {
                                 crossAxisCount: gridCount,
                                 crossAxisSpacing: 12,
                                 mainAxisSpacing: 12,
-                                childAspectRatio: 2.6,
+                                childAspectRatio: 3.2,
                               ),
                               itemCount: model.items.length,
                               itemBuilder: (context, index) {
@@ -292,6 +501,75 @@ class _ResultCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultGalleryCard extends StatelessWidget {
+  const _ResultGalleryCard({required this.item, required this.onTap});
+
+  final BangumiSearchItem item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
+    final hasCover = item.imageUrl.isNotEmpty;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: AspectRatio(
+          aspectRatio: 0.72,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  image: hasCover
+                      ? DecorationImage(
+                          image: CachedNetworkImageProvider(item.imageUrl),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: hasCover
+                    ? null
+                    : const Icon(Icons.image, size: 48),
+              ),
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black54,
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ],

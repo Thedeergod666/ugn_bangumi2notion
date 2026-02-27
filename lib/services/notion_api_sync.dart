@@ -237,12 +237,14 @@ extension NotionApiSync on NotionApi {
     required String idPropertyName,
     String? watchedEpisodesProperty,
     String? yougnScoreProperty,
+    String? lastWatchedAtProperty,
+    String? followDateProperty,
     String? statusPropertyName,
     String? statusValue,
   }) async {
     final normalizedDatabaseId = _normalizePageId(databaseId);
     if (normalizedDatabaseId == null) {
-      throw Exception('Notion Database ID 鏃犳晥');
+      throw Exception('Notion Database ID 无效');
     }
     if (idPropertyName.trim().isEmpty) {
       return <int, BangumiProgressInfo>{};
@@ -317,7 +319,7 @@ extension NotionApiSync on NotionApi {
       );
 
       if (response.statusCode != 200) {
-        throw Exception(_mapNotionError('璇诲彇 Bangumi 杩界暘杩涘害', response));
+        throw Exception(_mapNotionError('读取 Bangumi 追番进度失败', response));
       }
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -369,9 +371,32 @@ extension NotionApiSync on NotionApi {
           }
         }
 
+        DateTime? lastWatchedAt;
+        if (lastWatchedAtProperty != null &&
+            lastWatchedAtProperty.trim().isNotEmpty) {
+          final lastProp =
+              properties[lastWatchedAtProperty] as Map<String, dynamic>?;
+          if (lastProp != null) {
+            lastWatchedAt = _extractDateValue(lastProp);
+          }
+        }
+
+        DateTime? followDate;
+        if (followDateProperty != null &&
+            followDateProperty.trim().isNotEmpty) {
+          final followProp =
+              properties[followDateProperty] as Map<String, dynamic>?;
+          if (followProp != null) {
+            followDate = _extractDateValue(followProp);
+          }
+        }
+
         progress[id] = BangumiProgressInfo(
           watchedEpisodes: watched,
           yougnScore: yougnScore,
+          lastWatchedAt: lastWatchedAt,
+          followDate: followDate,
+          pageId: item['id']?.toString(),
         );
       }
 
@@ -393,6 +418,10 @@ extension NotionApiSync on NotionApi {
     String? coverPropertyName,
     String? watchedEpisodesProperty,
     String? totalEpisodesProperty,
+    String? lastWatchedAtProperty,
+    String? followDateProperty,
+    String? tagsProperty,
+    String? yougnScoreProperty,
     String? statusPropertyName,
     String? statusValue,
     int limit = 10,
@@ -409,6 +438,8 @@ extension NotionApiSync on NotionApi {
     String watchedPropertyType = 'number';
     String totalPropertyType = 'number';
     String statusPropertyType = '';
+    String tagsPropertyType = '';
+    String yougnScoreType = '';
     String resolvedTitleProperty = titlePropertyName?.trim() ?? '';
     String resolvedCoverProperty = coverPropertyName?.trim() ?? '';
 
@@ -429,6 +460,13 @@ extension NotionApiSync on NotionApi {
       }
       if (statusPropertyName != null && statusPropertyName.trim().isNotEmpty) {
         statusPropertyType = typeMap[statusPropertyName] ?? '';
+      }
+      if (tagsProperty != null && tagsProperty.trim().isNotEmpty) {
+        tagsPropertyType = typeMap[tagsProperty] ?? '';
+      }
+      if (yougnScoreProperty != null &&
+          yougnScoreProperty.trim().isNotEmpty) {
+        yougnScoreType = typeMap[yougnScoreProperty] ?? '';
       }
       if (resolvedTitleProperty.isEmpty) {
         final titleProp = properties.firstWhere(
@@ -527,6 +565,79 @@ extension NotionApiSync on NotionApi {
           return _extractIntValue(property);
         }
 
+        double? readScore(String key, String type) {
+          if (key.isEmpty) return null;
+          final property = properties[key] as Map<String, dynamic>?;
+          if (property == null) return null;
+          if (type == 'number') {
+            return _extractNumberValue(property);
+          }
+          return _extractNumberValue(property) ??
+              _parseScoreFromText(_extractPlainText(property));
+        }
+
+        DateTime? readDate(String key) {
+          if (key.isEmpty) return null;
+          final property = properties[key] as Map<String, dynamic>?;
+          if (property == null) return null;
+          return _extractDateValue(property);
+        }
+
+        String? readStatus(String key, String type) {
+          if (key.isEmpty) return null;
+          final property = properties[key] as Map<String, dynamic>?;
+          if (property == null) return null;
+          if (type == 'status') {
+            final status = property['status'];
+            if (status is Map<String, dynamic>) {
+              return status['name']?.toString();
+            }
+          }
+          if (type == 'select') {
+            final select = property['select'];
+            if (select is Map<String, dynamic>) {
+              return select['name']?.toString();
+            }
+          }
+          if (type == 'multi_select') {
+            final list = property['multi_select'];
+            if (list is List) {
+              return list
+                  .map((e) =>
+                      e is Map<String, dynamic> ? e['name']?.toString() : null)
+                  .whereType<String>()
+                  .join(', ');
+            }
+          }
+          return _extractPlainText(property);
+        }
+
+        List<String> readTags(String key, String type) {
+          if (key.isEmpty) return const [];
+          final property = properties[key] as Map<String, dynamic>?;
+          if (property == null) return const [];
+          if (type == 'multi_select') {
+            final list = property['multi_select'];
+            if (list is List) {
+              return list
+                  .map((e) =>
+                      e is Map<String, dynamic> ? e['name']?.toString() : null)
+                  .whereType<String>()
+                  .toList();
+            }
+          }
+          if (type == 'select') {
+            final select = property['select'];
+            if (select is Map<String, dynamic>) {
+              final name = select['name']?.toString();
+              if (name != null && name.isNotEmpty) return [name];
+            }
+          }
+          final text = _extractPlainText(property);
+          if (text == null || text.isEmpty) return const [];
+          return text.split(RegExp(r'[，, ]+')).where((e) => e.isNotEmpty).toList();
+        }
+
         String? readCover(String key) {
           if (key.isEmpty) return null;
           final property = properties[key] as Map<String, dynamic>?;
@@ -554,6 +665,20 @@ extension NotionApiSync on NotionApi {
         final total = totalEpisodesProperty == null
             ? null
             : readInt(totalEpisodesProperty, totalPropertyType);
+        final lastWatchedAt = lastWatchedAtProperty == null
+            ? null
+            : readDate(lastWatchedAtProperty);
+        final followDate =
+            followDateProperty == null ? null : readDate(followDateProperty);
+        final tags = tagsProperty == null
+            ? const <String>[]
+            : readTags(tagsProperty, tagsPropertyType);
+        final yougnScore = yougnScoreProperty == null
+            ? null
+            : readScore(yougnScoreProperty, yougnScoreType);
+        final status = statusPropertyName == null
+            ? null
+            : readStatus(statusPropertyName, statusPropertyType);
 
         final lastEditedRaw = item['last_edited_time']?.toString();
         final lastEdited =
@@ -569,6 +694,11 @@ extension NotionApiSync on NotionApi {
             bangumiId: idValue?.toString(),
             pageUrl: item['url']?.toString(),
             lastEditedAt: lastEdited,
+            lastWatchedAt: lastWatchedAt,
+            followDate: followDate,
+            status: status,
+            tags: tags,
+            yougnScore: yougnScore,
           ),
         );
       }
@@ -588,7 +718,7 @@ extension NotionApiSync on NotionApi {
   }) async {
     final normalizedDatabaseId = _normalizePageId(databaseId);
     if (normalizedDatabaseId == null) {
-      throw Exception('Notion Database ID 鏃犳晥');
+      throw Exception('Notion Database ID 无效');
     }
     final trimmedKeyword = keyword.trim();
     if (trimmedKeyword.isEmpty) {
@@ -665,6 +795,151 @@ extension NotionApiSync on NotionApi {
     }
 
     return items;
+  }
+
+
+  Future<List<NotionSearchItem>> getPagesWithoutBangumiId({
+    required String token,
+    required String databaseId,
+    required String idPropertyName,
+    required String titlePropertyName,
+    int limit = 30,
+  }) async {
+    final normalizedDatabaseId = _normalizePageId(databaseId);
+    if (normalizedDatabaseId == null) {
+      throw Exception('Notion Database ID 无效');
+    }
+    if (idPropertyName.trim().isEmpty) return [];
+
+    String propertyType = 'number';
+    try {
+      final properties = await getDatabaseProperties(
+        token: token,
+        databaseId: normalizedDatabaseId,
+      );
+      final prop = properties.firstWhere(
+        (p) => p.name == idPropertyName,
+        orElse: () => NotionProperty(name: idPropertyName, type: ''),
+      );
+      if (prop.type.isNotEmpty) {
+        propertyType = prop.type;
+      }
+    } catch (e) {
+      _logger.debug('Schema fetch failed in getPagesWithoutBangumiId: $e');
+    }
+
+    String filterKey;
+    switch (propertyType) {
+      case 'title':
+        filterKey = 'title';
+        break;
+      case 'rich_text':
+        filterKey = 'rich_text';
+        break;
+      case 'number':
+        filterKey = 'number';
+        break;
+      default:
+        filterKey = 'rich_text';
+        break;
+    }
+
+    final url = Uri.parse(NotionApi._baseUrl).replace(
+      pathSegments: ['v1', 'databases', normalizedDatabaseId, 'query'],
+    );
+
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Notion post',
+      request: () => _client
+          .post(
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Notion-Version': NotionApi._notionVersion,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'page_size': limit,
+              'sorts': [
+                {
+                  'timestamp': 'last_edited_time',
+                  'direction': 'descending',
+                }
+              ],
+              'filter': {
+                'property': idPropertyName,
+                filterKey: {'is_empty': true},
+              },
+            }),
+          )
+          .timeout(NotionApi._queryTimeout),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_mapNotionError('查询未绑定页面失败', response));
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final results = data['results'] as List<dynamic>? ?? [];
+    final items = <NotionSearchItem>[];
+    for (final item in results) {
+      if (item is! Map<String, dynamic>) continue;
+      final properties = item['properties'] as Map<String, dynamic>? ?? {};
+      final titleProperty =
+          properties[titlePropertyName] as Map<String, dynamic>?;
+      final title = titleProperty != null
+          ? (_extractPlainText(titleProperty) ?? '')
+          : '';
+      if (title.isEmpty) continue;
+      items.add(
+        NotionSearchItem(
+          id: item['id']?.toString() ?? '',
+          title: title,
+          url: item['url']?.toString() ?? '',
+        ),
+      );
+    }
+
+    return items;
+  }
+
+  Future<void> updatePageNumberProperty({
+    required String token,
+    required String pageId,
+    required String propertyName,
+    required int value,
+  }) async {
+    final normalizedId = _normalizePageId(pageId);
+    if (normalizedId == null) {
+      throw Exception('Notion 页面 ID 无效');
+    }
+    if (propertyName.trim().isEmpty) return;
+    final url = Uri.parse(NotionApi._baseUrl)
+        .replace(pathSegments: ['v1', 'pages', normalizedId]);
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Notion patch',
+      request: () => _client
+          .patch(
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Notion-Version': NotionApi._notionVersion,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'properties': {
+                propertyName: {'number': value},
+              }
+            }),
+          )
+          .timeout(NotionApi._timeout),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_mapNotionError('?? Bangumi ID', response));
+    }
   }
 
   Future<String?> findPageByUniqueId({
@@ -906,6 +1181,62 @@ extension NotionApiSync on NotionApi {
 
     if (response.statusCode != 200) {
       throw Exception(_mapNotionError('追加页面内容', response));
+    }
+  }
+
+  Future<void> updateWatchProgress({
+    required String token,
+    required String pageId,
+    required String watchedEpisodesProperty,
+    required int watchedEpisodes,
+    String? lastWatchedAtProperty,
+    DateTime? lastWatchedAt,
+  }) async {
+    final normalizedId = _normalizePageId(pageId);
+    if (normalizedId == null) {
+      throw Exception('Notion 页面 ID 无效');
+    }
+
+    if (watchedEpisodesProperty.trim().isEmpty &&
+        (lastWatchedAtProperty == null ||
+            lastWatchedAtProperty.trim().isEmpty)) {
+      return;
+    }
+
+    final properties = <String, dynamic>{};
+    if (watchedEpisodesProperty.trim().isNotEmpty) {
+      properties[watchedEpisodesProperty] = {'number': watchedEpisodes};
+    }
+    if (lastWatchedAtProperty != null &&
+        lastWatchedAtProperty.trim().isNotEmpty &&
+        lastWatchedAt != null) {
+      properties[lastWatchedAtProperty] = {
+        'date': {'start': lastWatchedAt.toIso8601String()}
+      };
+    }
+
+    if (properties.isEmpty) return;
+
+    final url = Uri.parse(NotionApi._baseUrl)
+        .replace(pathSegments: ['v1', 'pages', normalizedId]);
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Notion patch',
+      request: () => _client
+          .patch(
+            url,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Notion-Version': NotionApi._notionVersion,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'properties': properties}),
+          )
+          .timeout(NotionApi._timeout),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_mapNotionError('更新追番进度', response));
     }
   }
 
@@ -1319,6 +1650,14 @@ extension NotionApiSync on NotionApi {
     addProperty(
         'storyboard', config.storyboard, detail.storyboard, 'rich_text');
     addProperty('description', config.description, detail.summary, 'rich_text');
+    if (config.bangumiUpdatedAt.isNotEmpty) {
+      addProperty(
+        'bangumiUpdatedAt',
+        config.bangumiUpdatedAt,
+        {'start': DateTime.now().toIso8601String()},
+        'date',
+      );
+    }
 
     // 处理 infoboxMap 中剩下的所有字段
     // 如果用户在 Notion 数据库中创建了同名属性，尝试自动填充
@@ -1336,6 +1675,7 @@ extension NotionApiSync on NotionApi {
       config.script,
       config.storyboard,
       config.description,
+      config.bangumiUpdatedAt,
       config.title,
     }.where((k) => k.isNotEmpty).toSet();
 

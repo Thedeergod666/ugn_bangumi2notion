@@ -87,6 +87,7 @@ class BangumiApi {
   Future<List<BangumiSearchItem>> search({
     required String keyword,
     String? accessToken,
+    String sort = 'match',
   }) async {
     final normalizedKeyword = keyword.trim();
     final limitedKeyword = normalizedKeyword.length > _maxKeywordLength
@@ -106,7 +107,7 @@ class BangumiApi {
               headers: _buildHeaders(accessToken: token),
               body: jsonEncode({
                 'keyword': limitedKeyword,
-                'sort': 'match',
+                'sort': sort,
                 'filter': {
                   'type': [2], // 2 = 动画
                 },
@@ -375,7 +376,7 @@ class BangumiApi {
           request: () => _client
               .get(
                 uri,
-                headers: _buildHeaders(), // p1 API ????? Token
+                headers: _buildHeaders(), // p1 API 需要 Token
               )
               .timeout(_timeout),
         );
@@ -658,6 +659,34 @@ class BangumiApi {
     } catch (e) {
       _logger.error('[BangumiApi] fetchSubjectComments failed: $e');
       return [];
+    }
+  }
+
+  Future<void> updateEpisodeProgress({
+    required int subjectId,
+    required int watchedEpisodes,
+    required String accessToken,
+  }) async {
+    if (accessToken.trim().isEmpty) {
+      throw Exception('Bangumi Access Token 缺失');
+    }
+    final uri = Uri.parse('$_baseUrl/v0/users/-/collections/$subjectId');
+    final response = await sendWithRetry(
+      logger: _logger,
+      label: 'Bangumi update progress',
+      request: () => _client
+          .post(
+            uri,
+            headers: _buildHeaders(accessToken: accessToken),
+            body: jsonEncode({
+              'ep_status': watchedEpisodes,
+            }),
+          )
+          .timeout(_timeout),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(_mapBangumiError('更新 Bangumi 追番进度', response));
     }
   }
 }

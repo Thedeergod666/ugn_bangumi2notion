@@ -21,6 +21,13 @@ class SettingsKeys {
   static const notionProperties = 'notionProperties';
   static const dailyRecommendationDate = 'dailyRecommendationDate';
   static const dailyRecommendationPayload = 'dailyRecommendationPayload';
+  static const calendarViewMode = 'calendarViewMode';
+  static const searchViewMode = 'searchViewMode';
+  static const recentViewMode = 'recentViewMode';
+  static const searchSort = 'searchSort';
+  static const searchHistory = 'searchHistory';
+  static const notionMovieDatabaseId = 'notionMovieDatabaseId';
+  static const notionGameDatabaseId = 'notionGameDatabaseId';
 }
 
 class SettingsStorage {
@@ -63,6 +70,23 @@ class SettingsStorage {
     _cache ??= {};
     _cache![SettingsKeys.notionToken] = notionToken;
     _cache![SettingsKeys.notionDatabaseId] = notionDatabaseId;
+  }
+
+  Future<void> saveAdditionalNotionDatabases({
+    String? movieDatabaseId,
+    String? gameDatabaseId,
+  }) async {
+    final prefs = await _prefs;
+    if (movieDatabaseId != null) {
+      await prefs.setString(SettingsKeys.notionMovieDatabaseId, movieDatabaseId);
+      _cache ??= {};
+      _cache![SettingsKeys.notionMovieDatabaseId] = movieDatabaseId;
+    }
+    if (gameDatabaseId != null) {
+      await prefs.setString(SettingsKeys.notionGameDatabaseId, gameDatabaseId);
+      _cache ??= {};
+      _cache![SettingsKeys.notionGameDatabaseId] = gameDatabaseId;
+    }
   }
 
   Future<void> saveNotionProperties(List<NotionProperty> properties) async {
@@ -109,6 +133,44 @@ class SettingsStorage {
 
   Future<void> saveUseSystemTitleBar(bool value) async {
     await _saveBoolSetting(SettingsKeys.useSystemTitleBar, value);
+  }
+
+  Future<void> saveCalendarViewMode(String value) async {
+    final prefs = await _prefs;
+    await prefs.setString(SettingsKeys.calendarViewMode, value);
+    _cache ??= {};
+    _cache![SettingsKeys.calendarViewMode] = value;
+  }
+
+  Future<void> saveSearchViewMode(String value) async {
+    final prefs = await _prefs;
+    await prefs.setString(SettingsKeys.searchViewMode, value);
+    _cache ??= {};
+    _cache![SettingsKeys.searchViewMode] = value;
+  }
+
+  Future<void> saveRecentViewMode(String value) async {
+    final prefs = await _prefs;
+    await prefs.setString(SettingsKeys.recentViewMode, value);
+    _cache ??= {};
+    _cache![SettingsKeys.recentViewMode] = value;
+  }
+
+  Future<void> saveSearchSort(String value) async {
+    final prefs = await _prefs;
+    await prefs.setString(SettingsKeys.searchSort, value);
+    _cache ??= {};
+    _cache![SettingsKeys.searchSort] = value;
+  }
+
+  Future<List<String>> getSearchHistory() async {
+    final prefs = await _prefs;
+    return prefs.getStringList(SettingsKeys.searchHistory) ?? <String>[];
+  }
+
+  Future<void> saveSearchHistory(List<String> history) async {
+    final prefs = await _prefs;
+    await prefs.setStringList(SettingsKeys.searchHistory, history);
   }
 
   Future<String> getThemeMode() async {
@@ -212,6 +274,17 @@ class SettingsStorage {
         prefs.getBool(SettingsKeys.oledOptimization) ?? false;
     final useSystemTitleBar =
         prefs.getBool(SettingsKeys.useSystemTitleBar) ?? false;
+    final calendarViewMode =
+        prefs.getString(SettingsKeys.calendarViewMode) ?? 'list';
+    final searchViewMode =
+        prefs.getString(SettingsKeys.searchViewMode) ?? 'list';
+    final recentViewMode =
+        prefs.getString(SettingsKeys.recentViewMode) ?? 'gallery';
+    final searchSort = prefs.getString(SettingsKeys.searchSort) ?? 'match';
+    final notionMovieDatabaseId =
+        prefs.getString(SettingsKeys.notionMovieDatabaseId) ?? '';
+    final notionGameDatabaseId =
+        prefs.getString(SettingsKeys.notionGameDatabaseId) ?? '';
     final data = {
       SettingsKeys.bangumiAccessToken:
           await _secureStorage.read(key: SettingsKeys.bangumiAccessToken) ?? '',
@@ -230,6 +303,12 @@ class SettingsStorage {
       SettingsKeys.showRatings: showRatings.toString(),
       SettingsKeys.oledOptimization: oledOptimization.toString(),
       SettingsKeys.useSystemTitleBar: useSystemTitleBar.toString(),
+      SettingsKeys.calendarViewMode: calendarViewMode,
+      SettingsKeys.searchViewMode: searchViewMode,
+      SettingsKeys.recentViewMode: recentViewMode,
+      SettingsKeys.searchSort: searchSort,
+      SettingsKeys.notionMovieDatabaseId: notionMovieDatabaseId,
+      SettingsKeys.notionGameDatabaseId: notionGameDatabaseId,
     };
     _cache = Map<String, String>.from(data);
     return data;

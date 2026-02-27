@@ -33,8 +33,14 @@ class MappingConfig {
   final String notionId;
   final String watchingStatus;
   final String watchingStatusValue;
+  final String watchingStatusValueWatched;
   final String watchedEpisodes;
+  final String followDate;
+  final String lastWatchedAt;
+  final String bangumiUpdatedAt;
+  final String globalIdPropertyName;
   final NotionDailyRecommendationBindings dailyRecommendationBindings;
+  final NotionWatchBindings watchBindings;
 
   MappingConfig({
     this.title = '',
@@ -71,9 +77,15 @@ class MappingConfig {
     this.notionId = 'Notion ID',
     this.watchingStatus = '',
     this.watchingStatusValue = '',
+    this.watchingStatusValueWatched = '已看',
     this.watchedEpisodes = '',
+    this.followDate = '',
+    this.lastWatchedAt = '',
+    this.bangumiUpdatedAt = '',
+    this.globalIdPropertyName = 'Bangumi ID',
     this.dailyRecommendationBindings =
         const NotionDailyRecommendationBindings(),
+    this.watchBindings = const NotionWatchBindings(),
   });
 
   Map<String, dynamic> toJson() {
@@ -112,8 +124,14 @@ class MappingConfig {
       'notionId': notionId,
       'watchingStatus': watchingStatus,
       'watchingStatusValue': watchingStatusValue,
+      'watchingStatusValueWatched': watchingStatusValueWatched,
       'watchedEpisodes': watchedEpisodes,
+      'followDate': followDate,
+      'lastWatchedAt': lastWatchedAt,
+      'bangumiUpdatedAt': bangumiUpdatedAt,
+      'globalIdPropertyName': globalIdPropertyName,
       'dailyRecommendationBindings': dailyRecommendationBindings.toJson(),
+      'watchBindings': watchBindings.toJson(),
     };
   }
 
@@ -153,10 +171,18 @@ class MappingConfig {
       notionId: json['notionId'] ?? 'Notion ID',
       watchingStatus: json['watchingStatus'] ?? '',
       watchingStatusValue: json['watchingStatusValue'] ?? '',
+      watchingStatusValueWatched: json['watchingStatusValueWatched'] ?? '已看',
       watchedEpisodes: json['watchedEpisodes'] ?? '',
+      followDate: json['followDate'] ?? '',
+      lastWatchedAt: json['lastWatchedAt'] ?? '',
+      bangumiUpdatedAt: json['bangumiUpdatedAt'] ?? '',
+      globalIdPropertyName:
+          json['globalIdPropertyName'] ?? 'Bangumi ID',
       dailyRecommendationBindings: NotionDailyRecommendationBindings.fromJson(
         json['dailyRecommendationBindings'] ?? {},
       ),
+      watchBindings:
+          NotionWatchBindings.fromJson(json['watchBindings'] ?? {}),
     );
   }
 
@@ -195,8 +221,14 @@ class MappingConfig {
     String? notionId,
     String? watchingStatus,
     String? watchingStatusValue,
+    String? watchingStatusValueWatched,
     String? watchedEpisodes,
+    String? followDate,
+    String? lastWatchedAt,
+    String? bangumiUpdatedAt,
+    String? globalIdPropertyName,
     NotionDailyRecommendationBindings? dailyRecommendationBindings,
+    NotionWatchBindings? watchBindings,
   }) {
     return MappingConfig(
       title: title ?? this.title,
@@ -234,9 +266,112 @@ class MappingConfig {
       notionId: notionId ?? this.notionId,
       watchingStatus: watchingStatus ?? this.watchingStatus,
       watchingStatusValue: watchingStatusValue ?? this.watchingStatusValue,
+      watchingStatusValueWatched:
+          watchingStatusValueWatched ?? this.watchingStatusValueWatched,
       watchedEpisodes: watchedEpisodes ?? this.watchedEpisodes,
+      followDate: followDate ?? this.followDate,
+      lastWatchedAt: lastWatchedAt ?? this.lastWatchedAt,
+      bangumiUpdatedAt: bangumiUpdatedAt ?? this.bangumiUpdatedAt,
+      globalIdPropertyName:
+          globalIdPropertyName ?? this.globalIdPropertyName,
       dailyRecommendationBindings:
           dailyRecommendationBindings ?? this.dailyRecommendationBindings,
+      watchBindings: watchBindings ?? this.watchBindings,
+    );
+  }
+}
+
+class NotionWatchBindings {
+  final String title;
+  final String cover;
+  final String bangumiId;
+  final String watchedEpisodes;
+  final String totalEpisodes;
+  final String watchingStatus;
+  final String followDate;
+  final String lastWatchedAt;
+  final String tags;
+  final String yougnScore;
+
+  const NotionWatchBindings({
+    this.title = '',
+    this.cover = '',
+    this.bangumiId = '',
+    this.watchedEpisodes = '',
+    this.totalEpisodes = '',
+    this.watchingStatus = '',
+    this.followDate = '',
+    this.lastWatchedAt = '',
+    this.tags = '',
+    this.yougnScore = '',
+  });
+
+  bool get isEmpty {
+    return title.isEmpty &&
+        cover.isEmpty &&
+        bangumiId.isEmpty &&
+        watchedEpisodes.isEmpty &&
+        totalEpisodes.isEmpty &&
+        watchingStatus.isEmpty &&
+        followDate.isEmpty &&
+        lastWatchedAt.isEmpty &&
+        tags.isEmpty &&
+        yougnScore.isEmpty;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'cover': cover,
+      'bangumiId': bangumiId,
+      'watchedEpisodes': watchedEpisodes,
+      'totalEpisodes': totalEpisodes,
+      'watchingStatus': watchingStatus,
+      'followDate': followDate,
+      'lastWatchedAt': lastWatchedAt,
+      'tags': tags,
+      'yougnScore': yougnScore,
+    };
+  }
+
+  factory NotionWatchBindings.fromJson(Map<String, dynamic> json) {
+    return NotionWatchBindings(
+      title: json['title'] ?? '',
+      cover: json['cover'] ?? '',
+      bangumiId: json['bangumiId'] ?? '',
+      watchedEpisodes: json['watchedEpisodes'] ?? '',
+      totalEpisodes: json['totalEpisodes'] ?? '',
+      watchingStatus: json['watchingStatus'] ?? '',
+      followDate: json['followDate'] ?? '',
+      lastWatchedAt: json['lastWatchedAt'] ?? '',
+      tags: json['tags'] ?? '',
+      yougnScore: json['yougnScore'] ?? '',
+    );
+  }
+
+  NotionWatchBindings copyWith({
+    String? title,
+    String? cover,
+    String? bangumiId,
+    String? watchedEpisodes,
+    String? totalEpisodes,
+    String? watchingStatus,
+    String? followDate,
+    String? lastWatchedAt,
+    String? tags,
+    String? yougnScore,
+  }) {
+    return NotionWatchBindings(
+      title: title ?? this.title,
+      cover: cover ?? this.cover,
+      bangumiId: bangumiId ?? this.bangumiId,
+      watchedEpisodes: watchedEpisodes ?? this.watchedEpisodes,
+      totalEpisodes: totalEpisodes ?? this.totalEpisodes,
+      watchingStatus: watchingStatus ?? this.watchingStatus,
+      followDate: followDate ?? this.followDate,
+      lastWatchedAt: lastWatchedAt ?? this.lastWatchedAt,
+      tags: tags ?? this.tags,
+      yougnScore: yougnScore ?? this.yougnScore,
     );
   }
 }

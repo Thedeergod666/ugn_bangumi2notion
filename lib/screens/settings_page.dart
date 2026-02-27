@@ -11,6 +11,7 @@ import '../widgets/error_detail_dialog.dart';
 import '../widgets/navigation_shell.dart';
 import 'appearance_settings_page.dart';
 import 'database_settings_page.dart';
+import 'batch_import_page.dart';
 import 'error_log_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -239,36 +240,65 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ],
                       const SizedBox(height: 20),
-                      _sectionTitle('应用与外观'),
+                      _sectionTitle('数据与外观'),
                       _buildGroup(
                         context,
                         [
                           _buildNavTile(
                             icon: Icons.storage_rounded,
-                            title: '数据库设置',
+                            title: '数据绑定',
                             subtitle: '配置 Notion Token 与数据库 ID',
                             onTap: () =>
                                 _openPage(const DatabaseSettingsPage()),
                           ),
                           _buildNavTile(
                             icon: Icons.map_outlined,
-                            title: '映射设置',
-                            subtitle: 'Bangumi/Notion 字段绑定',
+                            title: '数据映射',
+                            subtitle: 'Bangumi/Notion 字段映射',
                             onTap: () =>
                                 Navigator.of(context).pushNamed('/mapping'),
                           ),
                           _buildNavTile(
+                            icon: Icons.cloud_upload_outlined,
+                            title: '批量导入/更新',
+                            subtitle: '批量绑定 Bangumi ID',
+                            onTap: () => _openPage(const BatchImportPage()),
+                          ),
+                          _buildNavTile(
                             icon: Icons.palette_outlined,
-                            title: '外观设置',
-                            subtitle: '主题、配色、字体等',
+                            title: '外观',
+                            subtitle: '主题与配色方案',
                             onTap: () =>
                                 _openPage(const AppearanceSettingsPage()),
                           ),
+                          _buildThemeToggleTile(context),
                           _buildNavTile(
                             icon: Icons.bug_report_outlined,
                             title: '错误日志',
-                            subtitle: '查看错误日志与复制',
+                            subtitle: '应用运行时错误日志',
                             onTap: () => _openPage(const ErrorLogPage()),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _sectionTitle('其他'),
+                      _buildGroup(
+                        context,
+                        [
+                          _buildPlaceholderTile(
+                            icon: Icons.system_update_alt_outlined,
+                            title: '自动更新',
+                            subtitle: '占位',
+                          ),
+                          _buildPlaceholderTile(
+                            icon: Icons.link_outlined,
+                            title: 'GitHub',
+                            subtitle: '占位',
+                          ),
+                          _buildPlaceholderTile(
+                            icon: Icons.volunteer_activism_outlined,
+                            title: '捐赠',
+                            subtitle: '占位',
                           ),
                         ],
                       ),
@@ -457,6 +487,40 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         children: _addDividers(context, tiles),
       ),
+    );
+  }
+
+  Widget _buildThemeToggleTile(BuildContext context) {
+    return Consumer<AppSettings>(
+      builder: (context, settings, _) {
+        final currentMode = settings.themeMode;
+        final isDark = currentMode == ThemeMode.dark ||
+            (currentMode == ThemeMode.system &&
+                MediaQuery.of(context).platformBrightness == Brightness.dark);
+        return SwitchListTile(
+          secondary: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
+          title: const Text('夜间模式'),
+          subtitle: Text(isDark ? '当前：深色' : '当前：浅色'),
+          value: isDark,
+          onChanged: (value) => settings.setThemeMode(
+            value ? ThemeMode.dark : ThemeMode.light,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPlaceholderTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.lock_outline),
+      onTap: null,
     );
   }
 

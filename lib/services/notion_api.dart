@@ -190,6 +190,48 @@ class NotionApi {
     return null;
   }
 
+  DateTime? _extractDateValue(Map<String, dynamic> property) {
+    DateTime? parseDate(dynamic value) {
+      if (value == null) return null;
+      if (value is String && value.trim().isNotEmpty) {
+        return DateTime.tryParse(value.trim());
+      }
+      return null;
+    }
+
+    final date = property['date'];
+    if (date is Map<String, dynamic>) {
+      final start = parseDate(date['start']);
+      if (start != null) return start;
+    }
+
+    final formula = property['formula'];
+    if (formula is Map<String, dynamic>) {
+      final type = formula['type']?.toString();
+      if (type == 'date') {
+        final raw = formula['date'];
+        if (raw is Map<String, dynamic>) {
+          final start = parseDate(raw['start']);
+          if (start != null) return start;
+        }
+      }
+    }
+
+    final rollup = property['rollup'];
+    if (rollup is Map<String, dynamic>) {
+      final type = rollup['type']?.toString();
+      if (type == 'date') {
+        final raw = rollup['date'];
+        if (raw is Map<String, dynamic>) {
+          final start = parseDate(raw['start']);
+          if (start != null) return start;
+        }
+      }
+    }
+
+    return null;
+  }
+
   double? _parseScoreFromText(String? raw) {
     if (raw == null) return null;
     final trimmed = raw.trim();
