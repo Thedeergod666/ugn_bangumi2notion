@@ -271,7 +271,6 @@ class _SettingsPageState extends State<SettingsPage> {
                             onTap: () =>
                                 _openPage(const AppearanceSettingsPage()),
                           ),
-                          _buildThemeToggleTile(context),
                           _buildNavTile(
                             icon: Icons.bug_report_outlined,
                             title: '错误日志',
@@ -487,26 +486,6 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         children: _addDividers(context, tiles),
       ),
-    );
-  }
-
-  Widget _buildThemeToggleTile(BuildContext context) {
-    return Consumer<AppSettings>(
-      builder: (context, settings, _) {
-        final currentMode = settings.themeMode;
-        final isDark = currentMode == ThemeMode.dark ||
-            (currentMode == ThemeMode.system &&
-                MediaQuery.of(context).platformBrightness == Brightness.dark);
-        return SwitchListTile(
-          secondary: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
-          title: const Text('夜间模式'),
-          subtitle: Text(isDark ? '当前：深色' : '当前：浅色'),
-          value: isDark,
-          onChanged: (value) => settings.setThemeMode(
-            value ? ThemeMode.dark : ThemeMode.light,
-          ),
-        );
-      },
     );
   }
 

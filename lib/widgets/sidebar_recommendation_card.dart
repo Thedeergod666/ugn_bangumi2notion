@@ -92,12 +92,6 @@ class _SidebarRecommendationCardState extends State<SidebarRecommendationCard> {
     return null;
   }
 
-  Future<void> _shuffle() async {
-    await _storage.clearDailyRecommendationCache();
-    if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed('/recommendation');
-  }
-
   void _openDetail(int subjectId) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -168,7 +162,6 @@ class _SidebarRecommendationCardState extends State<SidebarRecommendationCard> {
           border: Border.all(color: colorScheme.outlineVariant),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               '今日推荐',
@@ -177,17 +170,19 @@ class _SidebarRecommendationCardState extends State<SidebarRecommendationCard> {
                   ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 8),
-            RotatedBox(
-              quarterTurns: 3,
-              child: Text(
-                data.title,
-                maxLines: 6,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: RotatedBox(
+                quarterTurns: 3,
+                child: Text(
+                  data.title,
+                  maxLines: 6,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
               ),
             ),
             if (data.yougnScoreText != null) ...[
@@ -222,8 +217,8 @@ class _SidebarRecommendationCardState extends State<SidebarRecommendationCard> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (data.coverUrl != null && data.coverUrl!.isNotEmpty)
-            AspectRatio(
-              aspectRatio: 4 / 3,
+            SizedBox(
+              height: 110,
               child: InkWell(
                 onTap: data.subjectId == null
                     ? null
@@ -268,15 +263,6 @@ class _SidebarRecommendationCardState extends State<SidebarRecommendationCard> {
                         ),
                   ),
                 ],
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _shuffle,
-                    icon: const Icon(Icons.shuffle),
-                    label: const Text('换一部'),
-                  ),
-                ),
               ],
             ),
           ),

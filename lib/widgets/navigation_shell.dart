@@ -169,7 +169,8 @@ class NavigationShell extends StatelessWidget {
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-                        child: IntrinsicWidth(
+                        child: SizedBox(
+                          width: isExpanded ? 240 : 88,
                           child: Container(
                             decoration: BoxDecoration(
                               color: colorScheme.surface,
@@ -224,9 +225,12 @@ class NavigationShell extends StatelessWidget {
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 12),
-                                    child: SidebarRecommendationCard(
-                                      extended: isExpanded,
-                                      compact: !isExpanded,
+                                    child: SizedBox(
+                                      height: isExpanded ? 220 : 140,
+                                      child: SidebarRecommendationCard(
+                                        extended: isExpanded,
+                                        compact: !isExpanded,
+                                      ),
                                     ),
                                   ),
                                   if (isExpanded) ...[

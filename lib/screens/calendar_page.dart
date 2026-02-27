@@ -99,12 +99,14 @@ class _CalendarView extends StatelessWidget {
         ],
         _buildWeekdaySelector(context, model),
         const SizedBox(height: 8),
-        _buildViewModeToggle(context, settings),
-        const SizedBox(height: 12),
         if (selectedItems.isEmpty)
           _buildEmptyDay(context)
         else ...[
-          _buildDayHeader(context, selectedDay.weekday),
+          _buildDayHeader(
+            context,
+            selectedDay.weekday,
+            settings: settings,
+          ),
           const SizedBox(height: 8),
           _buildDayItems(
             context,
@@ -114,25 +116,6 @@ class _CalendarView extends StatelessWidget {
             calendarViewMode: calendarViewMode,
           ),
         ],
-      ],
-    );
-  }
-
-  Widget _buildViewModeToggle(BuildContext context, AppSettings settings) {
-    return Row(
-      children: [
-        Text(
-          '视图',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-        ),
-        const SizedBox(width: 8),
-        ViewModeToggle(
-          mode: settings.calendarViewMode,
-          compact: true,
-          onChanged: (mode) => settings.setCalendarViewMode(mode),
-        ),
       ],
     );
   }
@@ -148,7 +131,11 @@ class _CalendarView extends StatelessWidget {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final isGallery = calendarViewMode == 'gallery';
-        final crossAxisCount = isGallery ? (width >= 1100 ? 2 : 1) : 1;
+        final crossAxisCount = isGallery
+            ? (width >= 1200 ? 3 : (width >= 900 ? 2 : 1))
+            : 1;
+        final childAspectRatio =
+            isGallery && crossAxisCount > 1 ? 2.2 : 3.2;
         if (crossAxisCount == 1) {
           return Column(
             children: [
@@ -196,7 +183,7 @@ class _CalendarView extends StatelessWidget {
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 3.2,
+            childAspectRatio: childAspectRatio,
           ),
           itemCount: items.length,
           itemBuilder: (context, index) {
@@ -343,7 +330,7 @@ class _CalendarView extends StatelessWidget {
         if (hasBound) ...[
           const SizedBox(height: 8),
           SizedBox(
-            height: 144,
+            height: 180,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: model.boundItems.length,
@@ -410,8 +397,9 @@ class _CalendarView extends StatelessWidget {
 
   Widget _buildDayHeader(
     BuildContext context,
-    BangumiCalendarWeekday weekday,
-  ) {
+    BangumiCalendarWeekday weekday, {
+    required AppSettings settings,
+  }) {
     final label = weekday.cn.isNotEmpty
         ? weekday.cn
         : (weekday.en.isNotEmpty ? weekday.en : '周${weekday.id}');
@@ -428,6 +416,12 @@ class _CalendarView extends StatelessWidget {
           child: Divider(
             color: Theme.of(context).colorScheme.outlineVariant,
           ),
+        ),
+        const SizedBox(width: 8),
+        ViewModeToggle(
+          mode: settings.calendarViewMode,
+          compact: true,
+          onChanged: (mode) => settings.setCalendarViewMode(mode),
         ),
       ],
     );
@@ -585,57 +579,77 @@ class _BoundBangumiCard extends StatelessWidget {
             onLongPress: onLongPress,
             child: Padding(
               padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+              child: Stack(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                        ),
-                      ),
-                      EpisodeBadge(count: missingCount),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      _CoverImage(url: item.imageUrl),
-                      const SizedBox(width: 8),
-                      Column(
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (showRatings && yougnScore != null)
-                            Text('悠gn ${yougnScore!.toStringAsFixed(1)}'),
-                          if (showRatings && yougnScore != null)
-                            const SizedBox(height: 4),
-                          Text('已追 $watchedText'),
-                          const SizedBox(height: 4),
-                          Text(latestSegment),
-                          const SizedBox(height: 4),
-                          Text('总共 $totalText'),
-                          const SizedBox(height: 4),
-                          Text('最近观看 $lastWatchedText'),
+                          _CoverImage(url: item.imageUrl),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (showRatings && yougnScore != null)
+                                Text('悠gn ${yougnScore!.toStringAsFixed(1)}'),
+                              if (showRatings && yougnScore != null)
+                                const SizedBox(height: 4),
+                              Text('最近观看 $lastWatchedText'),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ProgressSegmentsBar(
+                              watched: watchedEpisodes,
+                              updated: updatedValue,
+                              total: totalValue > 0
+                                  ? totalValue
+                                  : max(watchedEpisodes, updatedValue),
+                              showWatched: true,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              '已追 $watchedText / $latestSegment / 总共 $totalText',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                          ),
                         ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  ProgressSegmentsBar(
-                    watched: watchedEpisodes,
-                    updated: updatedValue,
-                    total: totalValue > 0 ? totalValue : max(watchedEpisodes, updatedValue),
-                    showWatched: true,
-                  ),
+                  if (missingCount > 0)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: EpisodeBadge(count: missingCount),
+                    ),
                 ],
               ),
             ),
@@ -723,150 +737,159 @@ class _CalendarItemCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _CoverImage(url: item.imageUrl),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _CoverImage(url: item.imageUrl),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (isBound)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              '已绑定',
-                              style: TextStyle(
-                                color: colorScheme.onPrimary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                title,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    if (hasRating) ...[
-                      Row(
-                        children: [
-                          if (score > 0)
-                            Text(
-                              'Bangumi ${score.toStringAsFixed(1)}',
-                              style: ratingStyle,
-                            ),
-                          if (score > 0 && rank != null && rank > 0)
-                            const SizedBox(width: 8),
-                          if (rank != null && rank > 0)
-                            Text(
-                              'Rank #$rank',
-                              style: rankStyle,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-                    Text('放送：$airRangeText'),
-                    const SizedBox(height: 4),
-                    Text(
-                      isBound
-                          ? '已追 $watchedText / $latestSegment / 总共 $totalText'
-                          : '$latestSegment / 总共 $totalText',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 6),
-                    ProgressSegmentsBar(
-                      watched: watchedEpisodes,
-                      updated: updatedValue,
-                      total: totalValue > 0
-                          ? totalValue
-                          : max(watchedEpisodes, updatedValue),
-                      showWatched: isBound,
-                    ),
-                    if (tagPool.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final maxPerLine =
-                              max(1, (constraints.maxWidth / 88).floor());
-                          final maxLines = isGallery ? 2 : 1;
-                          final maxTags = max(1, maxPerLine * maxLines);
-                          final tags = tagPool.take(maxTags).toList();
-                          return Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: tags.map((tag) {
-                              return Container(
+                            if (isBound)
+                              Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
-                                  vertical: 3,
+                                  vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: colorScheme.surfaceContainerHighest,
+                                  color: colorScheme.primary,
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                                 child: Text(
-                                  tag,
-                                  style: Theme.of(context).textTheme.labelSmall,
+                                  '已绑定',
+                                  style: TextStyle(
+                                    color: colorScheme.onPrimary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              );
-                            }).toList(),
-                          );
-                        },
-                      ),
-                    ],
-                    if (item.summary.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        item.summary,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        if (hasRating) ...[
+                          Row(
+                            children: [
+                              if (score > 0)
+                                Text(
+                                  'Bangumi ${score.toStringAsFixed(1)}',
+                                  style: ratingStyle,
+                                ),
+                              if (score > 0 && rank != null && rank > 0)
+                                const SizedBox(width: 8),
+                              if (rank != null && rank > 0)
+                                Text(
+                                  'Rank #$rank',
+                                  style: rankStyle,
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                        ],
+                        Text('放送：$airRangeText'),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ProgressSegmentsBar(
+                                watched: watchedEpisodes,
+                                updated: updatedValue,
+                                total: totalValue > 0
+                                    ? totalValue
+                                    : max(watchedEpisodes, updatedValue),
+                                showWatched: isBound,
+                              ),
                             ),
-                      ),
-                    ],
-                    if (isBound && missingCount > 0) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          EpisodeBadge(count: missingCount),
-                          const SizedBox(width: 6),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                isBound
+                                    ? '已追 $watchedText / $latestSegment / 总共 $totalText'
+                                    : '$latestSegment / 总共 $totalText',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (tagPool.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final maxPerLine =
+                                  max(1, (constraints.maxWidth / 88).floor());
+                              final maxLines = isGallery ? 2 : 1;
+                              final maxTags = max(1, maxPerLine * maxLines);
+                              final tags = tagPool.take(maxTags).toList();
+                              return Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: tags.map((tag) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.surfaceContainerHighest,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      tag,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall,
+                                    ),
+                                  );
+                                }).toList(),
+                              );
+                            },
+                          ),
+                        ],
+                        if (item.summary.isNotEmpty) ...[
+                          const SizedBox(height: 8),
                           Text(
-                            '还有 $missingCount 集未看',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.error,
-                                  fontWeight: FontWeight.w600,
+                            item.summary,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
                           ),
                         ],
-                      ),
-                    ],
-                  ],
-                ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            if (isBound && missingCount > 0)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: EpisodeBadge(count: missingCount),
+              ),
+          ],
         ),
       ),
     );

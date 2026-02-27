@@ -20,9 +20,7 @@ class RecommendationPage extends StatefulWidget {
 
 class _RecommendationPageState extends State<RecommendationPage> {
   late final RecommendationViewModel _viewModel;
-  late final PageController _pageController;
   late final TextEditingController _notionSearchController;
-  int _lastHeroIndex = 0;
 
   @override
   void initState() {
@@ -32,49 +30,15 @@ class _RecommendationPageState extends State<RecommendationPage> {
       notionApi: services.notionApi,
       bangumiApi: services.bangumiApi,
     );
-    _pageController = PageController();
     _notionSearchController = TextEditingController();
-    _viewModel.addListener(_handleModelUpdate);
     _viewModel.load(context.read<AppSettings>());
   }
 
   @override
   void dispose() {
-    _viewModel.removeListener(_handleModelUpdate);
     _viewModel.dispose();
-    _pageController.dispose();
     _notionSearchController.dispose();
     super.dispose();
-  }
-
-  void _handleModelUpdate() {
-    if (!mounted) return;
-    final jumpIndex = _viewModel.takePendingJumpIndex();
-    if (jumpIndex != null) {
-      _lastHeroIndex = jumpIndex;
-      _jumpToIndex(jumpIndex);
-      return;
-    }
-    final index = _viewModel.currentHeroIndex;
-    if (_pageController.hasClients && index != _lastHeroIndex) {
-      _lastHeroIndex = index;
-      _pageController.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  void _jumpToIndex(int index) {
-    if (_pageController.hasClients) {
-      _pageController.jumpToPage(index);
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_pageController.hasClients) return;
-      _pageController.jumpToPage(index);
-    });
   }
 
   String _formatDate(DateTime? date) {
@@ -244,8 +208,10 @@ class _RecommendationPageState extends State<RecommendationPage> {
         context,
         icon: Icons.inbox_outlined,
         title: model.emptyMessage!,
-        actionLabel: '换一部',
-        onAction: model.isLoading ? null : () => model.reshuffle(),
+        actionLabel: '刷新',
+        onAction: model.isLoading
+            ? null
+            : () => model.load(context.read<AppSettings>()),
       );
     }
 
@@ -254,26 +220,16 @@ class _RecommendationPageState extends State<RecommendationPage> {
         context,
         icon: Icons.inbox_outlined,
         title: '暂无推荐内容',
-        actionLabel: '换一部',
-        onAction: model.isLoading ? null : () => model.reshuffle(),
+        actionLabel: '刷新',
+        onAction: model.isLoading
+            ? null
+            : () => model.load(context.read<AppSettings>()),
       );
     }
 
-    return PageView.builder(
-      controller: _pageController,
-      itemCount: model.heroIndices.length,
-      onPageChanged: (index) {
-        _lastHeroIndex = index;
-        model.updateHeroIndex(index);
-      },
-      itemBuilder: (context, index) {
-        final recommendation = model.recommendationForHero(index);
-        if (recommendation == null) {
-          return const SizedBox.shrink();
-        }
-        return _buildHeroPage(context, model, recommendation);
-      },
-    );
+    final recommendation =
+        model.recommendationForHero(0) ?? model.dailyCandidates.first;
+    return _buildHeroPage(context, model, recommendation);
   }
 
   Widget _buildCenteredMessage(
@@ -443,10 +399,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
           hint: null,
         );
 
-        final header = _buildHeader(context, model);
+        final header = _buildHeader(context);
         final searchBar = _buildNotionSearchBar(context);
-        final pageIndicator = _buildPageIndicator(model);
-
         Widget content;
         if (isUltraWide) {
           content = IntrinsicHeight(
@@ -493,10 +447,6 @@ class _RecommendationPageState extends State<RecommendationPage> {
               header,
               const SizedBox(height: 12),
               searchBar,
-              if (pageIndicator != null) ...[
-                const SizedBox(height: 12),
-                pageIndicator,
-              ],
               const SizedBox(height: 16),
               content,
               const SizedBox(height: 20),
@@ -509,7 +459,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, RecommendationViewModel model) {
+  Widget _buildHeader(BuildContext context) {
     return Row(
       children: [
         Text(
@@ -518,35 +468,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
                 fontWeight: FontWeight.w600,
               ),
         ),
-        const Spacer(),
-        FilledButton.icon(
-          onPressed: model.isLoading ? null : () => model.reshuffle(),
-          icon: const Icon(Icons.shuffle),
-          label: const Text('换一下'),
-        ),
       ],
-    );
-  }
-
-  Widget? _buildPageIndicator(RecommendationViewModel model) {
-    if (model.heroIndices.length <= 1) return null;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(model.heroIndices.length, (index) {
-        final isActive = index == model.currentHeroIndex;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: isActive ? 18 : 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: isActive
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.outlineVariant,
-            borderRadius: BorderRadius.circular(999),
-          ),
-        );
-      }),
     );
   }
 
@@ -1266,6 +1188,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
                     model: model,
                     entry: entry,
                     showProgress: showProgress,
+                    isList: true,
                     onTap: () =>
                         _openNotionDetailFromWatchEntry(context, entry),
                   ),
@@ -1286,6 +1209,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
                   model: model,
                   entry: entry,
                   showProgress: showProgress,
+                  isList: false,
                   onTap: () => _openNotionDetailFromWatchEntry(context, entry),
                 );
               },
@@ -1300,6 +1224,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
     required RecommendationViewModel model,
     required NotionWatchEntry entry,
     required bool showProgress,
+    required bool isList,
     VoidCallback? onTap,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1388,56 +1313,61 @@ class _RecommendationPageState extends State<RecommendationPage> {
             ],
           );
 
-    return SizedBox(
-      width: showProgress ? 260 : 240,
-      child: Card(
-        color: colorScheme.surfaceContainerHighest,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: colorScheme.outlineVariant),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildRecentCover(context, entry.coverUrl ?? ''),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        entry.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      infoBlock,
-                    ],
+    final card = Card(
+      color: colorScheme.surfaceContainerHighest,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildRecentCover(context, entry.coverUrl ?? ''),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      entry.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    infoBlock,
+                  ],
+                ),
+              ),
+              if (showProgress)
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  tooltip: '+1',
+                  onPressed: () => _handleRecentIncrement(
+                    context,
+                    model,
+                    entry,
                   ),
                 ),
-                if (showProgress)
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    tooltip: '+1',
-                    onPressed: () => _handleRecentIncrement(
-                      context,
-                      model,
-                      entry,
-                    ),
-                  ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
+    );
+
+    if (isList) {
+      return card;
+    }
+    return SizedBox(
+      width: showProgress ? 260 : 240,
+      child: card,
     );
   }
 

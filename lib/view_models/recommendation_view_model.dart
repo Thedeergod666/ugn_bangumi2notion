@@ -179,7 +179,6 @@ class RecommendationViewModel extends ChangeNotifier {
         _emptyMessage =
             _dailyCandidates.isEmpty ? '暂无 ${minScore.toStringAsFixed(1)}+ 条目' : null;
         notifyListeners();
-        _startRotationTimer();
         final bindings = await _loadBindings();
         if (bindings != null) {
           await _loadLibraryStats(
@@ -239,7 +238,7 @@ class RecommendationViewModel extends ChangeNotifier {
       }
       notifyListeners();
 
-      _startRotationTimer();
+      // rotation disabled
       await _loadLibraryStats(
         token: _notionToken,
         databaseId: _notionDatabaseId,
@@ -249,7 +248,7 @@ class RecommendationViewModel extends ChangeNotifier {
     } catch (error, stackTrace) {
       final isTimeout = error is TimeoutException;
       _loading = false;
-      _errorMessage = isTimeout ? '网络较慢，点击换一部重试' : '加载失败，请稍后重试';
+      _errorMessage = isTimeout ? '网络较慢，点击刷新重试' : '加载失败，请稍后重试';
       _error = error;
       _stackTrace = stackTrace;
       notifyListeners();
@@ -277,7 +276,6 @@ class RecommendationViewModel extends ChangeNotifier {
     _currentHeroIndex = index;
     _showLongReview = false;
     notifyListeners();
-    _resetRotationTimer();
     await _saveDailyCache(
       candidates: _dailyCandidates,
       indices: _heroIndices,
@@ -304,7 +302,7 @@ class RecommendationViewModel extends ChangeNotifier {
       indices: _heroIndices,
       currentIndex: _currentHeroIndex,
     );
-    _startRotationTimer();
+    // rotation disabled
   }
 
   void toggleLongReview() {
@@ -897,14 +895,8 @@ class RecommendationViewModel extends ChangeNotifier {
 
   List<int> _pickHeroIndices(int count) {
     if (count <= 0) return [];
-    final size = min(count, heroSize);
     final rand = Random();
-    final picks = <int>{};
-    while (picks.length < size) {
-      picks.add(rand.nextInt(count));
-    }
-    final list = picks.toList()..shuffle(rand);
-    return list;
+    return [rand.nextInt(count)];
   }
 
   List<int> _normalizeHeroIndices(List<int> indices, int count) {
@@ -923,29 +915,9 @@ class RecommendationViewModel extends ChangeNotifier {
         : config.dailyRecommendationBindings;
   }
 
-  void _startRotationTimer() {
-    _rotationTimer?.cancel();
-    if (_heroIndices.length <= 1) return;
-    _rotationTimer = Timer.periodic(rotationInterval, (_) {
-      _advanceHeroIndex();
-    });
-  }
-
   void _stopRotationTimer() {
     _rotationTimer?.cancel();
     _rotationTimer = null;
-  }
-
-  void _resetRotationTimer() {
-    _startRotationTimer();
-  }
-
-  void _advanceHeroIndex() {
-    if (_heroIndices.length <= 1) return;
-    final nextIndex = (_currentHeroIndex + 1) % _heroIndices.length;
-    _currentHeroIndex = nextIndex;
-    _showLongReview = false;
-    notifyListeners();
   }
 
   void _notifyListenersSafe() {

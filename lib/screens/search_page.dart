@@ -22,12 +22,21 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   late final TextEditingController _controller;
   late final SearchViewModel _viewModel;
+  late final FocusNode _searchFocusNode;
   bool _initializedFromArgs = false;
+  bool _showHints = false;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController();
+    _searchFocusNode = FocusNode();
+    _searchFocusNode.addListener(() {
+      if (!mounted) return;
+      setState(() {
+        _showHints = _searchFocusNode.hasFocus;
+      });
+    });
     _viewModel = SearchViewModel(
       bangumiApi: context.read<AppServices>().bangumiApi,
       notionApi: context.read<AppServices>().notionApi,
@@ -63,8 +72,22 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void dispose() {
     _controller.dispose();
+    _searchFocusNode.dispose();
     _viewModel.dispose();
     super.dispose();
+  }
+
+  void _submitSearch(String keyword) {
+    final trimmed = keyword.trim();
+    if (trimmed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入关键词')),
+      );
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() => _showHints = false);
+    _viewModel.search(trimmed);
   }
 
   Future<void> _openNotionPage(String url) async {
@@ -143,7 +166,7 @@ class _SearchPageState extends State<SearchPage> {
               label: Text(item),
               onPressed: () {
                 _controller.text = item;
-                _viewModel.search(item);
+                _submitSearch(item);
               },
             );
           }).toList(),
@@ -186,7 +209,7 @@ class _SearchPageState extends State<SearchPage> {
                 label: Text(item),
                 onPressed: () {
                   _controller.text = item;
-                  _viewModel.search(item);
+                  _submitSearch(item);
                 },
               ),
             );
@@ -267,18 +290,20 @@ class _SearchPageState extends State<SearchPage> {
                       Expanded(
                         child: TextField(
                           controller: _controller,
+                          focusNode: _searchFocusNode,
                           decoration: const InputDecoration(
                             hintText: '输入番剧名称或关键词（最多 50 字）',
                             prefixIcon: Icon(Icons.search),
                           ),
                           onChanged: (_) => setState(() {}),
-                          onSubmitted: (_) => model.search(_controller.text),
+                          onSubmitted: _submitSearch,
                         ),
                       ),
                       const SizedBox(width: 12),
                       FilledButton.icon(
-                        onPressed:
-                            model.isLoading ? null : () => model.search(_controller.text),
+                        onPressed: model.isLoading
+                            ? null
+                            : () => _submitSearch(_controller.text),
                         icon: const Icon(Icons.search),
                         label: const Text('搜索'),
                       ),
@@ -288,10 +313,13 @@ class _SearchPageState extends State<SearchPage> {
                   if (model.source == SearchSource.bangumi)
                     _buildSearchControls(context, model, settings),
                   const SizedBox(height: 12),
-                  _buildSuggestionList(model),
-                  const SizedBox(height: 12),
-                  _buildHistorySection(model),
-                  const SizedBox(height: 16),
+                  if (_showHints) ...[
+                    _buildSuggestionList(model),
+                    const SizedBox(height: 12),
+                    _buildHistorySection(model),
+                    const SizedBox(height: 12),
+                  ],
+                  const SizedBox(height: 4),
                   const Text(
                     '搜索结果',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
