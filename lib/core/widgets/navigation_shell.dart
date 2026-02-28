@@ -3,8 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../app/app_settings.dart';
-import '../core/layout/breakpoints.dart';
+import '../../app/app_settings.dart';
+import '../layout/breakpoints.dart';
 import 'sidebar_recommendation_card.dart';
 
 class NavigationShell extends StatelessWidget {

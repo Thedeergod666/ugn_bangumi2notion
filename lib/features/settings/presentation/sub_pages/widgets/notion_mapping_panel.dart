@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../models/mapping_config.dart';
-import '../models/notion_models.dart';
+
+import '../../../../../models/mapping_config.dart';
+import '../../../../../models/notion_models.dart';
 
 class NotionMappingPanel extends StatelessWidget {
   final bool isLoading;

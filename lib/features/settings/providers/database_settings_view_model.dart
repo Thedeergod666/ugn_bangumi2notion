@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import '../app/app_settings.dart';
-import '../services/notion_api.dart';
+import '../../../app/app_settings.dart';
+import '../../../core/network/notion_api.dart';
 
 class DatabaseSettingsViewModel extends ChangeNotifier {
   DatabaseSettingsViewModel({

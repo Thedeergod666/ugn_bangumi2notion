@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../services/logging.dart';
+import '../../../core/utils/logging.dart';
 
 class ErrorLogViewModel extends ChangeNotifier {
   ErrorLogViewModel({required Logger logger}) : _logger = logger {

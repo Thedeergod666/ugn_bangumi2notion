@@ -8,14 +8,14 @@ import 'package:provider/provider.dart';
 
 import 'app/app_settings.dart';
 import 'app/app_services.dart';
-import 'screens/recommendation_page.dart';
-import 'screens/search_page.dart';
-import 'screens/settings_page.dart';
-import 'screens/mapping_page.dart';
-import 'screens/calendar_page.dart';
-import 'screens/notion_detail_page.dart';
-import 'services/logging.dart';
-import 'theme/kazumi_theme.dart';
+import 'core/theme/kazumi_theme.dart';
+import 'core/utils/logging.dart';
+import 'features/airing_calendar/presentation/calendar_page.dart';
+import 'features/dashboard/presentation/notion_detail_page.dart';
+import 'features/dashboard/presentation/recommendation_page.dart';
+import 'features/search/presentation/search_page.dart';
+import 'features/settings/presentation/settings_page.dart';
+import 'features/settings/presentation/sub_pages/mapping_page.dart';
 
 void main() {
   final logger = Logger();

@@ -1,18 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../app/app_services.dart';
-import '../app/app_settings.dart';
-import '../config/bangumi_oauth_config.dart';
-import '../view_models/settings_view_model.dart';
-import '../widgets/error_detail_dialog.dart';
-import '../widgets/navigation_shell.dart';
-import 'appearance_settings_page.dart';
-import 'database_settings_page.dart';
-import 'batch_import_page.dart';
-import 'error_log_page.dart';
+import '../../../app/app_services.dart';
+import '../../../app/app_settings.dart';
+import '../../../config/bangumi_oauth_config.dart';
+import '../../../core/widgets/error_detail_dialog.dart';
+import '../../../core/widgets/navigation_shell.dart';
+import '../providers/settings_view_model.dart';
+import 'settings_view.dart';
+import 'sub_pages/appearance_settings_page.dart';
+import 'sub_pages/batch_import_page.dart';
+import 'sub_pages/database_settings_page.dart';
+import 'sub_pages/error_log_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -38,9 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -55,9 +56,7 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
     final result = await _viewModel.authorize();
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     _showSnackBar(result.message, isError: !result.success);
     if (!result.success && result.error != null) {
       await showDialog(
@@ -72,9 +71,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _logoutBangumi() async {
     final result = await _viewModel.logout();
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     _showSnackBar(result.message, isError: !result.success);
     if (!result.success && result.error != null) {
       await showDialog(
@@ -88,9 +85,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _showBangumiConfigMissingDialog() async {
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
+
     bool showEnvInputs = false;
     await showDialog(
       context: context,
@@ -103,8 +99,8 @@ class _SettingsPageState extends State<SettingsPage> {
             children: [
               Text(
                 '${BangumiOAuthConfig.missingMessage}\n'
-                '请在环境变量/打包参数中添加这两个，或联系开发人员重新打包。\n'
-                '提示：写入环境变量后需要重新打包/重启应用。',
+                '请在环境变量/打包参数中配置这些值，或联系开发者重新打包。\n'
+                '提示：写入环境变量后需重启应用。',
               ),
               if (showEnvInputs) ...[
                 const SizedBox(height: 16),
@@ -121,7 +117,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   decoration: const InputDecoration(
                     labelText: 'BANGUMI_CLIENT_SECRET',
                     border: OutlineInputBorder(),
-                    helperText: '可选，Bangumi 允许为空，但仍建议填写',
+                    helperText: '可选，但建议填写',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -131,7 +127,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     final clientSecret =
                         _bangumiClientSecretController.text.trim();
                     if (clientId.isEmpty) {
-                      _showSnackBar('BANGUMI_CLIENT_ID 不能为空', isError: true);
+                      _showSnackBar(
+                        'BANGUMI_CLIENT_ID 不能为空',
+                        isError: true,
+                      );
                       return;
                     }
                     try {
@@ -169,11 +168,9 @@ class _SettingsPageState extends State<SettingsPage> {
               child: const Text('关闭'),
             ),
             TextButton(
-              onPressed: () {
-                setDialogState(() {
-                  showEnvInputs = !showEnvInputs;
-                });
-              },
+              onPressed: () => setDialogState(() {
+                showEnvInputs = !showEnvInputs;
+              }),
               child: Text(showEnvInputs ? '收起环境变量' : '添加环境变量'),
             ),
             FilledButton(
@@ -192,9 +189,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _openPage(Widget page) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => page),
-    );
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
   }
 
   @override
@@ -211,333 +206,50 @@ class _SettingsPageState extends State<SettingsPage> {
       value: _viewModel,
       child: Consumer<SettingsViewModel>(
         builder: (context, model, _) {
+          final userLabel = model.bangumiUser == null
+              ? '未获取到用户信息'
+              : (model.bangumiUser!.nickname.isNotEmpty
+                  ? model.bangumiUser!.nickname
+                  : '已登录');
+
           return NavigationShell(
             title: '设置',
             selectedRoute: '/settings',
-            child: model.isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _sectionTitle('账号与同步'),
-                      _buildBangumiCard(model),
-                      if (model.errorMessage != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          model.errorMessage!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ],
-                      if (model.successMessage != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          model.successMessage!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      _sectionTitle('数据与外观'),
-                      _buildGroup(
-                        context,
-                        [
-                          _buildNavTile(
-                            icon: Icons.storage_rounded,
-                            title: '数据绑定',
-                            subtitle: '配置 Notion Token 与数据库 ID',
-                            onTap: () =>
-                                _openPage(const DatabaseSettingsPage()),
-                          ),
-                          _buildNavTile(
-                            icon: Icons.map_outlined,
-                            title: '数据映射',
-                            subtitle: 'Bangumi/Notion 字段映射',
-                            onTap: () =>
-                                Navigator.of(context).pushNamed('/mapping'),
-                          ),
-                          _buildNavTile(
-                            icon: Icons.cloud_upload_outlined,
-                            title: '批量导入/更新',
-                            subtitle: '批量绑定 Bangumi ID',
-                            onTap: () => _openPage(const BatchImportPage()),
-                          ),
-                          _buildNavTile(
-                            icon: Icons.palette_outlined,
-                            title: '外观',
-                            subtitle: '主题与配色方案',
-                            onTap: () =>
-                                _openPage(const AppearanceSettingsPage()),
-                          ),
-                          _buildNavTile(
-                            icon: Icons.bug_report_outlined,
-                            title: '错误日志',
-                            subtitle: '应用运行时错误日志',
-                            onTap: () => _openPage(const ErrorLogPage()),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      _sectionTitle('其他'),
-                      _buildGroup(
-                        context,
-                        [
-                          _buildPlaceholderTile(
-                            icon: Icons.system_update_alt_outlined,
-                            title: '自动更新',
-                            subtitle: '占位',
-                          ),
-                          _buildPlaceholderTile(
-                            icon: Icons.link_outlined,
-                            title: 'GitHub',
-                            subtitle: '占位',
-                          ),
-                          _buildPlaceholderTile(
-                            icon: Icons.volunteer_activism_outlined,
-                            title: '捐赠',
-                            subtitle: '占位',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      _sectionTitle('开发者'),
-                      _buildGroup(
-                        context,
-                        [
-                          _buildCopyableTile(
-                            context,
-                            label: 'OAuth 回调地址',
-                            value: 'http://localhost:8080/auth/callback',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '请在 Bangumi 开发者后台登记该回调地址，授权时会通过本地回调接收 code。',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
+            child: SettingsView(
+              oauthCallbackUrl: 'http://localhost:8080/auth/callback',
+              state: SettingsViewState(
+                isLoading: model.isLoading,
+                isSaving: model.isSaving,
+                isBangumiLoading: model.isBangumiLoading,
+                bangumiHasToken: model.bangumiHasToken,
+                bangumiTokenValid: model.bangumiTokenValid,
+                bangumiUserLabel: userLabel,
+                errorMessage: model.errorMessage,
+                successMessage: model.successMessage,
+              ),
+              callbacks: SettingsViewCallbacks(
+                onAuthorize: () => unawaited(_authorize()),
+                onLogout: () => unawaited(_logoutBangumi()),
+                onRefreshBangumiStatus: model.refreshBangumiStatus,
+                onOpenDatabaseSettings: () =>
+                    _openPage(const DatabaseSettingsPage()),
+                onOpenMapping: () => Navigator.of(context).pushNamed('/mapping'),
+                onOpenBatchImport: () => _openPage(const BatchImportPage()),
+                onOpenAppearance: () =>
+                    _openPage(const AppearanceSettingsPage()),
+                onOpenErrorLog: () => _openPage(const ErrorLogPage()),
+                onCopyOAuthCallbackUrl: () {
+                  Clipboard.setData(
+                    const ClipboardData(
+                      text: 'http://localhost:8080/auth/callback',
+                    ),
+                  );
+                  _showSnackBar('已复制回调地址');
+                },
+              ),
+            ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildBangumiCard(SettingsViewModel model) {
-    final hasToken = model.bangumiHasToken;
-    final userLabel = model.bangumiUser == null
-        ? '未获取到用户信息'
-        : (model.bangumiUser!.nickname.isNotEmpty
-            ? model.bangumiUser!.nickname
-            : '已登录');
-    final statusText = hasToken
-        ? (model.bangumiTokenValid ? '已登录' : 'Token 无效或已过期')
-        : '未登录';
-    final statusColor = model.bangumiTokenValid
-        ? Colors.green
-        : (hasToken ? Colors.orange : Colors.grey);
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        children: [
-          ListTile(
-            leading: Icon(Icons.account_circle, color: statusColor),
-            title: Text(
-              statusText,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: statusColor,
-              ),
-            ),
-            subtitle: Text(
-              userLabel,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
-            ),
-            trailing: TextButton.icon(
-              onPressed:
-                  model.isBangumiLoading ? null : model.refreshBangumiStatus,
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('刷新'),
-            ),
-          ),
-          Divider(height: 1, color: colorScheme.outlineVariant),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: model.isSaving ? null : _authorize,
-                        icon: model.isBangumiLoading
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.lock_open),
-                        label: const Text('登录/授权'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    OutlinedButton.icon(
-                      onPressed: (model.isSaving || !model.bangumiHasToken)
-                          ? null
-                          : _logoutBangumi,
-                      icon: const Icon(Icons.logout),
-                      label: const Text('登出'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '点击授权将打开系统浏览器，完成登录后会回调到本地地址。',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCopyableTile(
-    BuildContext context, {
-    required String label,
-    required String value,
-  }) {
-    return InkWell(
-      onTap: () {
-        Clipboard.setData(ClipboardData(text: value));
-        _showSnackBar('已复制到剪贴板: $value');
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        child: Row(
-          children: [
-            const Icon(Icons.link_rounded, size: 18),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.copy_rounded,
-              size: 16,
-              color: Theme.of(context)
-                  .colorScheme
-                  .primary
-                  .withValues(alpha: 0.7),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGroup(BuildContext context, List<Widget> tiles) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        children: _addDividers(context, tiles),
-      ),
-    );
-  }
-
-  Widget _buildPlaceholderTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.lock_outline),
-      onTap: null,
-    );
-  }
-
-  List<Widget> _addDividers(BuildContext context, List<Widget> tiles) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final children = <Widget>[];
-    for (var i = 0; i < tiles.length; i++) {
-      if (i > 0) {
-        children.add(
-          Divider(height: 1, color: colorScheme.outlineVariant),
-        );
-      }
-      children.add(tiles[i]);
-    }
-    return children;
-  }
-
-  Widget _buildNavTile({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    VoidCallback? onTap,
-  }) {
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(title),
-      subtitle: subtitle == null ? null : Text(subtitle),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: onTap,
-    );
-  }
-
-  Widget _sectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        title,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     );
   }

@@ -2,12 +2,12 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
-import '../app/app_settings.dart';
-import '../models/bangumi_models.dart';
-import '../models/mapping_config.dart';
-import '../services/bangumi_api.dart';
-import '../services/notion_api.dart';
-import '../services/settings_storage.dart';
+import '../../../app/app_settings.dart';
+import '../../../core/database/settings_storage.dart';
+import '../../../core/network/bangumi_api.dart';
+import '../../../core/network/notion_api.dart';
+import '../../../models/bangumi_models.dart';
+import '../../../models/mapping_config.dart';
 
 class CalendarViewModel extends ChangeNotifier {
   CalendarViewModel({

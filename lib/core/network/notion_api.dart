@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
-import '../models/bangumi_models.dart';
-import '../services/bangumi_api.dart';
-import '../models/mapping_config.dart';
-import '../models/notion_models.dart';
+import '../../models/bangumi_models.dart';
+import '../../models/mapping_config.dart';
+import '../../models/notion_models.dart';
+import '../utils/logging.dart';
+import 'bangumi_api.dart';
 import 'http_retry.dart';
-import 'logging.dart';
 part 'notion_api_daily_reco.dart';
 part 'notion_api_sync.dart';
 

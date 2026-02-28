@@ -7,10 +7,10 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-import '../config/bangumi_oauth_config.dart';
-import '../models/bangumi_models.dart';
+import '../../config/bangumi_oauth_config.dart';
+import '../../models/bangumi_models.dart';
+import '../database/settings_storage.dart';
 import 'bangumi_api.dart';
-import 'settings_storage.dart';
 
 class BangumiOAuth {
   BangumiOAuth({http.Client? client, SettingsStorage? storage})

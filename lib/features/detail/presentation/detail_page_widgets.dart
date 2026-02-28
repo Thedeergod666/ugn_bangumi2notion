@@ -1,4 +1,4 @@
-part of 'detail_page.dart';
+part of 'detail_view.dart';
 
 class RatingChart extends StatelessWidget {
   const RatingChart({

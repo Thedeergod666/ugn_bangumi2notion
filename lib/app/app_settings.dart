@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../services/settings_storage.dart';
+import '../core/database/settings_storage.dart';
 
 class AppSettings extends ChangeNotifier {
   AppSettings({SettingsStorage? storage})

@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../app/app_settings.dart';
-import '../theme/kazumi_theme.dart';
-import '../view_models/appearance_settings_view_model.dart';
-import '../widgets/navigation_shell.dart';
+import '../../../../app/app_settings.dart';
+import '../../../../core/theme/kazumi_theme.dart';
+import '../../../../core/widgets/navigation_shell.dart';
+import '../../providers/appearance_settings_view_model.dart';
+import 'appearance_settings_view.dart';
 
 class AppearanceSettingsPage extends StatelessWidget {
   const AppearanceSettingsPage({super.key});
@@ -34,27 +37,27 @@ class AppearanceSettingsPage extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('深色模式'),
+          title: const Text('主题模式'),
           content: RadioGroup<ThemeMode>(
             groupValue: model.themeMode,
             onChanged: (value) => Navigator.pop(context, value),
-            child: Column(
+            child: const Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 RadioListTile<ThemeMode>(
-                  title: const Text('跟随系统'),
+                  title: Text('跟随系统'),
                   value: ThemeMode.system,
-                  selected: model.themeMode == ThemeMode.system,
+                  dense: true,
                 ),
                 RadioListTile<ThemeMode>(
-                  title: const Text('浅色模式'),
+                  title: Text('浅色模式'),
                   value: ThemeMode.light,
-                  selected: model.themeMode == ThemeMode.light,
+                  dense: true,
                 ),
                 RadioListTile<ThemeMode>(
-                  title: const Text('深色模式'),
+                  title: Text('深色模式'),
                   value: ThemeMode.dark,
-                  selected: model.themeMode == ThemeMode.dark,
+                  dense: true,
                 ),
               ],
             ),
@@ -155,153 +158,43 @@ class AppearanceSettingsPage extends StatelessWidget {
           AppearanceSettingsViewModel(settings: context.read<AppSettings>()),
       child: Consumer<AppearanceSettingsViewModel>(
         builder: (context, model, _) {
-          final colorScheme = Theme.of(context).colorScheme;
-          final seedLabel =
-              KazumiTheme.seedForId(model.colorSchemeId).label;
+          final seedLabel = KazumiTheme.seedForId(model.colorSchemeId).label;
 
           return NavigationShell(
             title: '外观设置',
             selectedRoute: '/settings',
             onBack: () => Navigator.of(context).pop(),
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _sectionTitle('外观'),
-                _buildGroup(
-                  context,
-                  [
-                    _buildActionTile(
-                      title: '深色模式',
-                      trailing: Text(_themeModeLabel(model.themeMode)),
-                      onTap: () => _showThemeModePicker(context, model),
-                    ),
-                    _buildActionTile(
-                      title: '配色方案',
-                      trailing: Text(seedLabel),
-                      onTap: () => _showColorSchemePicker(context, model),
-                    ),
-                    _buildSwitchTile(
-                      title: '动态配色',
-                      value: model.useDynamicColor,
-                      onChanged: model.setUseDynamicColor,
-                    ),
-                    _buildSwitchTile(
-                      title: '使用系统字体',
-                      subtitle: '关闭后使用内置字体',
-                      value: model.useSystemFont,
-                      onChanged: model.setUseSystemFont,
-                    ),
-                    _buildSwitchTile(
-                      title: '显示评分',
-                      subtitle: '控制评分/排名显示',
-                      value: model.showRatings,
-                      onChanged: model.setShowRatings,
-                    ),
-                  ],
+            child: AppearanceSettingsView(
+              state: AppearanceSettingsViewState(
+                themeModeLabel: _themeModeLabel(model.themeMode),
+                colorSchemeLabel: seedLabel,
+                useDynamicColor: model.useDynamicColor,
+                useSystemFont: model.useSystemFont,
+                showRatings: model.showRatings,
+                oledOptimization: model.oledOptimization,
+                useSystemTitleBar: model.useSystemTitleBar,
+              ),
+              callbacks: AppearanceSettingsViewCallbacks(
+                onPickThemeMode: () => unawaited(
+                  _showThemeModePicker(context, model),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '动态配色仅支持安卓12及以上和桌面平台',
-                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                onPickColorScheme: () => unawaited(
+                  _showColorSchemePicker(context, model),
                 ),
-                const SizedBox(height: 20),
-                _sectionTitle('OLED优化'),
-                _buildGroup(
-                  context,
-                  [
-                    _buildSwitchTile(
-                      title: 'OLED优化',
-                      subtitle: '深色模式下使用纯黑背景',
-                      value: model.oledOptimization,
-                      onChanged: model.setOledOptimization,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _sectionTitle('窗口'),
-                _buildGroup(
-                  context,
-                  [
-                    _buildSwitchTile(
-                      title: '使用系统标题栏',
-                      subtitle: '重启应用生效',
-                      value: model.useSystemTitleBar,
-                      onChanged: model.setUseSystemTitleBar,
-                    ),
-                  ],
-                ),
-              ],
+                onUseDynamicColorChanged: (value) =>
+                    unawaited(model.setUseDynamicColor(value)),
+                onUseSystemFontChanged: (value) =>
+                    unawaited(model.setUseSystemFont(value)),
+                onShowRatingsChanged: (value) =>
+                    unawaited(model.setShowRatings(value)),
+                onOledOptimizationChanged: (value) =>
+                    unawaited(model.setOledOptimization(value)),
+                onUseSystemTitleBarChanged: (value) =>
+                    unawaited(model.setUseSystemTitleBar(value)),
+              ),
             ),
           );
         },
-      ),
-    );
-  }
-
-
-  Widget _buildGroup(BuildContext context, List<Widget> tiles) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        children: _addDividers(context, tiles),
-      ),
-    );
-  }
-
-  List<Widget> _addDividers(BuildContext context, List<Widget> tiles) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final children = <Widget>[];
-    for (var i = 0; i < tiles.length; i++) {
-      if (i > 0) {
-        children.add(
-          Divider(height: 1, color: colorScheme.outlineVariant),
-        );
-      }
-      children.add(tiles[i]);
-    }
-    return children;
-  }
-
-  Widget _buildActionTile({
-    required String title,
-    required Widget trailing,
-    VoidCallback? onTap,
-  }) {
-    return ListTile(
-      title: Text(title),
-      trailing: trailing,
-      onTap: onTap,
-    );
-  }
-
-  Widget _buildSwitchTile({
-    required String title,
-    String? subtitle,
-    required bool value,
-    required Future<void> Function(bool) onChanged,
-  }) {
-    return ListTile(
-      title: Text(title),
-      subtitle: subtitle == null ? null : Text(subtitle),
-      trailing: Switch(
-        value: value,
-        onChanged: (next) => onChanged(next),
-      ),
-      onTap: () => onChanged(!value),
-    );
-  }
-
-  Widget _sectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        title,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     );
   }

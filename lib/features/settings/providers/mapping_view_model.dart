@@ -1,10 +1,10 @@
 ﻿import 'package:flutter/material.dart';
 
-import '../app/app_settings.dart';
-import '../models/mapping_config.dart';
-import '../models/notion_models.dart';
-import '../services/notion_api.dart';
-import '../services/settings_storage.dart';
+import '../../../app/app_settings.dart';
+import '../../../core/database/settings_storage.dart';
+import '../../../core/network/notion_api.dart';
+import '../../../models/mapping_config.dart';
+import '../../../models/notion_models.dart';
 
 enum MappingFieldType {
   title,

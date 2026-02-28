@@ -1,9 +1,11 @@
-part of 'detail_page.dart';
+part of 'detail_view.dart';
 
 mixin _DetailPageSections {
+  DetailViewState get state;
+  DetailViewCallbacks get callbacks;
+
   Widget _buildOverviewTab(
     BuildContext context,
-    DetailViewModel model,
     BangumiSubjectDetail detail,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -16,15 +18,15 @@ mixin _DetailPageSections {
           _buildSectionTitle(context, '简介'),
           const SizedBox(height: 12),
           InkWell(
-            onTap: model.toggleSummaryExpanded,
+            onTap: callbacks.onToggleSummaryExpanded,
             borderRadius: BorderRadius.circular(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   detail.summary.isEmpty ? '暂无简介' : detail.summary,
-                  maxLines: model.isSummaryExpanded ? null : 6,
-                  overflow: model.isSummaryExpanded
+                  maxLines: state.isSummaryExpanded ? null : 6,
+                  overflow: state.isSummaryExpanded
                       ? TextOverflow.visible
                       : TextOverflow.ellipsis,
                   style: textTheme.bodyMedium?.copyWith(
@@ -37,7 +39,7 @@ mixin _DetailPageSections {
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      model.isSummaryExpanded ? '收起' : '展开全部',
+                      state.isSummaryExpanded ? '收起' : '展开全部',
                       style: TextStyle(
                         color: colorScheme.primary,
                         fontWeight: FontWeight.bold,
@@ -61,37 +63,36 @@ mixin _DetailPageSections {
             children: detail.tags.isEmpty
                 ? [const Chip(label: Text('暂无标签'))]
                 : detail.tags
-                    .map((tag) => InkWell(
-                          onTap: () {
-                            Clipboard.setData(ClipboardData(text: tag));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('已复制标签: $tag'),
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerLow,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: colorScheme.outlineVariant,
-                              ),
-                            ),
-                            child: Text(
-                              tag,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: colorScheme.onSurface,
-                                fontWeight: FontWeight.w600,
-                              ),
+                    .map(
+                      (tag) => InkWell(
+                        onTap: () => callbacks.onCopyText(
+                          tag,
+                          '已复制标签: $tag',
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: colorScheme.outlineVariant,
                             ),
                           ),
-                        ))
+                          child: Text(
+                            tag,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
                     .toList(),
           ),
           const SizedBox(height: 100),
@@ -115,24 +116,27 @@ mixin _DetailPageSections {
     );
   }
 
-  Widget _buildCommentsTab(BuildContext context, DetailViewModel model) {
+  Widget _buildCommentsTab(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final showRatings = context.watch<AppSettings>().showRatings;
-    if (model.isCommentsLoading) {
+    final showRatings = state.showRatings;
+
+    if (state.isCommentsLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (model.comments.isEmpty) {
+    if (state.comments.isEmpty) {
       return RefreshIndicator(
-        onRefresh: model.loadComments,
+        onRefresh: callbacks.onRefreshComments,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: SizedBox(
             height: 300,
             child: Center(
-              child: Text('暂无吐槽',
-                  style: TextStyle(color: colorScheme.onSurfaceVariant)),
+              child: Text(
+                '暂无吐槽',
+                style: TextStyle(color: colorScheme.onSurfaceVariant),
+              ),
             ),
           ),
         ),
@@ -140,14 +144,14 @@ mixin _DetailPageSections {
     }
 
     return RefreshIndicator(
-      onRefresh: model.loadComments,
+      onRefresh: callbacks.onRefreshComments,
       child: ListView.separated(
         padding: const EdgeInsets.all(20),
-        itemCount: model.comments.length,
+        itemCount: state.comments.length,
         separatorBuilder: (context, index) =>
             Divider(height: 32, color: colorScheme.outlineVariant),
         itemBuilder: (context, index) {
-          final comment = model.comments[index];
+          final comment = state.comments[index];
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -327,15 +331,10 @@ mixin _DetailPageSections {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 InkWell(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: item.value));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('已复制${item.key}: ${item.value}'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  },
+                  onTap: () => callbacks.onCopyText(
+                    item.value,
+                    '已复制 ${item.key}: ${item.value}',
+                  ),
                   borderRadius: BorderRadius.circular(4),
                   child: SizedBox(
                     width: 80,
@@ -369,3 +368,4 @@ mixin _DetailPageSections {
     );
   }
 }
+

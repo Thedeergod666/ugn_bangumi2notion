@@ -1,9 +1,9 @@
 import 'package:http/http.dart' as http;
 
-import '../services/bangumi_api.dart';
-import '../services/bangumi_oauth.dart';
-import '../services/logging.dart';
-import '../services/notion_api.dart';
+import '../core/network/bangumi_api.dart';
+import '../core/network/bangumi_oauth.dart';
+import '../core/network/notion_api.dart';
+import '../core/utils/logging.dart';
 
 class AppServices {
   AppServices({Logger? logger, http.Client? client})

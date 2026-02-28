@@ -13,8 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_utools/app/app_services.dart';
 import 'package:flutter_utools/app/app_settings.dart';
+import 'package:flutter_utools/features/airing_calendar/presentation/calendar_page.dart';
 import 'package:flutter_utools/main.dart';
-import 'package:flutter_utools/screens/calendar_page.dart';
 
 void main() {
   testWidgets('App launches to calendar page', (WidgetTester tester) async {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../app/app_settings.dart';
+import '../../../app/app_settings.dart';
 
 class AppearanceSettingsViewModel extends ChangeNotifier {
   AppearanceSettingsViewModel({required AppSettings settings})

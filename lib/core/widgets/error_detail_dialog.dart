@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../services/logging.dart';
+import '../utils/logging.dart';
 
 class ErrorDetailDialog extends StatefulWidget {
   const ErrorDetailDialog({

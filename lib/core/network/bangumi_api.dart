@@ -3,9 +3,9 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../models/bangumi_models.dart';
+import '../../models/bangumi_models.dart';
 import 'http_retry.dart';
-import 'logging.dart';
+import '../utils/logging.dart';
 
 class BangumiApi {
   BangumiApi({http.Client? client, Logger? logger})

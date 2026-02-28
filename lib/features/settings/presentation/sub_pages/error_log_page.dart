@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../services/logging.dart';
-import '../view_models/error_log_view_model.dart';
-import '../widgets/navigation_shell.dart';
+import '../../../../core/utils/logging.dart';
+import '../../../../core/widgets/navigation_shell.dart';
+import '../../providers/error_log_view_model.dart';
+import 'error_log_view.dart';
 
 class ErrorLogPage extends StatelessWidget {
   const ErrorLogPage({super.key});
@@ -12,11 +13,12 @@ class ErrorLogPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (context) =>
-          ErrorLogViewModel(logger: context.read<Logger>()),
+      create: (context) => ErrorLogViewModel(logger: context.read<Logger>()),
       child: Consumer<ErrorLogViewModel>(
         builder: (context, model, _) {
           final entries = model.entries;
+          final viewState = ErrorLogViewState(entries: entries);
+
           return NavigationShell(
             title: '错误日志',
             selectedRoute: '/settings',
@@ -48,109 +50,11 @@ class ErrorLogPage extends StatelessWidget {
                 icon: const Icon(Icons.delete_outline),
               ),
             ],
-            child: SelectionArea(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Text(
-                    '共 ${entries.length} 条记录',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 12),
-                  if (entries.isEmpty)
-                    _buildEmptyState(context)
-                  else
-                    ...entries.map((entry) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _buildLogCard(context, entry),
-                        )),
-                ],
-              ),
-            ),
+            child: ErrorLogView(state: viewState),
           );
         },
       ),
     );
   }
-
-
-  Widget _buildEmptyState(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
-      ),
-      child: const Text('暂无错误日志'),
-    );
-  }
-
-  Widget _buildLogCard(BuildContext context, LogEntry entry) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final levelColor =
-        entry.level == LogLevel.error ? colorScheme.error : colorScheme.primary;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.error_outline, color: levelColor),
-              const SizedBox(width: 8),
-              Text(
-                entry.level.name.toUpperCase(),
-                style: TextStyle(
-                  color: levelColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                entry.formattedTime,
-                style: TextStyle(
-                  color: colorScheme.onSurfaceVariant,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SelectableText(
-            entry.message,
-            style: TextStyle(
-              color: colorScheme.onSurface,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          if (entry.error != null) ...[
-            const SizedBox(height: 6),
-            SelectableText(
-              'Error: ${entry.error}',
-              style: TextStyle(color: colorScheme.onSurfaceVariant),
-            ),
-          ],
-          if (entry.stackTrace != null) ...[
-            const SizedBox(height: 6),
-            SelectableText(
-              entry.stackTrace.toString(),
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }
+

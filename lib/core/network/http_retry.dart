@@ -4,7 +4,7 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
-import 'logging.dart';
+import '../utils/logging.dart';
 
 Future<http.Response> sendWithRetry({
   required Logger logger,

@@ -1,18 +1,15 @@
-import 'dart:ui';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../app/app_services.dart';
-import '../app/app_settings.dart';
-import '../models/bangumi_models.dart';
-import '../view_models/detail_view_model.dart';
-import '../widgets/error_detail_dialog.dart';
-
-part 'detail_page_sections.dart';
-part 'detail_page_widgets.dart';
+import '../../../app/app_services.dart';
+import '../../../app/app_settings.dart';
+import '../../../core/widgets/error_detail_dialog.dart';
+import '../providers/detail_view_model.dart';
+import 'detail_view.dart';
 
 class DetailPage extends StatelessWidget {
   const DetailPage({super.key, required this.subjectId});
@@ -28,94 +25,57 @@ class DetailPage extends StatelessWidget {
         notionApi: context.read<AppServices>().notionApi,
         settings: context.read<AppSettings>(),
       )..load(),
-      child: const _DetailView(),
+      child: Consumer<DetailViewModel>(
+        builder: (context, model, _) {
+          final showRatings = context.watch<AppSettings>().showRatings;
+
+          return DetailView(
+            state: DetailViewState(
+              isLoading: model.isLoading,
+              isCommentsLoading: model.isCommentsLoading,
+              isImporting: model.isImporting,
+              isSummaryExpanded: model.isSummaryExpanded,
+              showRatings: showRatings,
+              errorMessage: model.errorMessage,
+              detail: model.detail,
+              comments: model.comments,
+            ),
+            callbacks: DetailViewCallbacks(
+              onBack: () => Navigator.of(context).pop(),
+              onRetryLoad: () => unawaited(model.load()),
+              onImportToNotion: model.isImporting
+                  ? () {}
+                  : () => unawaited(_showImportConfirmDialog(context, model)),
+              onOpenBangumi: () => unawaited(_openBangumiSubject()),
+              onToggleSummaryExpanded: model.toggleSummaryExpanded,
+              onRefreshComments: model.loadComments,
+              onCopyText: (text, message) => _copyText(
+                context,
+                text,
+                message: message,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
-}
 
-class _DetailView extends StatelessWidget with _DetailPageSections {
-  const _DetailView();
-
-  @override
-  Widget build(BuildContext context) {
-    final model = context.watch<DetailViewModel>();
-
-    if (model.isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+  Future<void> _openBangumiSubject() async {
+    final url = Uri.parse('https://bgm.tv/subject/$subjectId');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
     }
+  }
 
-    if (model.errorMessage != null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline,
-                    size: 64, color: Theme.of(context).colorScheme.error),
-                const SizedBox(height: 16),
-                Text(
-                  model.errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: model.load,
-                  child: const Text('重试'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    final detail = model.detail;
-    if (detail == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('暂无详情数据')),
-      );
-    }
-
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        body: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) {
-            return [
-              _buildSliverAppBar(context, detail),
-            ];
-          },
-          body: TabBarView(
-            children: [
-              _buildOverviewTab(context, model, detail),
-              _buildStaffTab(context, detail),
-              _buildCommentsTab(context, model),
-            ],
-          ),
-        ),
-        floatingActionButton: model.isImporting
-            ? null
-            : FloatingActionButton.extended(
-                onPressed: () => _showImportConfirmDialog(context, model),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                icon: const Icon(Icons.auto_awesome_rounded),
-                label: Text(
-                  '导入到 Notion',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
-              ),
-      ),
+  void _copyText(
+    BuildContext context,
+    String text, {
+    required String message,
+  }) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -510,222 +470,6 @@ class _DetailView extends StatelessWidget with _DetailPageSections {
       child: Text(
         title,
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-      ),
-    );
-  }
-
-  Widget _buildSliverAppBar(BuildContext context, BangumiSubjectDetail detail) {
-    final title = detail.nameCn.isNotEmpty ? detail.nameCn : detail.name;
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final ratingColor = colorScheme.tertiary;
-    final showRatings = context.watch<AppSettings>().showRatings;
-    return SliverAppBar(
-      expandedHeight: 380,
-      pinned: true,
-      stretch: true,
-      backgroundColor: colorScheme.surface,
-      leading: IconButton(
-        icon: Icon(Icons.arrow_back, color: colorScheme.onSurface),
-        onPressed: () => Navigator.pop(context),
-      ),
-      actions: const [],
-      flexibleSpace: FlexibleSpaceBar(
-        stretchModes: const [
-          StretchMode.zoomBackground,
-          StretchMode.blurBackground
-        ],
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (detail.imageUrl.isNotEmpty)
-              ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                child: Opacity(
-                  opacity: 0.5,
-                  child: Image.network(detail.imageUrl, fit: BoxFit.cover),
-                ),
-              ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    colorScheme.surface.withValues(alpha: 0.2),
-                    colorScheme.surface,
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 100, 16, 60),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Hero(
-                    tag: 'subject-${detail.id}',
-                    child: Container(
-                      width: 120,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.4),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          )
-                        ],
-                        image: detail.imageUrl.isNotEmpty
-                            ? DecorationImage(
-                                image: NetworkImage(detail.imageUrl),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                      ),
-                      child: detail.imageUrl.isEmpty
-                          ? const Icon(Icons.image,
-                              size: 48, color: Colors.white24)
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: textTheme.titleLarge?.copyWith(
-                            color: colorScheme.onSurface,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          detail.airDate,
-                          style: textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        if (showRatings) ...[
-                          Row(
-                            children: [
-                              Text(
-                                detail.score.toStringAsFixed(1),
-                                style: TextStyle(
-                                  color: ratingColor,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: List.generate(5, (index) {
-                                      final rating = detail.score / 2;
-                                      if (index < rating.floor()) {
-                                        return Icon(
-                                          Icons.star,
-                                          color: ratingColor,
-                                          size: 12,
-                                        );
-                                      } else if (index < rating) {
-                                        return Icon(
-                                          Icons.star_half,
-                                          color: ratingColor,
-                                          size: 12,
-                                        );
-                                      } else {
-                                        return Icon(
-                                          Icons.star_border,
-                                          color: ratingColor,
-                                          size: 12,
-                                        );
-                                      }
-                                    }),
-                                  ),
-                                  Text(
-                                    'Rank #${detail.rank ?? "N/A"}',
-                                    style: textTheme.labelSmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                        ] else
-                          const SizedBox(height: 16),
-                        InkWell(
-                          onTap: () async {
-                            final url = Uri.parse(
-                                'https://bgm.tv/subject/${detail.id}');
-                            if (await canLaunchUrl(url)) {
-                              await launchUrl(url);
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color:
-                                  colorScheme.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color:
-                                    colorScheme.primary.withValues(alpha: 0.4),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.open_in_new,
-                                  color: colorScheme.primary,
-                                  size: 14,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Bangumi',
-                                  style: TextStyle(
-                                      color: colorScheme.primary,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (showRatings)
-                    Expanded(
-                      child: RatingChart(
-                        ratingCount: detail.ratingCount,
-                        total: detail.ratingTotal,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottom: const TabBar(
-        tabs: [
-          Tab(text: '概述'),
-          Tab(text: '制作'),
-          Tab(text: '吐槽'),
-        ],
       ),
     );
   }

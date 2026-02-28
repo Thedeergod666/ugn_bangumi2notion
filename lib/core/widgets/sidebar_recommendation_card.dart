@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../app/app_settings.dart';
-import '../models/notion_models.dart';
-import '../screens/detail_page.dart';
-import '../services/settings_storage.dart';
+import '../../app/app_settings.dart';
+import '../../models/notion_models.dart';
+import '../../features/detail/presentation/detail_page.dart';
+import '../database/settings_storage.dart';
 
 class SidebarRecommendationCard extends StatefulWidget {
   const SidebarRecommendationCard({

@@ -2,12 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../app/app_services.dart';
-import '../app/app_settings.dart';
-import '../config/bangumi_oauth_config.dart';
-import '../models/bangumi_models.dart';
-import '../services/bangumi_api.dart';
-import '../services/bangumi_oauth.dart';
+import '../../../app/app_services.dart';
+import '../../../app/app_settings.dart';
+import '../../../config/bangumi_oauth_config.dart';
+import '../../../core/network/bangumi_api.dart';
+import '../../../core/network/bangumi_oauth.dart';
+import '../../../models/bangumi_models.dart';
 
 class SettingsActionResult {
   final bool success;
