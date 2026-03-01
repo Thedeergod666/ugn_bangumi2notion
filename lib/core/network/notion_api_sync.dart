@@ -808,6 +808,7 @@ extension NotionApiSync on NotionApi {
     required String databaseId,
     required String idPropertyName,
     required String titlePropertyName,
+    String notionIdPropertyName = '',
     int limit = 30,
   }) async {
     final normalizedDatabaseId = _normalizePageId(databaseId);
@@ -817,6 +818,7 @@ extension NotionApiSync on NotionApi {
     if (idPropertyName.trim().isEmpty) return [];
 
     String propertyType = 'number';
+    String notionIdPropertyType = '';
     try {
       final properties = await getDatabaseProperties(
         token: token,
@@ -828,6 +830,15 @@ extension NotionApiSync on NotionApi {
       );
       if (prop.type.isNotEmpty) {
         propertyType = prop.type;
+      }
+      if (notionIdPropertyName.trim().isNotEmpty) {
+        final notionIdProp = properties.firstWhere(
+          (p) => p.name == notionIdPropertyName,
+          orElse: () => NotionProperty(name: notionIdPropertyName, type: ''),
+        );
+        if (notionIdProp.type.isNotEmpty) {
+          notionIdPropertyType = notionIdProp.type;
+        }
       }
     } catch (e) {
       _logger.debug('Schema fetch failed in getPagesWithoutBangumiId: $e');
@@ -896,11 +907,24 @@ extension NotionApiSync on NotionApi {
       final title =
           titleProperty != null ? (_extractPlainText(titleProperty) ?? '') : '';
       if (title.isEmpty) continue;
+      String? notionIdValue;
+      if (notionIdPropertyName.trim().isNotEmpty) {
+        final notionIdProperty =
+            properties[notionIdPropertyName] as Map<String, dynamic>?;
+        notionIdValue = _extractPropertyDisplayValue(
+          notionIdProperty,
+          propertyType: notionIdPropertyType,
+        );
+        if (notionIdValue != null && notionIdValue.trim().isEmpty) {
+          notionIdValue = null;
+        }
+      }
       items.add(
         NotionSearchItem(
           id: item['id']?.toString() ?? '',
           title: title,
           url: item['url']?.toString() ?? '',
+          notionId: notionIdValue,
         ),
       );
     }

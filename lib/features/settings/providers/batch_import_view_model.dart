@@ -92,6 +92,7 @@ class BatchImportViewModel extends ChangeNotifier {
         databaseId: databaseId,
         idPropertyName: idProperty,
         titlePropertyName: titleProperty,
+        notionIdPropertyName: mappingConfig.notionId.trim(),
         limit: 30,
       );
 
@@ -101,8 +102,9 @@ class BatchImportViewModel extends ChangeNotifier {
         if (keyword.isEmpty) continue;
         final matches = await _bangumiApi.search(
           keyword: keyword,
-          accessToken:
-              _settings.bangumiAccessToken.isEmpty ? null : _settings.bangumiAccessToken,
+          accessToken: _settings.bangumiAccessToken.isEmpty
+              ? null
+              : _settings.bangumiAccessToken,
           sort: 'match',
         );
         results.add(

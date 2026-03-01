@@ -160,11 +160,13 @@ class NotionSearchItem {
   final String id;
   final String title;
   final String url;
+  final String? notionId;
 
   const NotionSearchItem({
     required this.id,
     required this.title,
     required this.url,
+    this.notionId,
   });
 }
 

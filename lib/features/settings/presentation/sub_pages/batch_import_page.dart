@@ -25,7 +25,7 @@ class BatchImportPage extends StatelessWidget {
           subjectId: bangumiId,
           autoOpenImportDialog: true,
           prefillBindToExisting: true,
-          prefillNotionId: candidate.notionItem.id,
+          prefillNotionId: candidate.notionItem.notionId,
         ),
       ),
     );

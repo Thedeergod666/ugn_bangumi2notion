@@ -204,6 +204,50 @@ class NotionApi {
     return null;
   }
 
+  String? _extractPropertyDisplayValue(
+    Map<String, dynamic>? property, {
+    String? propertyType,
+  }) {
+    if (property == null) return null;
+    final type = (propertyType?.trim().isNotEmpty ?? false)
+        ? propertyType!.trim()
+        : (property['type']?.toString().trim() ?? '');
+
+    if (type == 'unique_id' || property.containsKey('unique_id')) {
+      final uniqueId = property['unique_id'];
+      if (uniqueId is Map<String, dynamic>) {
+        final number = uniqueId['number'];
+        final prefix = uniqueId['prefix']?.toString() ?? '';
+        final numberText = number?.toString() ?? '';
+        if (numberText.isNotEmpty) {
+          return prefix.isEmpty ? numberText : '$prefix$numberText';
+        }
+      }
+    }
+
+    final plain = _extractPlainText(property);
+    if (plain != null && plain.isNotEmpty) return plain;
+
+    final number = _extractNumberValue(property);
+    if (number != null) {
+      if (number == number.roundToDouble()) {
+        return number.toInt().toString();
+      }
+      return number.toString();
+    }
+
+    final url = property['url']?.toString().trim() ?? '';
+    if (url.isNotEmpty) return url;
+
+    final selectName = property['select']?['name']?.toString().trim() ?? '';
+    if (selectName.isNotEmpty) return selectName;
+
+    final statusName = property['status']?['name']?.toString().trim() ?? '';
+    if (statusName.isNotEmpty) return statusName;
+
+    return null;
+  }
+
   DateTime? _extractDateValue(Map<String, dynamic> property) {
     DateTime? parseDate(dynamic value) {
       if (value == null) return null;
