@@ -44,7 +44,7 @@ class RecommendationViewModel extends ChangeNotifier {
 
   static const double minScore = 6.5;
   static const int heroSize = 3;
-  static const int dailyCacheVersion = 4;
+  static const int dailyCacheVersion = 5;
   static const int logTextLimit = 200;
   static const Duration rotationInterval = Duration(seconds: 20);
   static const List<String> scoreLabels = [
@@ -115,8 +115,9 @@ class RecommendationViewModel extends ChangeNotifier {
   Object? get error => _error;
   StackTrace? get stackTrace => _stackTrace;
   Map<int, BangumiSubjectDetail> get bangumiDetailCache => _bangumiDetailCache;
-  int? latestEpisodeFor(int subjectId) =>
-      _recentLatestEpisodeCache[subjectId];
+  Map<String, RecommendationNotionContent> get notionContentCache =>
+      _notionContentCache;
+  int? latestEpisodeFor(int subjectId) => _recentLatestEpisodeCache[subjectId];
   List<RecommendationScoreBin> get scoreBins => _scoreBins;
   int get scoreTotal => _scoreTotal;
   bool get isRecentLoading => _recentLoading;
@@ -176,8 +177,9 @@ class RecommendationViewModel extends ChangeNotifier {
         _currentHeroIndex = currentIndex;
         _pendingJumpIndex = currentIndex;
         _loading = false;
-        _emptyMessage =
-            _dailyCandidates.isEmpty ? '暂无 ${minScore.toStringAsFixed(1)}+ 条目' : null;
+        _emptyMessage = _dailyCandidates.isEmpty
+            ? '暂无 ${minScore.toStringAsFixed(1)}+ 条目'
+            : null;
         notifyListeners();
         final bindings = await _loadBindings();
         if (bindings != null) {
@@ -343,7 +345,8 @@ class RecommendationViewModel extends ChangeNotifier {
     return _notionContentLoading.contains(pageId);
   }
 
-  RecommendationNotionContent? notionContentFor(DailyRecommendation recommendation) {
+  RecommendationNotionContent? notionContentFor(
+      DailyRecommendation recommendation) {
     final pageId = recommendation.pageId?.trim() ?? '';
     if (pageId.isEmpty) return null;
     return _notionContentCache[pageId];
@@ -627,8 +630,7 @@ class RecommendationViewModel extends ChangeNotifier {
         limit: 10,
       );
 
-      final sortedWatched = [...watched]
-        ..sort((a, b) {
+      final sortedWatched = [...watched]..sort((a, b) {
           final ad = a.lastWatchedAt ?? a.lastEditedAt;
           final bd = b.lastWatchedAt ?? b.lastEditedAt;
           if (ad == null && bd == null) return 0;
@@ -649,7 +651,6 @@ class RecommendationViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
-
 
   Future<RecentWatchUpdateResult?> incrementRecentWatch(
     NotionWatchEntry entry,
@@ -805,8 +806,7 @@ class RecommendationViewModel extends ChangeNotifier {
     try {
       final decoded = jsonDecode(payload);
       if (decoded is! Map<String, dynamic>) return null;
-      final version =
-          int.tryParse(decoded['version']?.toString() ?? '') ?? 0;
+      final version = int.tryParse(decoded['version']?.toString() ?? '') ?? 0;
       if (version < dailyCacheVersion) {
         return null;
       }
@@ -946,8 +946,8 @@ class RecommendationViewModel extends ChangeNotifier {
     }
     return List.generate(
       scoreLabels.length,
-      (index) =>
-          RecommendationScoreBin(label: scoreLabels[index], count: counts[index]),
+      (index) => RecommendationScoreBin(
+          label: scoreLabels[index], count: counts[index]),
     );
   }
 
@@ -978,7 +978,6 @@ class _RecommendationCacheData {
     required this.currentIndex,
   });
 }
-
 
 class RecentWatchUpdateResult {
   final String pageId;

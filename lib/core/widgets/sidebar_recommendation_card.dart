@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../app/app_services.dart';
 import '../../app/app_settings.dart';
+import '../network/notion_api.dart';
 import '../../models/notion_models.dart';
 import '../../features/detail/presentation/detail_page.dart';
 import '../database/settings_storage.dart';
@@ -81,15 +83,44 @@ class _SidebarRecommendationCardState extends State<SidebarRecommendationCard> {
               int.tryParse(decoded['currentIndex']?.toString() ?? '') ?? 0;
           final resolvedIndex =
               indices.isNotEmpty ? indices[currentIndex % indices.length] : 0;
-          return _SidebarRecommendation.from(candidates[resolvedIndex]);
+          final recommendation =
+              _SidebarRecommendation.from(candidates[resolvedIndex]);
+          return _resolveSidebarCover(recommendation);
         }
         final recommendation = DailyRecommendation.fromJson(decoded);
-        return _SidebarRecommendation.from(recommendation);
+        return _resolveSidebarCover(
+            _SidebarRecommendation.from(recommendation));
       }
     } catch (_) {
       return null;
     }
     return null;
+  }
+
+  Future<_SidebarRecommendation> _resolveSidebarCover(
+    _SidebarRecommendation recommendation,
+  ) async {
+    final directCover = recommendation.coverUrl?.trim() ?? '';
+    if (directCover.isNotEmpty) return recommendation;
+
+    final pageId = recommendation.pageId?.trim() ?? '';
+    if (pageId.isEmpty) return recommendation;
+
+    final token = context.read<AppSettings>().notionToken.trim();
+    if (token.isEmpty) return recommendation;
+
+    try {
+      final notionApi = context.read<AppServices>().notionApi;
+      final content = await notionApi.getPageContent(
+        token: token,
+        pageId: pageId,
+      );
+      final contentCover = content.coverUrl?.trim() ?? '';
+      if (contentCover.isEmpty) return recommendation;
+      return recommendation.copyWith(coverUrl: contentCover);
+    } catch (_) {
+      return recommendation;
+    }
   }
 
   void _openDetail(int subjectId) {
@@ -277,12 +308,14 @@ class _SidebarRecommendation {
   final String? coverUrl;
   final String? yougnScoreText;
   final int? subjectId;
+  final String? pageId;
 
   const _SidebarRecommendation({
     required this.title,
     required this.coverUrl,
     required this.yougnScoreText,
     required this.subjectId,
+    required this.pageId,
   });
 
   factory _SidebarRecommendation.from(DailyRecommendation recommendation) {
@@ -290,11 +323,34 @@ class _SidebarRecommendation {
         ? recommendation.subjectId
         : recommendation.bangumiId;
     final subjectId = rawId == null ? null : int.tryParse(rawId.trim());
+    final directCover = recommendation.cover?.trim() ?? '';
+    final contentCover = recommendation.contentCoverUrl?.trim() ?? '';
+    final resolvedCover = directCover.isNotEmpty
+        ? directCover
+        : (contentCover.isNotEmpty ? contentCover : null);
+    final rawPageId = recommendation.pageId?.trim() ?? '';
     return _SidebarRecommendation(
       title: recommendation.title,
-      coverUrl: recommendation.cover,
+      coverUrl: resolvedCover,
       yougnScoreText: recommendation.yougnScore?.toStringAsFixed(1),
       subjectId: subjectId,
+      pageId: rawPageId.isEmpty ? null : rawPageId,
+    );
+  }
+
+  _SidebarRecommendation copyWith({
+    String? title,
+    String? coverUrl,
+    String? yougnScoreText,
+    int? subjectId,
+    String? pageId,
+  }) {
+    return _SidebarRecommendation(
+      title: title ?? this.title,
+      coverUrl: coverUrl ?? this.coverUrl,
+      yougnScoreText: yougnScoreText ?? this.yougnScoreText,
+      subjectId: subjectId ?? this.subjectId,
+      pageId: pageId ?? this.pageId,
     );
   }
 }

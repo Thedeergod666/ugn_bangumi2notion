@@ -34,6 +34,8 @@ class _NotionDetailPageState extends State<NotionDetailPage> {
   String? _contentCoverUrl;
   String? _contentLongReview;
   bool _loadingContent = false;
+  String? _bangumiCoverUrl;
+  bool _loadingBangumiCover = false;
 
   DailyRecommendation? get _recommendation => widget.recommendation;
 
@@ -43,6 +45,7 @@ class _NotionDetailPageState extends State<NotionDetailPage> {
     _contentCoverUrl = widget.recommendation?.contentCoverUrl;
     _contentLongReview = widget.recommendation?.contentLongReview;
     unawaited(_loadNotionContentIfNeeded());
+    unawaited(_loadBangumiCoverIfNeeded());
   }
 
   Future<void> _loadNotionContentIfNeeded() async {
@@ -60,10 +63,11 @@ class _NotionDetailPageState extends State<NotionDetailPage> {
 
     setState(() => _loadingContent = true);
     try {
-      final content = await context.read<AppServices>().notionApi.getPageContent(
-            token: token,
-            pageId: pageId,
-          );
+      final content =
+          await context.read<AppServices>().notionApi.getPageContent(
+                token: token,
+                pageId: pageId,
+              );
       if (!mounted) return;
       setState(() {
         _contentCoverUrl = content.coverUrl ?? _contentCoverUrl;
@@ -74,6 +78,49 @@ class _NotionDetailPageState extends State<NotionDetailPage> {
     } finally {
       if (mounted) {
         setState(() => _loadingContent = false);
+      }
+    }
+
+    // If cover is still missing, try Bangumi as a fallback.
+    await _loadBangumiCoverIfNeeded();
+  }
+
+  int? _resolveSubjectId(DailyRecommendation recommendation) {
+    final raw = (recommendation.subjectId?.trim().isNotEmpty == true)
+        ? recommendation.subjectId
+        : recommendation.bangumiId;
+    if (raw == null || raw.trim().isEmpty) return null;
+    return int.tryParse(raw.trim());
+  }
+
+  Future<void> _loadBangumiCoverIfNeeded() async {
+    final recommendation = _recommendation;
+    if (recommendation == null) return;
+    if (_loadingBangumiCover) return;
+
+    final needCover = _resolveCoverUrl(recommendation).isEmpty;
+    if (!needCover) return;
+
+    final subjectId = _resolveSubjectId(recommendation);
+    if (subjectId == null) return;
+    if ((_bangumiCoverUrl?.trim() ?? '').isNotEmpty) return;
+
+    setState(() => _loadingBangumiCover = true);
+    try {
+      final token = context.read<AppSettings>().bangumiAccessToken.trim();
+      final detail = await context.read<AppServices>().bangumiApi.fetchDetail(
+            subjectId: subjectId,
+            accessToken: token.isEmpty ? null : token,
+          );
+      if (!mounted) return;
+      final cover = detail.imageUrl.trim();
+      if (cover.isEmpty) return;
+      setState(() => _bangumiCoverUrl = cover);
+    } catch (_) {
+      // ignore Bangumi fallback failures
+    } finally {
+      if (mounted) {
+        setState(() => _loadingBangumiCover = false);
       }
     }
   }
@@ -110,8 +157,10 @@ class _NotionDetailPageState extends State<NotionDetailPage> {
       callbacks: NotionDetailViewCallbacks(
         onBack: () => Navigator.maybePop(context),
         onSyncContent: () => unawaited(_loadNotionContentIfNeeded()),
-        onOpenNotionPage: () => unawaited(_openUrl(recommendation.pageUrl ?? '')),
-        onOpenBangumiPage: () => unawaited(_openUrl(_buildBangumiUrl(recommendation))),
+        onOpenNotionPage: () =>
+            unawaited(_openUrl(recommendation.pageUrl ?? '')),
+        onOpenBangumiPage: () =>
+            unawaited(_openUrl(_buildBangumiUrl(recommendation))),
       ),
     );
   }
@@ -124,7 +173,8 @@ class _NotionDetailPageState extends State<NotionDetailPage> {
     final cached = recommendation.contentCoverUrl?.trim() ?? '';
     if (cached.isNotEmpty) return cached;
     final loaded = _contentCoverUrl?.trim() ?? '';
-    return loaded;
+    if (loaded.isNotEmpty) return loaded;
+    return _bangumiCoverUrl?.trim() ?? '';
   }
 
   String _resolveLongReview(DailyRecommendation recommendation) {

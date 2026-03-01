@@ -72,20 +72,29 @@ extension NotionApiDailyRecommendation on NotionApi {
   }) async {
     final sw = Stopwatch()..start();
     final blocks = await _fetchPageBlocks(token: token, pageId: pageId);
-    String? coverUrl;
+    String? mediaBlockCover;
+    String? textImageCover;
     final paragraphs = <String>[];
     for (final block in blocks) {
-      coverUrl ??= _extractImageUrlFromBlock(block);
+      mediaBlockCover ??= _extractMediaUrlFromBlock(block);
+      if (textImageCover == null) {
+        final richText = _extractRichTextListFromBlock(block);
+        textImageCover = _extractImageUrlFromRichText(richText);
+      }
       final text = _extractTextFromBlock(block);
       if (text != null && text.isNotEmpty) {
         paragraphs.add(text);
+        textImageCover ??= _extractImageUrlFromText(text);
       }
     }
     final longReview = paragraphs.isEmpty ? null : paragraphs.join('\n');
     _logger.debug(
       'getPageContent parsed ${blocks.length} blocks in ${sw.elapsedMilliseconds}ms',
     );
-    return (coverUrl: coverUrl, longReview: longReview);
+    return (
+      coverUrl: mediaBlockCover ?? textImageCover,
+      longReview: longReview
+    );
   }
 
   Future<String?> _resolveBangumiCover({
@@ -425,6 +434,7 @@ extension NotionApiDailyRecommendation on NotionApi {
     final randomIndex = Random().nextInt(results.length);
     final page = results[randomIndex] as Map<String, dynamic>;
     final properties = page['properties'] as Map<String, dynamic>? ?? {};
+    final pageCover = _extractCoverUrlFromPage(page);
 
     String? readText(String key) {
       if (key.isEmpty) return null;
@@ -479,9 +489,13 @@ extension NotionApiDailyRecommendation on NotionApi {
       if (key.isEmpty) return null;
       final property = properties[key] as Map<String, dynamic>?;
       if (property == null) return null;
-      return _extractFilesUrl(property) ??
-          _extractUrl(property) ??
-          _extractPlainText(property);
+      final files = _extractFilesUrl(property);
+      if (files != null && files.trim().isNotEmpty) return files;
+
+      final directUrl = _extractUrl(property);
+      if (_isLikelyImageUrl(directUrl)) return directUrl!.trim();
+
+      return _extractImageUrlFromText(_extractPlainText(property));
     }
 
     final title = readText(bindings.title) ?? '';
@@ -511,8 +525,7 @@ extension NotionApiDailyRecommendation on NotionApi {
 
     final bangumiId = readText(bindings.bangumiId ?? '');
     final subjectId = readText(bindings.subjectId ?? '');
-    final bangumiScore =
-        readNumber(bindings.bangumiScore) ??
+    final bangumiScore = readNumber(bindings.bangumiScore) ??
         readScoreFallback(bindings.bangumiScore);
     final followDate = readDate(bindings.followDate);
     DateTime? airDate = readDate(bindings.airDate);
@@ -565,7 +578,7 @@ extension NotionApiDailyRecommendation on NotionApi {
       type: readSelect(bindings.type),
       shortReview: readText(bindings.shortReview),
       longReview: readText(bindings.longReview),
-      cover: bangumiCover ?? coverProperty,
+      cover: bangumiCover ?? coverProperty ?? pageCover,
       contentCoverUrl: contentCoverUrl,
       contentLongReview: contentLongReview,
       bangumiId: bangumiId,
@@ -765,9 +778,13 @@ extension NotionApiDailyRecommendation on NotionApi {
       if (key.isEmpty) return null;
       final property = properties[key] as Map<String, dynamic>?;
       if (property == null) return null;
-      return _extractFilesUrl(property) ??
-          _extractUrl(property) ??
-          _extractPlainText(property);
+      final files = _extractFilesUrl(property);
+      if (files != null && files.trim().isNotEmpty) return files;
+
+      final directUrl = _extractUrl(property);
+      if (_isLikelyImageUrl(directUrl)) return directUrl!.trim();
+
+      return _extractImageUrlFromText(_extractPlainText(property));
     }
 
     final candidates = <DailyRecommendation>[];
@@ -785,8 +802,7 @@ extension NotionApiDailyRecommendation on NotionApi {
       final subjectId = readText(properties, bindings.subjectId ?? '');
       final pageId = item['id']?.toString();
       final pageUrl = item['url']?.toString();
-      final bangumiScore =
-          readNumber(properties, bindings.bangumiScore) ??
+      final bangumiScore = readNumber(properties, bindings.bangumiScore) ??
           readScoreFallback(properties, bindings.bangumiScore);
       final followDate = readDate(properties, bindings.followDate);
       DateTime? airDate = readDate(properties, bindings.airDate);
@@ -801,7 +817,8 @@ extension NotionApiDailyRecommendation on NotionApi {
       final director = readText(properties, bindings.director);
       final script = readText(properties, bindings.script);
       final storyboard = readText(properties, bindings.storyboard);
-      final cover = readCover(properties, bindings.cover);
+      final cover = readCover(properties, bindings.cover) ??
+          _extractCoverUrlFromPage(item);
 
       candidates.add(
         DailyRecommendation(
@@ -930,8 +947,8 @@ extension NotionApiDailyRecommendation on NotionApi {
         if (bangumiScoreProperty != null &&
             bangumiScoreProperty.trim().isNotEmpty) {
           bangumiScore =
-                  readScore(properties, bangumiScoreProperty, bangumiScoreType) ??
-              0;
+              readScore(properties, bangumiScoreProperty, bangumiScoreType) ??
+                  0;
         }
         entries.add(
           NotionScoreEntry(

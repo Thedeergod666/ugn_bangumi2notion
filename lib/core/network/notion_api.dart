@@ -34,6 +34,17 @@ class NotionApi {
   static const int _dailyRecommendationTargetItems = 50;
   static const int _scoreHistogramMaxItems = 1000;
   static const int _logTextLimit = 200;
+  static const Set<String> _imageExtensions = {
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.gif',
+    '.bmp',
+    '.avif',
+    '.svg',
+  };
+  static final RegExp _urlPattern = RegExp('https?://[^\\s<>"\\\']+');
 
   void dispose() {
     if (_ownsClient) {
@@ -254,16 +265,143 @@ class NotionApi {
     return text.isEmpty ? null : text;
   }
 
+  bool _isLikelyImageUrl(String? raw) {
+    if (raw == null) return false;
+    final candidate = raw.trim();
+    if (candidate.isEmpty) return false;
+    final uri = Uri.tryParse(candidate);
+    if (uri == null) return false;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return false;
+    final path = uri.path.toLowerCase();
+    if (path.isEmpty) return false;
+    return _imageExtensions.any(path.endsWith);
+  }
+
+  String _normalizeUrlCandidate(String raw) {
+    var value = raw.trim();
+    if (value.isEmpty) return value;
+    const leading = '<(["\'';
+    const trailing = ')>],;"\'!?.';
+
+    while (value.isNotEmpty && leading.contains(value[0])) {
+      value = value.substring(1);
+    }
+    while (value.isNotEmpty && trailing.contains(value[value.length - 1])) {
+      value = value.substring(0, value.length - 1);
+    }
+    return value;
+  }
+
+  String? _extractImageUrlFromText(String? text) {
+    if (text == null || text.trim().isEmpty) return null;
+    for (final match in _urlPattern.allMatches(text)) {
+      final hit = match.group(0);
+      if (hit == null || hit.isEmpty) continue;
+      final candidate = _normalizeUrlCandidate(hit);
+      if (_isLikelyImageUrl(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  String? _extractImageUrlFromRichText(List<dynamic>? richText) {
+    if (richText == null || richText.isEmpty) return null;
+    for (final item in richText) {
+      if (item is! Map<String, dynamic>) continue;
+      final href = _normalizeUrlCandidate(item['href']?.toString() ?? '');
+      if (_isLikelyImageUrl(href)) return href;
+
+      final text = item['text'];
+      if (text is Map<String, dynamic>) {
+        final link = text['link'];
+        if (link is Map<String, dynamic>) {
+          final linked = _normalizeUrlCandidate(link['url']?.toString() ?? '');
+          if (_isLikelyImageUrl(linked)) return linked;
+        }
+        final content =
+            _extractImageUrlFromText(text['content']?.toString() ?? '');
+        if (content != null) return content;
+      }
+
+      final plain = _extractImageUrlFromText(item['plain_text']?.toString());
+      if (plain != null) return plain;
+    }
+    return null;
+  }
+
+  String? _extractMediaUrlFromBlock(Map<String, dynamic> block) {
+    final type = block['type']?.toString();
+    if (type == null || type.isEmpty) return null;
+    if (type == 'image') {
+      return _extractImageUrlFromBlock(block);
+    }
+
+    String? candidate;
+    final data = block[type];
+    if (data is! Map<String, dynamic>) return null;
+
+    switch (type) {
+      case 'bookmark':
+      case 'embed':
+      case 'link_preview':
+        candidate = data['url']?.toString();
+        break;
+      case 'video':
+      case 'file':
+      case 'pdf':
+        final sourceType = data['type']?.toString();
+        if (sourceType == 'external') {
+          candidate = data['external']?['url']?.toString();
+        } else if (sourceType == 'file') {
+          candidate = data['file']?['url']?.toString();
+        }
+        candidate ??= data['url']?.toString();
+        break;
+    }
+
+    if (candidate == null || candidate.trim().isEmpty) return null;
+    final normalized = _normalizeUrlCandidate(candidate);
+    return _isLikelyImageUrl(normalized) ? normalized : null;
+  }
+
+  List<dynamic>? _extractRichTextListFromBlock(Map<String, dynamic> block) {
+    final type = block['type']?.toString();
+    if (type == null || type.isEmpty) return null;
+    final data = block[type];
+    if (data is! Map<String, dynamic>) return null;
+    final richText = data['rich_text'];
+    if (richText is! List || richText.isEmpty) return null;
+    return richText;
+  }
+
+  String? _extractCoverUrlFromPage(Map<String, dynamic> page) {
+    final cover = page['cover'];
+    if (cover is! Map<String, dynamic>) return null;
+    final type = cover['type']?.toString();
+    if (type == 'external') {
+      final url = cover['external']?['url']?.toString() ?? '';
+      return url.trim().isEmpty ? null : url.trim();
+    }
+    if (type == 'file') {
+      final url = cover['file']?['url']?.toString() ?? '';
+      return url.trim().isEmpty ? null : url.trim();
+    }
+    return null;
+  }
+
   String? _extractImageUrlFromBlock(Map<String, dynamic> block) {
     if (block['type'] != 'image') return null;
     final image = block['image'] as Map<String, dynamic>?;
     if (image == null) return null;
     final type = image['type']?.toString();
     if (type == 'external') {
-      return image['external']?['url']?.toString();
+      final url = image['external']?['url']?.toString() ?? '';
+      return url.trim().isEmpty ? null : url.trim();
     }
     if (type == 'file') {
-      return image['file']?['url']?.toString();
+      final url = image['file']?['url']?.toString() ?? '';
+      return url.trim().isEmpty ? null : url.trim();
     }
     return null;
   }

@@ -29,6 +29,7 @@ class RecommendationViewState {
     required this.recentWatching,
     required this.recentWatched,
     required this.bangumiDetailCache,
+    required this.notionContentCache,
     required this.recentLatestEpisodeCache,
     required this.notionSearchController,
   });
@@ -54,6 +55,7 @@ class RecommendationViewState {
   final List<NotionWatchEntry> recentWatching;
   final List<NotionWatchEntry> recentWatched;
   final Map<int, BangumiSubjectDetail> bangumiDetailCache;
+  final Map<String, RecommendationNotionContent> notionContentCache;
   final Map<int, int> recentLatestEpisodeCache;
 
   final TextEditingController notionSearchController;
@@ -95,8 +97,10 @@ class RecommendationView extends StatelessWidget {
         final isMedium = constraints.maxWidth >= 900;
 
         final leftPanel = _buildLeftPanel(context, horizontal: isMedium);
-        final rankCard = _buildRankCard(context, hint: isUltraWide ? null : '点击切换');
-        final reviewCard = _buildLongReviewCard(context, hint: isUltraWide ? null : '点击切换');
+        final rankCard =
+            _buildRankCard(context, hint: isUltraWide ? null : '点击切换');
+        final reviewCard =
+            _buildLongReviewCard(context, hint: isUltraWide ? null : '点击切换');
         final rightPanel = isUltraWide
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -203,7 +207,8 @@ class RecommendationView extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final coverUrl = state.coverUrl;
 
-    final cover = _buildCoverImage(context, coverUrl: coverUrl, stretch: horizontal);
+    final cover =
+        _buildCoverImage(context, coverUrl: coverUrl, stretch: horizontal);
     final info = _buildInfoContent(context);
 
     final content = horizontal
@@ -264,11 +269,14 @@ class RecommendationView extends StatelessWidget {
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => Container(
               color: colorScheme.surfaceContainerHighest,
-              child: const Center(child: Icon(Icons.broken_image_outlined, size: 48)),
+              child: const Center(
+                  child: Icon(Icons.broken_image_outlined, size: 48)),
             ),
           );
 
-    final child = stretch ? SizedBox.expand(child: image) : AspectRatio(aspectRatio: 3 / 4, child: image);
+    final child = stretch
+        ? SizedBox.expand(child: image)
+        : AspectRatio(aspectRatio: 3 / 4, child: image);
     return child;
   }
 
@@ -304,7 +312,8 @@ class RecommendationView extends StatelessWidget {
             runSpacing: 8,
             children: [
               _pill(context, 'Yougn', yougnScore?.toStringAsFixed(1) ?? '-'),
-              _pill(context, 'Bangumi', bangumiScore?.toStringAsFixed(1) ?? '-'),
+              _pill(
+                  context, 'Bangumi', bangumiScore?.toStringAsFixed(1) ?? '-'),
               _pill(context, 'Rank', rankText()),
             ],
           ),
@@ -458,7 +467,9 @@ class RecommendationView extends StatelessWidget {
           SizedBox(
             width: 84,
             child: Text(
-              total == 0 ? '-' : '${percent.toStringAsFixed(1)}% / ${bin.count}',
+              total == 0
+                  ? '-'
+                  : '${percent.toStringAsFixed(1)}% / ${bin.count}',
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: highlight
@@ -475,9 +486,8 @@ class RecommendationView extends StatelessWidget {
   Widget _buildLongReviewCard(BuildContext context, {String? hint}) {
     final colorScheme = Theme.of(context).colorScheme;
     final trimmed = state.longReview.trim();
-    final displayText = trimmed.isNotEmpty
-        ? trimmed
-        : (state.showLongReview ? '暂无长评' : '暂无长评');
+    final displayText =
+        trimmed.isNotEmpty ? trimmed : (state.showLongReview ? '暂无长评' : '暂无长评');
     final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: trimmed.isNotEmpty
               ? colorScheme.onSurface
@@ -680,8 +690,10 @@ class RecommendationView extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final watched = entry.watchedEpisodes ?? 0;
     final subjectId = int.tryParse(entry.bangumiId ?? '');
-    final detail = subjectId != null ? state.bangumiDetailCache[subjectId] : null;
-    final latest = subjectId != null ? state.recentLatestEpisodeCache[subjectId] : null;
+    final detail =
+        subjectId != null ? state.bangumiDetailCache[subjectId] : null;
+    final latest =
+        subjectId != null ? state.recentLatestEpisodeCache[subjectId] : null;
     final total = detail?.epsCount ?? entry.totalEpisodes ?? 0;
     final updated = latest ?? 0;
     final progressText = total > 0 ? '已追 $watched / $total' : '已追 $watched';
@@ -768,7 +780,7 @@ class RecommendationView extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildRecentCover(context, entry.coverUrl ?? ''),
+              _buildRecentCover(context, entry),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -803,7 +815,28 @@ class RecommendationView extends StatelessWidget {
     return SizedBox(width: showProgress ? 260 : 240, child: card);
   }
 
-  Widget _buildRecentCover(BuildContext context, String url) {
+  String _resolveRecentCoverUrl(NotionWatchEntry entry) {
+    final direct = entry.coverUrl?.trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+
+    final pageId = entry.id.trim();
+    if (pageId.isNotEmpty) {
+      final cached = state.notionContentCache[pageId]?.coverUrl?.trim() ?? '';
+      if (cached.isNotEmpty) return cached;
+    }
+
+    final subjectId = int.tryParse(entry.bangumiId ?? '');
+    if (subjectId != null) {
+      final detailCover =
+          state.bangumiDetailCache[subjectId]?.imageUrl.trim() ?? '';
+      if (detailCover.isNotEmpty) return detailCover;
+    }
+
+    return '';
+  }
+
+  Widget _buildRecentCover(BuildContext context, NotionWatchEntry entry) {
+    final url = _resolveRecentCoverUrl(entry);
     final colorScheme = Theme.of(context).colorScheme;
     if (url.isEmpty) {
       return Container(

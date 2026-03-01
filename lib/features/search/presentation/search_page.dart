@@ -88,6 +88,18 @@ class _SearchPageState extends State<SearchPage> {
     _viewModel.search(trimmed);
   }
 
+  void _submitSearchFromTag(String keyword) {
+    final trimmed = keyword.trim();
+    if (trimmed.isEmpty) return;
+    _controller.value = TextEditingValue(
+      text: trimmed,
+      selection: TextSelection.collapsed(offset: trimmed.length),
+    );
+    _searchFocusNode.requestFocus();
+    setState(() => _showHints = true);
+    _viewModel.search(trimmed);
+  }
+
   Future<void> _openNotionPage(String url) async {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return;
@@ -160,14 +172,8 @@ class _SearchPageState extends State<SearchPage> {
                 onClearHistory: () => unawaited(model.clearHistory()),
                 onRemoveHistory: (keyword) =>
                     unawaited(_confirmRemoveHistory(model, keyword)),
-                onPickSuggestion: (keyword) {
-                  _controller.text = keyword;
-                  _submitSearch(keyword);
-                },
-                onPickHistory: (keyword) {
-                  _controller.text = keyword;
-                  _submitSearch(keyword);
-                },
+                onPickSuggestion: _submitSearchFromTag,
+                onPickHistory: _submitSearchFromTag,
                 onTapBangumiItem: (subjectId) {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -175,8 +181,7 @@ class _SearchPageState extends State<SearchPage> {
                     ),
                   );
                 },
-                onOpenNotionPage: (url) =>
-                    unawaited(_openNotionPage(url)),
+                onOpenNotionPage: (url) => unawaited(_openNotionPage(url)),
               ),
             ),
           );
@@ -185,4 +190,3 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 }
-

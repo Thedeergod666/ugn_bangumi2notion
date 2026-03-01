@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../app/app_settings.dart';
 import '../layout/breakpoints.dart';
-import 'sidebar_recommendation_card.dart';
+// import 'sidebar_recommendation_card.dart';
 
 class NavigationShell extends StatelessWidget {
   const NavigationShell({
@@ -222,17 +222,18 @@ class NavigationShell extends StatelessWidget {
                                               context, index),
                                     ),
                                   ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12),
-                                    child: SizedBox(
-                                      height: isExpanded ? 220 : 140,
-                                      child: SidebarRecommendationCard(
-                                        extended: isExpanded,
-                                        compact: !isExpanded,
-                                      ),
-                                    ),
-                                  ),
+                                  // 暂时隐藏侧边栏推荐模块。
+                                  // Padding(
+                                  //   padding: const EdgeInsets.symmetric(
+                                  //       horizontal: 12),
+                                  //   child: SizedBox(
+                                  //     height: isExpanded ? 220 : 140,
+                                  //     child: SidebarRecommendationCard(
+                                  //       extended: isExpanded,
+                                  //       compact: !isExpanded,
+                                  //     ),
+                                  //   ),
+                                  // ),
                                   if (isExpanded) ...[
                                     const SizedBox(height: 12),
                                     Padding(

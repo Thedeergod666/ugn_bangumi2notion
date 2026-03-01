@@ -139,12 +139,22 @@ class _RecommendationPageState extends State<RecommendationPage> {
         return;
       }
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
         SnackBar(
-          content: const Text('已追集数 +1'),
-          action: SnackBarAction(
-            label: '撤销',
-            onPressed: () => model.revertRecentWatch(result),
+          duration: const Duration(seconds: 3),
+          content: Row(
+            children: [
+              const Expanded(child: Text('已追集数 +1')),
+              TextButton(
+                onPressed: () {
+                  model.revertRecentWatch(result);
+                  messenger.hideCurrentSnackBar();
+                },
+                child: const Text('撤销'),
+              ),
+            ],
           ),
         ),
       );
@@ -252,7 +262,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
 
     final detail = model.detailFor(recommendation);
     final notionContent = model.notionContentFor(recommendation);
-    final coverUrl = model.resolveCoverUrl(recommendation, detail, notionContent);
+    final coverUrl =
+        model.resolveCoverUrl(recommendation, detail, notionContent);
     final tags = model.resolveTags(recommendation, detail);
     final longReview = model.resolveLongReview(recommendation, notionContent);
 
@@ -272,6 +283,9 @@ class _RecommendationPageState extends State<RecommendationPage> {
     // Prefetch recent caches used by the View.
     final recentLatest = <int, int>{};
     for (final entry in [...model.recentWatching, ...model.recentWatched]) {
+      if ((entry.coverUrl?.trim().isEmpty ?? true)) {
+        model.scheduleNotionContentLoad(entry.id);
+      }
       final id = int.tryParse(entry.bangumiId ?? '');
       if (id == null) continue;
       model.scheduleBangumiDetailLoad(id);
@@ -299,6 +313,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
       recentWatching: model.recentWatching,
       recentWatched: model.recentWatched,
       bangumiDetailCache: model.bangumiDetailCache,
+      notionContentCache: model.notionContentCache,
       recentLatestEpisodeCache: recentLatest,
       notionSearchController: _notionSearchController,
     );
@@ -315,7 +330,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
       onToggleLongReview: model.toggleLongReview,
       onNotionSearch: _triggerNotionSearch,
       onRecentViewModeChanged: settings.setRecentViewMode,
-      onOpenRecentEntry: (entry) => _openNotionDetailFromWatchEntry(context, entry),
+      onOpenRecentEntry: (entry) =>
+          _openNotionDetailFromWatchEntry(context, entry),
       onIncrementRecentWatch: (entry) =>
           unawaited(_handleRecentIncrement(context, model, entry)),
     );
@@ -340,7 +356,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 48, color: Theme.of(context).colorScheme.primary),
+              Icon(icon,
+                  size: 48, color: Theme.of(context).colorScheme.primary),
               const SizedBox(height: 16),
               Text(
                 title,
@@ -373,4 +390,3 @@ class _RecommendationPageState extends State<RecommendationPage> {
     );
   }
 }
-

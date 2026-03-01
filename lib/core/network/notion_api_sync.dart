@@ -464,8 +464,7 @@ extension NotionApiSync on NotionApi {
       if (tagsProperty != null && tagsProperty.trim().isNotEmpty) {
         tagsPropertyType = typeMap[tagsProperty] ?? '';
       }
-      if (yougnScoreProperty != null &&
-          yougnScoreProperty.trim().isNotEmpty) {
+      if (yougnScoreProperty != null && yougnScoreProperty.trim().isNotEmpty) {
         yougnScoreType = typeMap[yougnScoreProperty] ?? '';
       }
       if (resolvedTitleProperty.isEmpty) {
@@ -635,16 +634,23 @@ extension NotionApiSync on NotionApi {
           }
           final text = _extractPlainText(property);
           if (text == null || text.isEmpty) return const [];
-          return text.split(RegExp(r'[，, ]+')).where((e) => e.isNotEmpty).toList();
+          return text
+              .split(RegExp(r'[，, ]+'))
+              .where((e) => e.isNotEmpty)
+              .toList();
         }
 
         String? readCover(String key) {
           if (key.isEmpty) return null;
           final property = properties[key] as Map<String, dynamic>?;
           if (property == null) return null;
-          return _extractFilesUrl(property) ??
-              _extractUrl(property) ??
-              _extractPlainText(property);
+          final files = _extractFilesUrl(property);
+          if (files != null && files.trim().isNotEmpty) return files;
+
+          final directUrl = _extractUrl(property);
+          if (_isLikelyImageUrl(directUrl)) return directUrl!.trim();
+
+          return _extractImageUrlFromText(_extractPlainText(property));
         }
 
         int? idValue;
@@ -683,12 +689,13 @@ extension NotionApiSync on NotionApi {
         final lastEditedRaw = item['last_edited_time']?.toString();
         final lastEdited =
             lastEditedRaw != null ? DateTime.tryParse(lastEditedRaw) : null;
+        final pageCover = _extractCoverUrlFromPage(item);
 
         items.add(
           NotionWatchEntry(
             id: item['id']?.toString() ?? '',
             title: title,
-            coverUrl: readCover(resolvedCoverProperty),
+            coverUrl: readCover(resolvedCoverProperty) ?? pageCover,
             watchedEpisodes: watched,
             totalEpisodes: total,
             bangumiId: idValue?.toString(),
@@ -781,9 +788,8 @@ extension NotionApiSync on NotionApi {
       final properties = item['properties'] as Map<String, dynamic>? ?? {};
       final titleProperty =
           properties[titlePropertyName] as Map<String, dynamic>?;
-      final title = titleProperty != null
-          ? (_extractPlainText(titleProperty) ?? '')
-          : '';
+      final title =
+          titleProperty != null ? (_extractPlainText(titleProperty) ?? '') : '';
       if (title.isEmpty) continue;
       items.add(
         NotionSearchItem(
@@ -796,7 +802,6 @@ extension NotionApiSync on NotionApi {
 
     return items;
   }
-
 
   Future<List<NotionSearchItem>> getPagesWithoutBangumiId({
     required String token,
@@ -888,9 +893,8 @@ extension NotionApiSync on NotionApi {
       final properties = item['properties'] as Map<String, dynamic>? ?? {};
       final titleProperty =
           properties[titlePropertyName] as Map<String, dynamic>?;
-      final title = titleProperty != null
-          ? (_extractPlainText(titleProperty) ?? '')
-          : '';
+      final title =
+          titleProperty != null ? (_extractPlainText(titleProperty) ?? '') : '';
       if (title.isEmpty) continue;
       items.add(
         NotionSearchItem(
@@ -1256,16 +1260,14 @@ extension NotionApiSync on NotionApi {
     final response = await sendWithRetry(
       logger: _logger,
       label: 'Notion get page',
-      request: () => _client
-          .get(
-            url,
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Notion-Version': NotionApi._notionVersion,
-              'Content-Type': 'application/json',
-            },
-          )
-          .timeout(NotionApi._timeout),
+      request: () => _client.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Notion-Version': NotionApi._notionVersion,
+          'Content-Type': 'application/json',
+        },
+      ).timeout(NotionApi._timeout),
     );
 
     if (response.statusCode != 200) {
@@ -1289,8 +1291,10 @@ extension NotionApiSync on NotionApi {
 
   List<String> _mergeTags(List<String> existing, List<String> incoming) {
     final merged = <String>[...existing];
-    final existingNormalized =
-        existing.map((tag) => tag.trim()).where((tag) => tag.isNotEmpty).toSet();
+    final existingNormalized = existing
+        .map((tag) => tag.trim())
+        .where((tag) => tag.isNotEmpty)
+        .toSet();
     for (final tag in incoming) {
       final trimmed = tag.trim();
       if (trimmed.isEmpty) continue;
@@ -1314,6 +1318,7 @@ extension NotionApiSync on NotionApi {
         results.add(value);
       }
     }
+
     final iso = RegExp(r'(\d{4})[./-](\d{1,2})[./-](\d{1,2})');
     for (final match in iso.allMatches(raw)) {
       addMatch(match.group(1)!, match.group(2)!, match.group(3)!);
@@ -1354,13 +1359,32 @@ extension NotionApiSync on NotionApi {
   Map<String, String>? _buildAirDateRange(BangumiSubjectDetail detail) {
     String? start = _normalizeDateString(detail.airDate);
     String? end;
-    final endKeys = ['\u653e\u9001\u7ed3\u675f', '\u653e\u9001\u7d42\u4e86', '\u653e\u9001\u5b8c\u6bd5', '\u653e\u9001\u5b8c\u4e86', '\u64ad\u653e\u7ed3\u675f', '\u64ad\u51fa\u7ed3\u675f', '\u4e0a\u6620\u7ed3\u675f', '\u516c\u958b\u7d42\u4e86', '\u653e\u6620\u7d42\u4e86'];
+    final endKeys = [
+      '\u653e\u9001\u7ed3\u675f',
+      '\u653e\u9001\u7d42\u4e86',
+      '\u653e\u9001\u5b8c\u6bd5',
+      '\u653e\u9001\u5b8c\u4e86',
+      '\u64ad\u653e\u7ed3\u675f',
+      '\u64ad\u51fa\u7ed3\u675f',
+      '\u4e0a\u6620\u7ed3\u675f',
+      '\u516c\u958b\u7d42\u4e86',
+      '\u653e\u6620\u7d42\u4e86'
+    ];
     final endValue = _findInfoboxValue(detail.infoboxMap, endKeys);
     if (endValue != null) {
       end = _extractFirstDate(endValue);
     }
     if (end == null) {
-      final rangeKeys = ['\u653e\u9001\u65e5\u671f', '\u653e\u9001\u5f00\u59cb', '\u653e\u9001\u958b\u59cb', '\u653e\u9001\u65e5', '\u64ad\u653e\u5f00\u59cb', '\u64ad\u51fa\u65e5\u671f', '\u4e0a\u6620\u65e5\u671f', '\u516c\u958b\u65e5'];
+      final rangeKeys = [
+        '\u653e\u9001\u65e5\u671f',
+        '\u653e\u9001\u5f00\u59cb',
+        '\u653e\u9001\u958b\u59cb',
+        '\u653e\u9001\u65e5',
+        '\u64ad\u653e\u5f00\u59cb',
+        '\u64ad\u51fa\u65e5\u671f',
+        '\u4e0a\u6620\u65e5\u671f',
+        '\u516c\u958b\u65e5'
+      ];
       final rangeValue = _findInfoboxValue(detail.infoboxMap, rangeKeys);
       if (rangeValue != null) {
         final dates = _extractDates(rangeValue);
@@ -1453,8 +1477,7 @@ extension NotionApiSync on NotionApi {
     // 记录哪些字段被映射到了 Notion 的属性中
     final Set<String> mappedPropertyKeys = {};
     final List<Map<String, dynamic>> bodyBlocks = [];
-    final bool shouldWriteTags =
-        config.tags.isNotEmpty &&
+    final bool shouldWriteTags = config.tags.isNotEmpty &&
         (enabledFields == null || enabledFields.contains('tags'));
     var tagsToWrite = detail.tags;
     if (shouldWriteTags && targetPageId != null && detail.tags.isNotEmpty) {
@@ -1477,8 +1500,6 @@ extension NotionApiSync on NotionApi {
         (enabledFields == null || enabledFields.contains('airDateRange'))) {
       airDateRange = await _resolveAirDateRange(detail);
     }
-
-
 
     void addProperty(
         String fieldKey, String notionKey, dynamic value, String intendedType) {
@@ -1640,7 +1661,8 @@ extension NotionApiSync on NotionApi {
     addProperty('imageUrl', config.imageUrl, detail.imageUrl, 'url');
     addProperty('bangumiId', config.bangumiId, detail.id, 'number');
     addProperty('score', config.score, detail.score, 'number');
-    addProperty('totalEpisodes', config.totalEpisodes, detail.epsCount, 'number');
+    addProperty(
+        'totalEpisodes', config.totalEpisodes, detail.epsCount, 'number');
     addProperty(
         'link', config.link, 'https://bgm.tv/subject/${detail.id}', 'url');
     addProperty('animationProduction', config.animationProduction,
