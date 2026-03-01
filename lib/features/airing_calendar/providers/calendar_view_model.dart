@@ -102,80 +102,91 @@ class CalendarViewModel extends ChangeNotifier {
     _notify();
 
     bool shouldAppendOngoing = false;
+    Set<int> boundIds = {};
+    Map<int, int> watchedEpisodes = {};
+    Map<int, double?> yougnScores = {};
+    Map<int, DateTime?> lastWatchedAt = {};
+    Map<int, String> notionPageIds = {};
+    bool notionReady = false;
     try {
       final calendar = await _bangumiApi.fetchCalendar();
       final filteredDays = _filterCalendarDays(calendar);
 
       final notionToken = settings.notionToken;
       final notionDbId = settings.notionDatabaseId;
-      final mappingConfig = await _settingsStorage.getMappingConfig();
-      final watchBindings = mappingConfig.watchBindings;
-      final notionPropertyName = watchBindings.bangumiId.trim().isNotEmpty
-          ? watchBindings.bangumiId.trim()
-          : _resolveBangumiIdProperty(mappingConfig);
+      if (notionToken.isNotEmpty && notionDbId.isNotEmpty) {
+        try {
+          final mappingConfig = await _settingsStorage.getMappingConfig();
+          final watchBindings = mappingConfig.watchBindings;
+          final notionPropertyName = watchBindings.bangumiId.trim().isNotEmpty
+              ? watchBindings.bangumiId.trim()
+              : _resolveBangumiIdProperty(mappingConfig);
+          final dailyBindings =
+              await _settingsStorage.getDailyRecommendationBindings();
+          final yougnScoreProperty = watchBindings.yougnScore.trim().isNotEmpty
+              ? watchBindings.yougnScore.trim()
+              : (dailyBindings.yougnScore.isNotEmpty
+                  ? dailyBindings.yougnScore
+                  : mappingConfig.dailyRecommendationBindings.yougnScore);
+          final watchedEpisodesProperty =
+              watchBindings.watchedEpisodes.isNotEmpty
+                  ? watchBindings.watchedEpisodes
+                  : mappingConfig.watchedEpisodes;
+          final lastWatchedAtProperty = watchBindings.lastWatchedAt.isNotEmpty
+              ? watchBindings.lastWatchedAt
+              : mappingConfig.lastWatchedAt;
+          final followDateProperty = watchBindings.followDate.isNotEmpty
+              ? watchBindings.followDate
+              : mappingConfig.followDate;
+          final statusProperty = watchBindings.watchingStatus.isNotEmpty
+              ? watchBindings.watchingStatus
+              : mappingConfig.watchingStatus;
 
-      final dailyBindings =
-          await _settingsStorage.getDailyRecommendationBindings();
-      final yougnScoreProperty = watchBindings.yougnScore.trim().isNotEmpty
-          ? watchBindings.yougnScore.trim()
-          : (dailyBindings.yougnScore.isNotEmpty
-              ? dailyBindings.yougnScore
-              : mappingConfig.dailyRecommendationBindings.yougnScore);
-
-      final watchedEpisodesProperty = watchBindings.watchedEpisodes.isNotEmpty
-          ? watchBindings.watchedEpisodes
-          : mappingConfig.watchedEpisodes;
-      final lastWatchedAtProperty = watchBindings.lastWatchedAt.isNotEmpty
-          ? watchBindings.lastWatchedAt
-          : mappingConfig.lastWatchedAt;
-      final followDateProperty = watchBindings.followDate.isNotEmpty
-          ? watchBindings.followDate
-          : mappingConfig.followDate;
-      final statusProperty = watchBindings.watchingStatus.isNotEmpty
-          ? watchBindings.watchingStatus
-          : mappingConfig.watchingStatus;
-
-      Set<int> boundIds = {};
-      Map<int, int> watchedEpisodes = {};
-      Map<int, double?> yougnScores = {};
-      Map<int, DateTime?> lastWatchedAt = {};
-      Map<int, String> notionPageIds = {};
-      bool notionReady = false;
-      if (notionToken.isNotEmpty &&
-          notionDbId.isNotEmpty &&
-          notionPropertyName.isNotEmpty) {
-        notionReady = true;
-        final progressMap = await _notionApi.getBangumiProgressInfo(
-          token: notionToken,
-          databaseId: notionDbId,
-          idPropertyName: notionPropertyName,
-          watchedEpisodesProperty: watchedEpisodesProperty,
-          yougnScoreProperty: yougnScoreProperty,
-          lastWatchedAtProperty: lastWatchedAtProperty,
-          followDateProperty: followDateProperty,
-          statusPropertyName: statusProperty,
-          statusValue: mappingConfig.watchingStatusValue,
-        );
-        watchedEpisodes = {
-          for (final entry in progressMap.entries)
-            entry.key: entry.value.watchedEpisodes
-        };
-        yougnScores = {
-          for (final entry in progressMap.entries)
-            entry.key: entry.value.yougnScore
-        };
-        lastWatchedAt = {
-          for (final entry in progressMap.entries)
-            entry.key: entry.value.lastWatchedAt
-        };
-        notionPageIds = {
-          for (final entry in progressMap.entries)
-            if ((entry.value.pageId ?? '').isNotEmpty)
-              entry.key: entry.value.pageId!,
-        };
-        boundIds = progressMap.keys.toSet();
-
-        _crossSeasonCandidateIds = boundIds;
+          if (notionPropertyName.isNotEmpty) {
+            notionReady = true;
+            final progressMap = await _notionApi.getBangumiProgressInfo(
+              token: notionToken,
+              databaseId: notionDbId,
+              idPropertyName: notionPropertyName,
+              watchedEpisodesProperty: watchedEpisodesProperty,
+              yougnScoreProperty: yougnScoreProperty,
+              lastWatchedAtProperty: lastWatchedAtProperty,
+              followDateProperty: followDateProperty,
+              statusPropertyName: statusProperty,
+              statusValue: mappingConfig.watchingStatusValue,
+            );
+            watchedEpisodes = {
+              for (final entry in progressMap.entries)
+                entry.key: entry.value.watchedEpisodes
+            };
+            yougnScores = {
+              for (final entry in progressMap.entries)
+                entry.key: entry.value.yougnScore
+            };
+            lastWatchedAt = {
+              for (final entry in progressMap.entries)
+                entry.key: entry.value.lastWatchedAt
+            };
+            notionPageIds = {
+              for (final entry in progressMap.entries)
+                if ((entry.value.pageId ?? '').isNotEmpty)
+                  entry.key: entry.value.pageId!,
+            };
+            boundIds = progressMap.keys.toSet();
+            _crossSeasonCandidateIds = boundIds;
+          }
+        } catch (error, stackTrace) {
+          notionReady = false;
+          boundIds = {};
+          watchedEpisodes = {};
+          yougnScores = {};
+          lastWatchedAt = {};
+          notionPageIds = {};
+          _crossSeasonCandidateIds = {};
+          debugPrint(
+            'Calendar load: notion progress sync failed: $error\n$stackTrace',
+          );
+        }
       }
 
       _days = filteredDays;
@@ -191,9 +202,10 @@ class CalendarViewModel extends ChangeNotifier {
       _loading = false;
       shouldAppendOngoing =
           _notionConfigured && _crossSeasonCandidateIds.isNotEmpty;
-    } catch (_) {
+    } catch (error, stackTrace) {
       _loading = false;
       _errorMessage = '加载放送列表失败，请稍后重试';
+      debugPrint('Calendar load failed: $error\n$stackTrace');
     }
     _notify();
     if (shouldAppendOngoing &&

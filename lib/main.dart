@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 
@@ -19,6 +20,32 @@ import 'features/settings/presentation/sub_pages/mapping_page.dart';
 
 void main() {
   final logger = Logger();
+  String? lastErrorSignature;
+  DateTime? lastErrorAt;
+
+  bool isKnownDuplicateKeyDownAssertion(Object error) {
+    final message = error.toString();
+    return message.contains('A KeyDownEvent is dispatched') &&
+        message.contains('physical key is already pressed') &&
+        message.contains('hardware_keyboard.dart');
+  }
+
+  bool shouldSkipDuplicateError(Object error, StackTrace? stackTrace) {
+    final head = stackTrace == null
+        ? ''
+        : stackTrace.toString().split('\n').take(8).join('\n');
+    final signature = '${error.runtimeType}|$error|$head';
+    final now = DateTime.now();
+    if (lastErrorSignature == signature &&
+        lastErrorAt != null &&
+        now.difference(lastErrorAt!) < const Duration(seconds: 1)) {
+      return true;
+    }
+    lastErrorSignature = signature;
+    lastErrorAt = now;
+    return false;
+  }
+
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +58,22 @@ void main() {
       final settings = AppSettings();
       await settings.load();
 
+      try {
+        await HardwareKeyboard.instance.syncKeyboardState();
+      } catch (error) {
+        logger.debug('Keyboard state sync skipped: $error');
+      }
+
       FlutterError.onError = (details) {
+        final error = details.exception;
+        if (isKnownDuplicateKeyDownAssertion(error)) {
+          logger.debug('Ignored known Flutter keyboard assertion: $error');
+          return;
+        }
+        if (shouldSkipDuplicateError(error, details.stack)) {
+          return;
+        }
+
         FlutterError.presentError(details);
         logger.error(
           'FlutterError: ${details.exceptionAsString()}',
@@ -41,6 +83,14 @@ void main() {
       };
 
       PlatformDispatcher.instance.onError = (error, stack) {
+        if (isKnownDuplicateKeyDownAssertion(error)) {
+          logger.debug('Ignored known Flutter keyboard assertion: $error');
+          return true;
+        }
+        if (shouldSkipDuplicateError(error, stack)) {
+          return true;
+        }
+
         logger.error(
           'PlatformDispatcher error: ${error.runtimeType}',
           error: error,
@@ -64,6 +114,14 @@ void main() {
       );
     },
     (error, stack) {
+      if (isKnownDuplicateKeyDownAssertion(error)) {
+        logger.debug('Ignored known Flutter keyboard assertion: $error');
+        return;
+      }
+      if (shouldSkipDuplicateError(error, stack)) {
+        return;
+      }
+
       logger.error(
         'Uncaught zone error: ${error.runtimeType}',
         error: error,
