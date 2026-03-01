@@ -55,11 +55,14 @@ class DetailViewModel extends ChangeNotifier {
     required NotionApi notionApi,
     required AppSettings settings,
     SettingsStorage? settingsStorage,
+    BangumiSubjectDetail? initialDetail,
   })  : _subjectId = subjectId,
         _bangumiApi = bangumiApi,
         _notionApi = notionApi,
         _settings = settings,
-        _settingsStorage = settingsStorage ?? SettingsStorage();
+        _settingsStorage = settingsStorage ?? SettingsStorage(),
+        _detail = initialDetail,
+        _loading = initialDetail == null;
 
   final int _subjectId;
   final BangumiApi _bangumiApi;
@@ -69,7 +72,7 @@ class DetailViewModel extends ChangeNotifier {
 
   BangumiSubjectDetail? _detail;
   List<BangumiComment> _comments = [];
-  bool _loading = true;
+  bool _loading;
   bool _commentsLoading = true;
   bool _importing = false;
   bool _isSummaryExpanded = false;

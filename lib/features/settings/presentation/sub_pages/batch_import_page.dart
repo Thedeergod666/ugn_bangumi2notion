@@ -6,7 +6,8 @@ import 'package:provider/provider.dart';
 import '../../../../app/app_services.dart';
 import '../../../../app/app_settings.dart';
 import '../../../../core/widgets/navigation_shell.dart';
-import '../../../detail/presentation/detail_page.dart';
+import '../../../detail/providers/detail_view_model.dart';
+import '../../../detail/presentation/notion_import_dialog.dart';
 import '../../providers/batch_import_view_model.dart';
 import 'batch_import_view.dart';
 
@@ -19,18 +20,39 @@ class BatchImportPage extends StatelessWidget {
     BatchImportCandidate candidate,
     int bangumiId,
   ) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => DetailPage(
-          subjectId: bangumiId,
-          autoOpenImportDialog: true,
-          prefillBindToExisting: true,
-          prefillNotionId: candidate.notionItem.notionId,
-        ),
-      ),
-    );
-    if (!context.mounted) return;
-    await model.load();
+    final services = context.read<AppServices>();
+    final settings = context.read<AppSettings>();
+    DetailViewModel? importModel;
+    try {
+      final detail = await model.getSubjectDetail(bangumiId);
+      if (!context.mounted) return;
+
+      importModel = DetailViewModel(
+        subjectId: bangumiId,
+        bangumiApi: services.bangumiApi,
+        notionApi: services.notionApi,
+        settings: settings,
+        initialDetail: detail,
+      );
+
+      final imported = await showNotionImportDialog(
+        context: context,
+        model: importModel,
+        initialBindMode: true,
+        initialNotionId: candidate.notionItem.notionId,
+      );
+      if (!context.mounted) return;
+      if (imported) {
+        model.markCandidateBound(candidate.notionItem.id);
+      }
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('加载导入数据失败: $error')),
+      );
+    } finally {
+      importModel?.dispose();
+    }
   }
 
   @override
@@ -50,7 +72,9 @@ class BatchImportPage extends StatelessWidget {
             actions: [
               IconButton(
                 tooltip: '刷新',
-                onPressed: model.isLoading ? null : model.load,
+                onPressed: model.isLoading
+                    ? null
+                    : () => unawaited(model.load(forceRefresh: true)),
                 icon: const Icon(Icons.refresh),
               ),
             ],

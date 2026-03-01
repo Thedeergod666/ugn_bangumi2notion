@@ -809,6 +809,7 @@ extension NotionApiSync on NotionApi {
     required String idPropertyName,
     required String titlePropertyName,
     String notionIdPropertyName = '',
+    String typePropertyName = '',
     int limit = 30,
   }) async {
     final normalizedDatabaseId = _normalizePageId(databaseId);
@@ -819,6 +820,7 @@ extension NotionApiSync on NotionApi {
 
     String propertyType = 'number';
     String notionIdPropertyType = '';
+    String notionTypePropertyType = '';
     try {
       final properties = await getDatabaseProperties(
         token: token,
@@ -838,6 +840,15 @@ extension NotionApiSync on NotionApi {
         );
         if (notionIdProp.type.isNotEmpty) {
           notionIdPropertyType = notionIdProp.type;
+        }
+      }
+      if (typePropertyName.trim().isNotEmpty) {
+        final notionTypeProp = properties.firstWhere(
+          (p) => p.name == typePropertyName,
+          orElse: () => NotionProperty(name: typePropertyName, type: ''),
+        );
+        if (notionTypeProp.type.isNotEmpty) {
+          notionTypePropertyType = notionTypeProp.type;
         }
       }
     } catch (e) {
@@ -919,12 +930,25 @@ extension NotionApiSync on NotionApi {
           notionIdValue = null;
         }
       }
+      String? notionTypeValue;
+      if (typePropertyName.trim().isNotEmpty) {
+        final notionTypeProperty =
+            properties[typePropertyName] as Map<String, dynamic>?;
+        notionTypeValue = _extractPropertyDisplayValue(
+          notionTypeProperty,
+          propertyType: notionTypePropertyType,
+        );
+        if (notionTypeValue != null && notionTypeValue.trim().isEmpty) {
+          notionTypeValue = null;
+        }
+      }
       items.add(
         NotionSearchItem(
           id: item['id']?.toString() ?? '',
           title: title,
           url: item['url']?.toString() ?? '',
           notionId: notionIdValue,
+          notionType: notionTypeValue,
         ),
       );
     }
