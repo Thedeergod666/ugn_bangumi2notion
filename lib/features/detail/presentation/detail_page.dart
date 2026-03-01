@@ -11,20 +11,76 @@ import '../../../core/widgets/error_detail_dialog.dart';
 import '../providers/detail_view_model.dart';
 import 'detail_view.dart';
 
-class DetailPage extends StatelessWidget {
-  const DetailPage({super.key, required this.subjectId});
+class DetailPage extends StatefulWidget {
+  const DetailPage({
+    super.key,
+    required this.subjectId,
+    this.autoOpenImportDialog = false,
+    this.prefillBindToExisting = false,
+    this.prefillBangumiId,
+    this.prefillNotionId,
+  });
 
   final int subjectId;
+  final bool autoOpenImportDialog;
+  final bool prefillBindToExisting;
+  final String? prefillBangumiId;
+  final String? prefillNotionId;
+
+  @override
+  State<DetailPage> createState() => _DetailPageState();
+}
+
+class _DetailPageState extends State<DetailPage> {
+  late final DetailViewModel _viewModel;
+  bool _autoImportDialogOpened = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final services = context.read<AppServices>();
+    _viewModel = DetailViewModel(
+      subjectId: widget.subjectId,
+      bangumiApi: services.bangumiApi,
+      notionApi: services.notionApi,
+      settings: context.read<AppSettings>(),
+    )..load();
+    _viewModel.addListener(_tryAutoOpenImportDialog);
+  }
+
+  @override
+  void dispose() {
+    _viewModel.removeListener(_tryAutoOpenImportDialog);
+    _viewModel.dispose();
+    super.dispose();
+  }
+
+  void _tryAutoOpenImportDialog() {
+    if (_autoImportDialogOpened || !widget.autoOpenImportDialog) return;
+    if (_viewModel.isLoading ||
+        _viewModel.detail == null ||
+        _viewModel.isImporting) {
+      return;
+    }
+    _autoImportDialogOpened = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        _showImportConfirmDialog(
+          context,
+          _viewModel,
+          initialBindMode: widget.prefillBindToExisting,
+          initialBangumiId: widget.prefillBangumiId,
+          initialNotionId: widget.prefillNotionId,
+        ),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => DetailViewModel(
-        subjectId: subjectId,
-        bangumiApi: context.read<AppServices>().bangumiApi,
-        notionApi: context.read<AppServices>().notionApi,
-        settings: context.read<AppSettings>(),
-      )..load(),
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
       child: Consumer<DetailViewModel>(
         builder: (context, model, _) {
           final showRatings = context.watch<AppSettings>().showRatings;
@@ -62,7 +118,7 @@ class DetailPage extends StatelessWidget {
   }
 
   Future<void> _openBangumiSubject() async {
-    final url = Uri.parse('https://bgm.tv/subject/$subjectId');
+    final url = Uri.parse('https://bgm.tv/subject/${widget.subjectId}');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
@@ -81,8 +137,11 @@ class DetailPage extends StatelessWidget {
 
   Future<void> _showImportConfirmDialog(
     BuildContext context,
-    DetailViewModel model,
-  ) async {
+    DetailViewModel model, {
+    bool initialBindMode = false,
+    String? initialBangumiId,
+    String? initialNotionId,
+  }) async {
     final detail = model.detail;
     if (detail == null) return;
 
@@ -96,8 +155,7 @@ class DetailPage extends StatelessWidget {
       if (notionLabel == null || notionLabel.trim().isEmpty) return '';
       final cleanBangumi =
           bangumiLabel.split('(').first.split('（').first.trim();
-      final cleanNotion =
-          notionLabel.split('(').first.split('（').first.trim();
+      final cleanNotion = notionLabel.split('(').first.split('（').first.trim();
       return '$cleanBangumi → $cleanNotion';
     }
 
@@ -152,9 +210,15 @@ class DetailPage extends StatelessWidget {
     final List<String> topTags = detail.tags.take(30).toList();
     final Set<String> selectedTags = {};
 
-    final TextEditingController bangumiIdController = TextEditingController();
-    final TextEditingController notionIdController = TextEditingController();
-    bool isBindMode = false;
+    final TextEditingController bangumiIdController = TextEditingController(
+      text: initialBangumiId?.trim() ?? '',
+    );
+    final TextEditingController notionIdController = TextEditingController(
+      text: initialNotionId?.trim() ?? '',
+    );
+    bool isBindMode = initialBindMode ||
+        bangumiIdController.text.trim().isNotEmpty ||
+        notionIdController.text.trim().isNotEmpty;
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -305,22 +369,20 @@ class DetailPage extends StatelessWidget {
                           _buildDialogSectionTitle('标签选择 (Top 30)'),
                           const Spacer(),
                           TextButton(
-                            onPressed:
-                                selectedFields.contains('tags') &&
-                                        topTags.isNotEmpty
-                                    ? () {
-                                        setDialogState(() {
-                                          final bool allSelected =
-                                              selectedTags.length ==
-                                                  topTags.length;
-                                          if (allSelected) {
-                                            selectedTags.clear();
-                                          } else {
-                                            selectedTags.addAll(topTags);
-                                          }
-                                        });
+                            onPressed: selectedFields.contains('tags') &&
+                                    topTags.isNotEmpty
+                                ? () {
+                                    setDialogState(() {
+                                      final bool allSelected =
+                                          selectedTags.length == topTags.length;
+                                      if (allSelected) {
+                                        selectedTags.clear();
+                                      } else {
+                                        selectedTags.addAll(topTags);
                                       }
-                                    : null,
+                                    });
+                                  }
+                                : null,
                             child: Text(
                               selectedTags.length == topTags.length &&
                                       topTags.isNotEmpty
@@ -332,8 +394,7 @@ class DetailPage extends StatelessWidget {
                       ),
                       if (topTags.isEmpty)
                         const Text('暂无标签',
-                            style:
-                                TextStyle(fontSize: 12, color: Colors.grey))
+                            style: TextStyle(fontSize: 12, color: Colors.grey))
                       else
                         AbsorbPointer(
                           absorbing: !selectedFields.contains('tags'),
@@ -389,6 +450,8 @@ class DetailPage extends StatelessWidget {
         );
       },
     );
+    bangumiIdController.dispose();
+    notionIdController.dispose();
 
     if (!context.mounted || result == null) {
       return;

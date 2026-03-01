@@ -10,18 +10,28 @@ import 'package:flutter_utools/core/utils/logging.dart';
 void main() {
   const pageId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
-  NotionApi buildApi(List<Map<String, dynamic>> blocks) {
+  NotionApi buildApi(
+    List<Map<String, dynamic>> blocks, {
+    Map<String, http.Response> extraResponses = const {},
+  }) {
     final client = MockClient((request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/v1/blocks/$pageId/children');
-      return http.Response(
-        jsonEncode({
-          'results': blocks,
-          'has_more': false,
-          'next_cursor': null,
-        }),
-        200,
-      );
+      if (request.url.path == '/v1/blocks/$pageId/children') {
+        expect(request.method, 'GET');
+        return http.Response(
+          jsonEncode({
+            'results': blocks,
+            'has_more': false,
+            'next_cursor': null,
+          }),
+          200,
+        );
+      }
+
+      final key = request.url.toString();
+      final extra = extraResponses[key];
+      if (extra != null) return extra;
+
+      return http.Response('', 404);
     });
 
     return NotionApi(
@@ -105,5 +115,70 @@ void main() {
     final result = await api.getPageContent(token: 'token', pageId: pageId);
 
     expect(result.coverUrl, isNull);
+  });
+
+  test('getPageContent resolves og:image from non-image url', () async {
+    const pageLink = 'https://example.com/item/123';
+    const ogImage = 'https://cdn.example.com/cover-from-ogp.png';
+    final api = buildApi(
+      [
+        {
+          'type': 'bookmark',
+          'bookmark': {'url': pageLink},
+        },
+      ],
+      extraResponses: {
+        pageLink: http.Response(
+          '''
+          <html><head>
+          <meta property="og:image" content="$ogImage" />
+          </head><body>ok</body></html>
+          ''',
+          200,
+          headers: const {'content-type': 'text/html; charset=utf-8'},
+        ),
+      },
+    );
+
+    final result = await api.getPageContent(token: 'token', pageId: pageId);
+
+    expect(result.coverUrl, ogImage);
+  });
+
+  test('getPageContent resolves bangumi cover from subject link', () async {
+    const subjectLink = 'https://bgm.tv/subject/147068';
+    const bangumiCover =
+        'https://lain.bgm.tv/r/400/pic/cover/l/a7/86/147068_60GJJ.jpg';
+    final api = buildApi(
+      [
+        {
+          'type': 'paragraph',
+          'paragraph': {
+            'rich_text': [
+              {
+                'type': 'text',
+                'plain_text': subjectLink,
+                'href': subjectLink,
+                'text': {'content': subjectLink},
+              },
+            ],
+          },
+        },
+      ],
+      extraResponses: {
+        'https://api.bgm.tv/v0/subjects/147068': http.Response(
+          jsonEncode({
+            'id': 147068,
+            'images': {'large': bangumiCover},
+          }),
+          200,
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        ),
+      },
+    );
+
+    final result = await api.getPageContent(token: 'token', pageId: pageId);
+
+    expect(result.coverUrl, bangumiCover);
   });
 }

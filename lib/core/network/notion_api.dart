@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import '../../models/bangumi_models.dart';
 import '../../models/mapping_config.dart';
@@ -45,6 +46,8 @@ class NotionApi {
     '.svg',
   };
   static final RegExp _urlPattern = RegExp('https?://[^\\s<>"\\\']+');
+  final Map<String, String?> _linkPreviewImageCache = {};
+  final Map<int, String?> _bangumiSubjectCoverCache = {};
 
   void dispose() {
     if (_ownsClient) {
@@ -305,6 +308,20 @@ class NotionApi {
     return null;
   }
 
+  String? _extractFirstUrlFromText(String? text) {
+    if (text == null || text.trim().isEmpty) return null;
+    final match = _urlPattern.firstMatch(text);
+    if (match == null) return null;
+    final hit = match.group(0);
+    if (hit == null || hit.isEmpty) return null;
+    final normalized = _normalizeUrlCandidate(hit);
+    if (normalized.isEmpty) return null;
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return null;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+    return uri.toString();
+  }
+
   String? _extractImageUrlFromRichText(List<dynamic>? richText) {
     if (richText == null || richText.isEmpty) return null;
     for (final item in richText) {
@@ -325,6 +342,30 @@ class NotionApi {
       }
 
       final plain = _extractImageUrlFromText(item['plain_text']?.toString());
+      if (plain != null) return plain;
+    }
+    return null;
+  }
+
+  String? _extractAnyUrlFromRichText(List<dynamic>? richText) {
+    if (richText == null || richText.isEmpty) return null;
+    for (final item in richText) {
+      if (item is! Map<String, dynamic>) continue;
+      final href = _extractFirstUrlFromText(item['href']?.toString());
+      if (href != null) return href;
+
+      final text = item['text'];
+      if (text is Map<String, dynamic>) {
+        final link = text['link'];
+        if (link is Map<String, dynamic>) {
+          final linked = _extractFirstUrlFromText(link['url']?.toString());
+          if (linked != null) return linked;
+        }
+        final content = _extractFirstUrlFromText(text['content']?.toString());
+        if (content != null) return content;
+      }
+
+      final plain = _extractFirstUrlFromText(item['plain_text']?.toString());
       if (plain != null) return plain;
     }
     return null;
@@ -365,6 +406,51 @@ class NotionApi {
     return _isLikelyImageUrl(normalized) ? normalized : null;
   }
 
+  String? _extractAnyUrlFromBlock(Map<String, dynamic> block) {
+    final type = block['type']?.toString();
+    if (type == null || type.isEmpty) return null;
+
+    final media = _extractMediaUrlFromBlock(block);
+    if (media != null) return media;
+
+    final data = block[type];
+    if (data is Map<String, dynamic>) {
+      switch (type) {
+        case 'bookmark':
+        case 'embed':
+        case 'link_preview':
+          final direct = _extractFirstUrlFromText(data['url']?.toString());
+          if (direct != null) return direct;
+          break;
+        case 'video':
+        case 'file':
+        case 'pdf':
+          final sourceType = data['type']?.toString();
+          if (sourceType == 'external') {
+            final external =
+                _extractFirstUrlFromText(data['external']?['url']?.toString());
+            if (external != null) return external;
+          } else if (sourceType == 'file') {
+            final file =
+                _extractFirstUrlFromText(data['file']?['url']?.toString());
+            if (file != null) return file;
+          }
+          final fallback = _extractFirstUrlFromText(data['url']?.toString());
+          if (fallback != null) return fallback;
+          break;
+      }
+
+      final richText = data['rich_text'];
+      if (richText is List) {
+        final rich = _extractAnyUrlFromRichText(richText);
+        if (rich != null) return rich;
+      }
+    }
+
+    final text = _extractTextFromBlock(block);
+    return _extractFirstUrlFromText(text);
+  }
+
   List<dynamic>? _extractRichTextListFromBlock(Map<String, dynamic> block) {
     final type = block['type']?.toString();
     if (type == null || type.isEmpty) return null;
@@ -373,6 +459,105 @@ class NotionApi {
     final richText = data['rich_text'];
     if (richText is! List || richText.isEmpty) return null;
     return richText;
+  }
+
+  String? _extractPreviewImageMeta(String body) {
+    final doc = html_parser.parse(body);
+    String? readMeta(String attr, String value) {
+      final node = doc.querySelector('meta[$attr="$value"]');
+      final content = node?.attributes['content']?.trim() ?? '';
+      return content.isEmpty ? null : content;
+    }
+
+    return readMeta('property', 'og:image:secure_url') ??
+        readMeta('property', 'og:image') ??
+        readMeta('name', 'twitter:image:src') ??
+        readMeta('name', 'twitter:image');
+  }
+
+  Future<String?> _resolvePreviewImageFromUrl(String? rawUrl) async {
+    final normalized = _extractFirstUrlFromText(rawUrl);
+    if (normalized == null || normalized.isEmpty) return null;
+    if (_isLikelyImageUrl(normalized)) return normalized;
+
+    if (_linkPreviewImageCache.containsKey(normalized)) {
+      return _linkPreviewImageCache[normalized];
+    }
+
+    try {
+      final response = await _client.get(
+        Uri.parse(normalized),
+        headers: const {
+          'Accept': 'text/html,application/xhtml+xml',
+          'User-Agent':
+              'FlutterUTools/1.0.0 (+https://github.com/yourusername/flutter_utools)',
+        },
+      ).timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200 || response.body.trim().isEmpty) {
+        _linkPreviewImageCache[normalized] = null;
+        return null;
+      }
+
+      final metaImage = _extractPreviewImageMeta(response.body);
+      if (metaImage == null || metaImage.isEmpty) {
+        _linkPreviewImageCache[normalized] = null;
+        return null;
+      }
+
+      final base = Uri.parse(normalized);
+      final resolved = base.resolve(metaImage).toString();
+      final uri = Uri.tryParse(resolved);
+      if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+        _linkPreviewImageCache[normalized] = null;
+        return null;
+      }
+      _linkPreviewImageCache[normalized] = resolved;
+      return resolved;
+    } catch (_) {
+      _linkPreviewImageCache[normalized] = null;
+      return null;
+    }
+  }
+
+  int? _extractBangumiSubjectIdFromUrl(String? rawUrl) {
+    final normalized = _extractFirstUrlFromText(rawUrl);
+    if (normalized == null || normalized.isEmpty) return null;
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return null;
+    final host = uri.host.toLowerCase();
+    const allowedHosts = {'bgm.tv', 'bangumi.tv', 'chii.in'};
+    final isBangumiHost = allowedHosts.contains(host) ||
+        allowedHosts.any((domain) => host.endsWith('.$domain'));
+    if (!isBangumiHost) return null;
+
+    final segments =
+        uri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+    for (var i = 0; i < segments.length - 1; i++) {
+      if (segments[i].toLowerCase() != 'subject') continue;
+      final id = int.tryParse(segments[i + 1]);
+      if (id != null && id > 0) return id;
+    }
+    return null;
+  }
+
+  Future<String?> _resolveBangumiCoverFromLink(String? rawUrl) async {
+    final subjectId = _extractBangumiSubjectIdFromUrl(rawUrl);
+    if (subjectId == null) return null;
+
+    if (_bangumiSubjectCoverCache.containsKey(subjectId)) {
+      return _bangumiSubjectCoverCache[subjectId];
+    }
+
+    try {
+      final detail = await _bangumiApi.fetchSubjectBase(subjectId: subjectId);
+      final cover = detail.imageUrl.trim();
+      final result = cover.isEmpty ? null : cover;
+      _bangumiSubjectCoverCache[subjectId] = result;
+      return result;
+    } catch (_) {
+      _bangumiSubjectCoverCache[subjectId] = null;
+      return null;
+    }
   }
 
   String? _extractCoverUrlFromPage(Map<String, dynamic> page) {

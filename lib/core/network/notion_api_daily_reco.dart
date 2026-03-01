@@ -74,9 +74,11 @@ extension NotionApiDailyRecommendation on NotionApi {
     final blocks = await _fetchPageBlocks(token: token, pageId: pageId);
     String? mediaBlockCover;
     String? textImageCover;
+    String? firstLinkUrl;
     final paragraphs = <String>[];
     for (final block in blocks) {
       mediaBlockCover ??= _extractMediaUrlFromBlock(block);
+      firstLinkUrl ??= _extractAnyUrlFromBlock(block);
       if (textImageCover == null) {
         final richText = _extractRichTextListFromBlock(block);
         textImageCover = _extractImageUrlFromRichText(richText);
@@ -85,14 +87,34 @@ extension NotionApiDailyRecommendation on NotionApi {
       if (text != null && text.isNotEmpty) {
         paragraphs.add(text);
         textImageCover ??= _extractImageUrlFromText(text);
+        firstLinkUrl ??= _extractFirstUrlFromText(text);
       }
     }
+    final linkBangumiCover = (mediaBlockCover == null && textImageCover == null)
+        ? await _resolveBangumiCoverFromLink(firstLinkUrl)
+        : null;
+    final previewCover = (mediaBlockCover == null &&
+            textImageCover == null &&
+            (linkBangumiCover == null || linkBangumiCover.isEmpty))
+        ? await _resolvePreviewImageFromUrl(firstLinkUrl)
+        : null;
     final longReview = paragraphs.isEmpty ? null : paragraphs.join('\n');
+    if (_logger.level.index >= LogLevel.debug.index) {
+      _logger.debug(
+        '[DailyReco][Notion] pageContent cover candidates '
+        'media="${mediaBlockCover ?? ""}" '
+        'text="${textImageCover ?? ""}" '
+        'link="${firstLinkUrl ?? ""}" '
+        'bangumiLink="${linkBangumiCover ?? ""}" '
+        'preview="${previewCover ?? ""}"',
+      );
+    }
     _logger.debug(
       'getPageContent parsed ${blocks.length} blocks in ${sw.elapsedMilliseconds}ms',
     );
     return (
-      coverUrl: mediaBlockCover ?? textImageCover,
+      coverUrl:
+          mediaBlockCover ?? textImageCover ?? linkBangumiCover ?? previewCover,
       longReview: longReview
     );
   }

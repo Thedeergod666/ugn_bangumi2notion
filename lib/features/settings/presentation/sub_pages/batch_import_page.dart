@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/app_services.dart';
 import '../../../../app/app_settings.dart';
 import '../../../../core/widgets/navigation_shell.dart';
+import '../../../detail/presentation/detail_page.dart';
 import '../../providers/batch_import_view_model.dart';
 import 'batch_import_view.dart';
 
@@ -18,18 +19,18 @@ class BatchImportPage extends StatelessWidget {
     BatchImportCandidate candidate,
     int bangumiId,
   ) async {
-    try {
-      await model.bindCandidate(candidate: candidate, bangumiId: bangumiId);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('绑定成功')),
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('绑定失败: $error')),
-      );
-    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DetailPage(
+          subjectId: bangumiId,
+          autoOpenImportDialog: true,
+          prefillBindToExisting: true,
+          prefillNotionId: candidate.notionItem.id,
+        ),
+      ),
+    );
+    if (!context.mounted) return;
+    await model.load();
   }
 
   @override
@@ -62,13 +63,12 @@ class BatchImportPage extends StatelessWidget {
                   candidates: model.candidates,
                 ),
                 callbacks: BatchImportViewCallbacks(
-                  onBind: (candidate, bangumiId) =>
-                      unawaited(_bindCandidate(
-                        context,
-                        model,
-                        candidate,
-                        bangumiId,
-                      )),
+                  onBind: (candidate, bangumiId) => unawaited(_bindCandidate(
+                    context,
+                    model,
+                    candidate,
+                    bangumiId,
+                  )),
                 ),
               ),
             ),
@@ -78,4 +78,3 @@ class BatchImportPage extends StatelessWidget {
     );
   }
 }
-
