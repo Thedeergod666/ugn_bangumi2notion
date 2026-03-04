@@ -91,13 +91,10 @@ class _SearchPageState extends State<SearchPage> {
   void _submitSearchFromTag(String keyword) {
     final trimmed = keyword.trim();
     if (trimmed.isEmpty) return;
-    _controller.value = TextEditingValue(
-      text: trimmed,
-      selection: TextSelection.collapsed(offset: trimmed.length),
-    );
-    _searchFocusNode.requestFocus();
-    setState(() => _showHints = true);
-    _viewModel.search(trimmed);
+    _controller
+      ..text = trimmed
+      ..selection = TextSelection.collapsed(offset: trimmed.length);
+    _submitSearch(trimmed);
   }
 
   Future<void> _openNotionPage(String url) async {

@@ -76,6 +76,7 @@ class SearchView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tapRegionGroupId = state.controller;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -109,15 +110,18 @@ class SearchView extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: state.controller,
-                  focusNode: state.searchFocusNode,
-                  decoration: const InputDecoration(
-                    hintText: '输入番剧名称或关键词（最多 50 字）',
-                    prefixIcon: Icon(Icons.search),
+                child: TextFieldTapRegion(
+                  groupId: tapRegionGroupId,
+                  child: TextField(
+                    controller: state.controller,
+                    focusNode: state.searchFocusNode,
+                    decoration: const InputDecoration(
+                      hintText: '输入番剧名称或关键词（最多 50 字）',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (_) => callbacks.onQueryChanged(),
+                    onSubmitted: callbacks.onSubmit,
                   ),
-                  onChanged: (_) => callbacks.onQueryChanged(),
-                  onSubmitted: callbacks.onSubmit,
                 ),
               ),
               const SizedBox(width: 12),
@@ -135,9 +139,15 @@ class SearchView extends StatelessWidget {
             _buildSearchControls(context),
           const SizedBox(height: 12),
           if (state.showHints) ...[
-            _buildSuggestionList(context),
+            TextFieldTapRegion(
+              groupId: tapRegionGroupId,
+              child: _buildSuggestionList(context),
+            ),
             const SizedBox(height: 12),
-            _buildHistorySection(context),
+            TextFieldTapRegion(
+              groupId: tapRegionGroupId,
+              child: _buildHistorySection(context),
+            ),
             const SizedBox(height: 12),
           ],
           const SizedBox(height: 4),
