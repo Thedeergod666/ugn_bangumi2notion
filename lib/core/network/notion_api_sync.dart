@@ -1495,6 +1495,56 @@ extension NotionApiSync on NotionApi {
       throw Exception('Notion Database ID 无效');
     }
     final config = mappingConfig ?? MappingConfig();
+    final resolver = DefaultMappingResolver(config);
+
+    String resolveWrite(MappingSlotKey slot) {
+      return resolver
+          .resolve(
+            slot,
+            MappingModuleId.importWrite,
+            forWrite: true,
+          )
+          .trim();
+    }
+
+    final titleProperty = resolveWrite(MappingSlotKey.title);
+    final airDateProperty = resolveWrite(MappingSlotKey.airDate);
+    final airDateRangeProperty = resolveWrite(MappingSlotKey.airDateRange);
+    final tagsProperty = resolveWrite(MappingSlotKey.tags);
+    final coverProperty = resolveWrite(MappingSlotKey.cover);
+    final bangumiIdProperty = resolveWrite(MappingSlotKey.bangumiId);
+    final scoreProperty = resolveWrite(MappingSlotKey.score);
+    final totalEpisodesProperty = resolveWrite(MappingSlotKey.totalEpisodes);
+    final linkProperty = resolveWrite(MappingSlotKey.link);
+    final animationProductionProperty =
+        resolveWrite(MappingSlotKey.animationProduction);
+    final directorProperty = resolveWrite(MappingSlotKey.director);
+    final scriptProperty = resolveWrite(MappingSlotKey.script);
+    final storyboardProperty = resolveWrite(MappingSlotKey.storyboard);
+    final descriptionProperty = resolveWrite(MappingSlotKey.description);
+    final bangumiUpdatedAtProperty =
+        resolveWrite(MappingSlotKey.bangumiUpdatedAt);
+
+    final identityIdProperty = resolver
+        .resolve(
+          MappingSlotKey.idProperty,
+          MappingModuleId.identityBinding,
+          forWrite: false,
+        )
+        .trim();
+    final identityBangumiIdProperty = resolver
+        .resolve(
+          MappingSlotKey.bangumiId,
+          MappingModuleId.identityBinding,
+          forWrite: false,
+        )
+        .trim();
+    final lookupBangumiProperty = [
+      identityIdProperty,
+      identityBangumiIdProperty,
+      bangumiIdProperty,
+      'Bangumi ID',
+    ].firstWhere((value) => value.trim().isNotEmpty);
 
     // 1. 获取数据库 Schema，用于验证属性是否存在及类型匹配
     Map<String, String> schemaTypes = {};
@@ -1514,8 +1564,7 @@ extension NotionApiSync on NotionApi {
         await findPageByBangumiId(
           token: token,
           databaseId: normalizedDatabaseId,
-          propertyName:
-              config.bangumiId.isNotEmpty ? config.bangumiId : 'Bangumi ID',
+          propertyName: lookupBangumiProperty,
           bangumiId: detail.id,
         );
 
@@ -1525,7 +1574,7 @@ extension NotionApiSync on NotionApi {
     // 记录哪些字段被映射到了 Notion 的属性中
     final Set<String> mappedPropertyKeys = {};
     final List<Map<String, dynamic>> bodyBlocks = [];
-    final bool shouldWriteTags = config.tags.isNotEmpty &&
+    final bool shouldWriteTags = tagsProperty.isNotEmpty &&
         (enabledFields == null || enabledFields.contains('tags'));
     var tagsToWrite = detail.tags;
     if (shouldWriteTags && targetPageId != null && detail.tags.isNotEmpty) {
@@ -1533,7 +1582,7 @@ extension NotionApiSync on NotionApi {
         final existingTags = await _getPageMultiSelectTags(
           token: token,
           pageId: targetPageId,
-          propertyName: config.tags,
+          propertyName: tagsProperty,
         );
         if (existingTags != null) {
           tagsToWrite = _mergeTags(existingTags, detail.tags);
@@ -1544,7 +1593,7 @@ extension NotionApiSync on NotionApi {
       }
     }
     Map<String, String>? airDateRange;
-    if (config.airDateRange.isNotEmpty &&
+    if (airDateRangeProperty.isNotEmpty &&
         (enabledFields == null || enabledFields.contains('airDateRange'))) {
       airDateRange = await _resolveAirDateRange(detail);
     }
@@ -1703,27 +1752,28 @@ extension NotionApiSync on NotionApi {
       }
     }
 
-    addProperty('airDate', config.airDate, detail.airDate, 'date');
-    addProperty('airDateRange', config.airDateRange, airDateRange, 'date');
-    addProperty('tags', config.tags, tagsToWrite, 'multi_select');
-    addProperty('imageUrl', config.imageUrl, detail.imageUrl, 'url');
-    addProperty('bangumiId', config.bangumiId, detail.id, 'number');
-    addProperty('score', config.score, detail.score, 'number');
+    addProperty('airDate', airDateProperty, detail.airDate, 'date');
+    addProperty('airDateRange', airDateRangeProperty, airDateRange, 'date');
+    addProperty('tags', tagsProperty, tagsToWrite, 'multi_select');
+    addProperty('imageUrl', coverProperty, detail.imageUrl, 'url');
+    addProperty('bangumiId', bangumiIdProperty, detail.id, 'number');
+    addProperty('score', scoreProperty, detail.score, 'number');
     addProperty(
-        'totalEpisodes', config.totalEpisodes, detail.epsCount, 'number');
+        'totalEpisodes', totalEpisodesProperty, detail.epsCount, 'number');
     addProperty(
-        'link', config.link, 'https://bgm.tv/subject/${detail.id}', 'url');
-    addProperty('animationProduction', config.animationProduction,
+        'link', linkProperty, 'https://bgm.tv/subject/${detail.id}', 'url');
+    addProperty('animationProduction', animationProductionProperty,
         detail.animationProduction, 'rich_text');
-    addProperty('director', config.director, detail.director, 'rich_text');
-    addProperty('script', config.script, detail.script, 'rich_text');
+    addProperty('director', directorProperty, detail.director, 'rich_text');
+    addProperty('script', scriptProperty, detail.script, 'rich_text');
     addProperty(
-        'storyboard', config.storyboard, detail.storyboard, 'rich_text');
-    addProperty('description', config.description, detail.summary, 'rich_text');
-    if (config.bangumiUpdatedAt.isNotEmpty) {
+        'storyboard', storyboardProperty, detail.storyboard, 'rich_text');
+    addProperty(
+        'description', descriptionProperty, detail.summary, 'rich_text');
+    if (bangumiUpdatedAtProperty.isNotEmpty) {
       addProperty(
         'bangumiUpdatedAt',
-        config.bangumiUpdatedAt,
+        bangumiUpdatedAtProperty,
         {'start': DateTime.now().toIso8601String()},
         'date',
       );
@@ -1732,21 +1782,21 @@ extension NotionApiSync on NotionApi {
     // 处理 infoboxMap 中剩下的所有字段
     // 如果用户在 Notion 数据库中创建了同名属性，尝试自动填充
     final knownMappedFields = {
-      config.airDate,
-      config.airDateRange,
-      config.tags,
-      config.imageUrl,
-      config.bangumiId,
-      config.score,
-      config.totalEpisodes,
-      config.link,
-      config.animationProduction,
-      config.director,
-      config.script,
-      config.storyboard,
-      config.description,
-      config.bangumiUpdatedAt,
-      config.title,
+      airDateProperty,
+      airDateRangeProperty,
+      tagsProperty,
+      coverProperty,
+      bangumiIdProperty,
+      scoreProperty,
+      totalEpisodesProperty,
+      linkProperty,
+      animationProductionProperty,
+      directorProperty,
+      scriptProperty,
+      storyboardProperty,
+      descriptionProperty,
+      bangumiUpdatedAtProperty,
+      titleProperty,
     }.where((k) => k.isNotEmpty).toSet();
 
     for (final entry in detail.infoboxMap.entries) {
@@ -1759,9 +1809,9 @@ extension NotionApiSync on NotionApi {
     }
 
     // 确保标题属性被正确处理为 title 类型，且不会被其他映射覆盖
-    if (config.title.isNotEmpty &&
+    if (titleProperty.isNotEmpty &&
         (enabledFields == null || enabledFields.contains('title'))) {
-      properties[config.title] = {
+      properties[titleProperty] = {
         'title': [
           {
             'text': {'content': title}
@@ -1786,7 +1836,8 @@ extension NotionApiSync on NotionApi {
           children.any((block) => block['type'] == 'image');
       if (!alreadyHasImage &&
           enabledFields != null &&
-          enabledFields.contains('coverUrl') &&
+          (enabledFields.contains('coverUrl') ||
+              enabledFields.contains('imageUrl')) &&
           detail.imageUrl.isNotEmpty) {
         children.add({
           'object': 'block',

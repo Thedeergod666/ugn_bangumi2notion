@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../../app/app_settings.dart';
 import '../../../core/database/settings_storage.dart';
+import '../../../core/mapping/mapping_resolver.dart';
 import '../../../core/network/bangumi_api.dart';
 import '../../../core/network/notion_api.dart';
 import '../../../models/bangumi_models.dart';
-import '../../../models/mapping_config.dart';
+import '../../../models/mapping_schema.dart';
 
 class CalendarViewModel extends ChangeNotifier {
   CalendarViewModel({
@@ -117,30 +118,56 @@ class CalendarViewModel extends ChangeNotifier {
       if (notionToken.isNotEmpty && notionDbId.isNotEmpty) {
         try {
           final mappingConfig = await _settingsStorage.getMappingConfig();
-          final watchBindings = mappingConfig.watchBindings;
-          final notionPropertyName = watchBindings.bangumiId.trim().isNotEmpty
-              ? watchBindings.bangumiId.trim()
-              : _resolveBangumiIdProperty(mappingConfig);
-          final dailyBindings =
-              await _settingsStorage.getDailyRecommendationBindings();
-          final yougnScoreProperty = watchBindings.yougnScore.trim().isNotEmpty
-              ? watchBindings.yougnScore.trim()
-              : (dailyBindings.yougnScore.isNotEmpty
-                  ? dailyBindings.yougnScore
-                  : mappingConfig.dailyRecommendationBindings.yougnScore);
-          final watchedEpisodesProperty =
-              watchBindings.watchedEpisodes.isNotEmpty
-                  ? watchBindings.watchedEpisodes
-                  : mappingConfig.watchedEpisodes;
-          final lastWatchedAtProperty = watchBindings.lastWatchedAt.isNotEmpty
-              ? watchBindings.lastWatchedAt
-              : mappingConfig.lastWatchedAt;
-          final followDateProperty = watchBindings.followDate.isNotEmpty
-              ? watchBindings.followDate
-              : mappingConfig.followDate;
-          final statusProperty = watchBindings.watchingStatus.isNotEmpty
-              ? watchBindings.watchingStatus
-              : mappingConfig.watchingStatus;
+          final resolver = DefaultMappingResolver(mappingConfig);
+          final notionPropertyName = resolver
+              .resolve(
+                MappingSlotKey.bangumiId,
+                MappingModuleId.watchRead,
+                forWrite: false,
+              )
+              .trim();
+          final yougnScoreProperty = resolver
+              .resolve(
+                MappingSlotKey.yougnScore,
+                MappingModuleId.watchRead,
+                forWrite: false,
+              )
+              .trim();
+          final watchedEpisodesProperty = resolver
+              .resolve(
+                MappingSlotKey.watchedEpisodes,
+                MappingModuleId.watchRead,
+                forWrite: false,
+              )
+              .trim();
+          final lastWatchedAtProperty = resolver
+              .resolve(
+                MappingSlotKey.lastWatchedAt,
+                MappingModuleId.watchRead,
+                forWrite: false,
+              )
+              .trim();
+          final followDateProperty = resolver
+              .resolve(
+                MappingSlotKey.followDate,
+                MappingModuleId.watchRead,
+                forWrite: false,
+              )
+              .trim();
+          final statusProperty = resolver
+              .resolve(
+                MappingSlotKey.watchingStatus,
+                MappingModuleId.watchRead,
+                forWrite: false,
+              )
+              .trim();
+          final statusValue = resolver
+              .resolve(
+                MappingSlotKey.watchingStatusValue,
+                MappingModuleId.watchRead,
+                forWrite: false,
+              )
+              .trim();
 
           if (notionPropertyName.isNotEmpty) {
             notionReady = true;
@@ -148,12 +175,18 @@ class CalendarViewModel extends ChangeNotifier {
               token: notionToken,
               databaseId: notionDbId,
               idPropertyName: notionPropertyName,
-              watchedEpisodesProperty: watchedEpisodesProperty,
-              yougnScoreProperty: yougnScoreProperty,
-              lastWatchedAtProperty: lastWatchedAtProperty,
-              followDateProperty: followDateProperty,
-              statusPropertyName: statusProperty,
-              statusValue: mappingConfig.watchingStatusValue,
+              watchedEpisodesProperty: watchedEpisodesProperty.isEmpty
+                  ? null
+                  : watchedEpisodesProperty,
+              yougnScoreProperty:
+                  yougnScoreProperty.isEmpty ? null : yougnScoreProperty,
+              lastWatchedAtProperty:
+                  lastWatchedAtProperty.isEmpty ? null : lastWatchedAtProperty,
+              followDateProperty:
+                  followDateProperty.isEmpty ? null : followDateProperty,
+              statusPropertyName:
+                  statusProperty.isEmpty ? null : statusProperty,
+              statusValue: statusValue.isEmpty ? null : statusValue,
             );
             watchedEpisodes = {
               for (final entry in progressMap.entries)
@@ -274,13 +307,6 @@ class CalendarViewModel extends ChangeNotifier {
   int normalizeWeekdayId(int id) {
     if (id == 0) return 7;
     return id;
-  }
-
-  String _resolveBangumiIdProperty(MappingConfig config) {
-    if (config.bangumiId.trim().isNotEmpty) {
-      return config.bangumiId.trim();
-    }
-    return config.idPropertyName.trim();
   }
 
   List<BangumiCalendarDay> _filterCalendarDays(List<BangumiCalendarDay> days) {
@@ -452,8 +478,7 @@ class CalendarViewModel extends ChangeNotifier {
     for (final match in iso.allMatches(raw)) {
       add(match.group(1)!, match.group(2)!, match.group(3)!);
     }
-    final cjk =
-        RegExp(r'(\\d{4})\\u5e74(\\d{1,2})\\u6708(\\d{1,2})\\u65e5');
+    final cjk = RegExp(r'(\\d{4})\\u5e74(\\d{1,2})\\u6708(\\d{1,2})\\u65e5');
     for (final match in cjk.allMatches(raw)) {
       add(match.group(1)!, match.group(2)!, match.group(3)!);
     }
@@ -468,18 +493,30 @@ class CalendarViewModel extends ChangeNotifier {
     if (token.isEmpty || databaseId.isEmpty) return null;
 
     final mappingConfig = await _settingsStorage.getMappingConfig();
-    final watchBindings = mappingConfig.watchBindings;
-    final watchedProperty = watchBindings.watchedEpisodes.isNotEmpty
-        ? watchBindings.watchedEpisodes
-        : mappingConfig.watchedEpisodes;
-    final lastWatchedProperty = watchBindings.lastWatchedAt.isNotEmpty
-        ? watchBindings.lastWatchedAt
-        : mappingConfig.lastWatchedAt;
-    final idPropertyName = watchBindings.bangumiId.trim().isNotEmpty
-        ? watchBindings.bangumiId.trim()
-        : _resolveBangumiIdProperty(mappingConfig);
+    final resolver = DefaultMappingResolver(mappingConfig);
+    final watchedProperty = resolver
+        .resolve(
+          MappingSlotKey.watchedEpisodes,
+          MappingModuleId.watchWrite,
+          forWrite: true,
+        )
+        .trim();
+    final lastWatchedProperty = resolver
+        .resolve(
+          MappingSlotKey.lastWatchedAt,
+          MappingModuleId.watchWrite,
+          forWrite: true,
+        )
+        .trim();
+    final idPropertyName = resolver
+        .resolve(
+          MappingSlotKey.bangumiId,
+          MappingModuleId.watchRead,
+          forWrite: false,
+        )
+        .trim();
 
-    if (watchedProperty.trim().isEmpty) return null;
+    if (watchedProperty.trim().isEmpty || idPropertyName.isEmpty) return null;
 
     final currentWatched = _watchedEpisodes[subjectId] ?? 0;
     final newWatched = currentWatched + 1;
@@ -507,8 +544,7 @@ class CalendarViewModel extends ChangeNotifier {
       watchedEpisodes: newWatched,
       lastWatchedAtProperty:
           lastWatchedProperty.trim().isEmpty ? null : lastWatchedProperty,
-      lastWatchedAt:
-          lastWatchedProperty.trim().isEmpty ? null : now,
+      lastWatchedAt: lastWatchedProperty.trim().isEmpty ? null : now,
     );
 
     _watchedEpisodes[subjectId] = newWatched;
@@ -545,13 +581,21 @@ class CalendarViewModel extends ChangeNotifier {
     if (token.isEmpty) return;
 
     final mappingConfig = await _settingsStorage.getMappingConfig();
-    final watchBindings = mappingConfig.watchBindings;
-    final watchedProperty = watchBindings.watchedEpisodes.isNotEmpty
-        ? watchBindings.watchedEpisodes
-        : mappingConfig.watchedEpisodes;
-    final lastWatchedProperty = watchBindings.lastWatchedAt.isNotEmpty
-        ? watchBindings.lastWatchedAt
-        : mappingConfig.lastWatchedAt;
+    final resolver = DefaultMappingResolver(mappingConfig);
+    final watchedProperty = resolver
+        .resolve(
+          MappingSlotKey.watchedEpisodes,
+          MappingModuleId.watchWrite,
+          forWrite: true,
+        )
+        .trim();
+    final lastWatchedProperty = resolver
+        .resolve(
+          MappingSlotKey.lastWatchedAt,
+          MappingModuleId.watchWrite,
+          forWrite: true,
+        )
+        .trim();
 
     if (watchedProperty.trim().isEmpty) return;
 
@@ -806,23 +850,23 @@ class CalendarViewModel extends ChangeNotifier {
   }
 
   DateTime? _extractFirstDate(String raw) {
-    final iso = RegExp(r'(\d{4})[./-](\d{1,2})[./-](\d{1,2})')
-        .firstMatch(raw);
+    final iso = RegExp(r'(\d{4})[./-](\d{1,2})[./-](\d{1,2})').firstMatch(raw);
     if (iso != null) {
       return _buildDate(iso.group(1)!, iso.group(2)!, iso.group(3)!);
     }
-    final cjk = RegExp(r'(\d{4})年(\d{1,2})月(\d{1,2})日')
-        .firstMatch(raw);
+    final cjk = RegExp(r'(\d{4})年(\d{1,2})月(\d{1,2})日').firstMatch(raw);
     if (cjk != null) {
       return _buildDate(cjk.group(1)!, cjk.group(2)!, cjk.group(3)!);
     }
     final isoYm = RegExp(r'(\d{4})[./-](\d{1,2})').firstMatch(raw);
     if (isoYm != null) {
-      return DateTime(int.parse(isoYm.group(1)!), int.parse(isoYm.group(2)!), 1);
+      return DateTime(
+          int.parse(isoYm.group(1)!), int.parse(isoYm.group(2)!), 1);
     }
     final cjkYm = RegExp(r'(\d{4})年(\d{1,2})月').firstMatch(raw);
     if (cjkYm != null) {
-      return DateTime(int.parse(cjkYm.group(1)!), int.parse(cjkYm.group(2)!), 1);
+      return DateTime(
+          int.parse(cjkYm.group(1)!), int.parse(cjkYm.group(2)!), 1);
     }
     return null;
   }
@@ -935,8 +979,7 @@ class CalendarViewModel extends ChangeNotifier {
     if (text.isEmpty) return null;
 
     final cnMatch =
-        RegExp(r'(星期|周|礼拜|禮拜|每周|毎週)\s*([一二三四五六日天])')
-            .firstMatch(text);
+        RegExp(r'(星期|周|礼拜|禮拜|每周|毎週)\s*([一二三四五六日天])').firstMatch(text);
     if (cnMatch != null) {
       return _mapCjkWeekday(cnMatch.group(2)!);
     }

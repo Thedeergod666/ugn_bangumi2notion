@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../../app/app_settings.dart';
 import '../../../core/database/settings_storage.dart';
+import '../../../core/mapping/mapping_resolver.dart';
 import '../../../core/network/bangumi_api.dart';
 import '../../../core/network/notion_api.dart';
 import '../../../models/bangumi_models.dart';
+import '../../../models/mapping_schema.dart';
 import '../../../models/notion_models.dart';
 
 enum SearchSource {
@@ -202,7 +204,13 @@ class SearchViewModel extends ChangeNotifier {
       }
 
       final mappingConfig = await _settingsStorage.getMappingConfig();
-      final titleProperty = mappingConfig.title.trim();
+      final titleProperty = DefaultMappingResolver(mappingConfig)
+          .resolve(
+            MappingSlotKey.title,
+            MappingModuleId.searchRead,
+            forWrite: false,
+          )
+          .trim();
       if (titleProperty.isEmpty) {
         throw Exception('请先在映射配置中绑定 Notion 标题字段');
       }

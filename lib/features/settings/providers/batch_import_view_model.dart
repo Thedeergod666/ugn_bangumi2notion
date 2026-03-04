@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 
 import '../../../app/app_settings.dart';
 import '../../../core/database/settings_storage.dart';
+import '../../../core/mapping/mapping_resolver.dart';
 import '../../../core/network/bangumi_api.dart';
 import '../../../core/network/notion_api.dart';
 import '../../../models/bangumi_models.dart';
+import '../../../models/mapping_schema.dart';
 import '../../../models/notion_models.dart';
 
 class BatchImportCandidate {
@@ -39,18 +41,18 @@ class BatchImportViewModel extends ChangeNotifier {
   static final Map<int, BangumiSubjectDetail> _subjectDetailCache = {};
 
   BatchImportViewModel({
+    required AppSettings settings,
     required NotionApi notionApi,
     required BangumiApi bangumiApi,
-    required AppSettings settings,
-    SettingsStorage? storage,
-  })  : _notionApi = notionApi,
+    SettingsStorage? settingsStorage,
+  })  : _settings = settings,
+        _notionApi = notionApi,
         _bangumiApi = bangumiApi,
-        _settings = settings,
-        _settingsStorage = storage ?? SettingsStorage();
+        _settingsStorage = settingsStorage ?? SettingsStorage();
 
+  final AppSettings _settings;
   final NotionApi _notionApi;
   final BangumiApi _bangumiApi;
-  final AppSettings _settings;
   final SettingsStorage _settingsStorage;
 
   bool _loading = false;
@@ -61,22 +63,23 @@ class BatchImportViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   List<BatchImportCandidate> get candidates => _candidates;
 
-  bool get _hasValidCache =>
-      _candidateCacheAt != null &&
-      DateTime.now().difference(_candidateCacheAt!) <= _candidateCacheTtl;
-
-  bool _isMangaType(String? rawType) {
-    final normalized = (rawType ?? '').trim().toLowerCase();
-    if (normalized.isEmpty) return false;
-    return normalized.contains('漫画') ||
-        normalized.contains('漫畫') ||
-        normalized.contains('manga') ||
-        normalized.contains('comic');
+  bool get _hasValidCache {
+    final at = _candidateCacheAt;
+    if (at == null) return false;
+    return DateTime.now().difference(at) < _candidateCacheTtl &&
+        _candidateCache.isNotEmpty;
   }
 
   void _syncCacheFromState() {
     _candidateCache = List<BatchImportCandidate>.from(_candidates);
     _candidateCacheAt = DateTime.now();
+  }
+
+  bool _isMangaType(String? notionType) {
+    final value = (notionType ?? '').trim().toLowerCase();
+    if (value.isEmpty) return false;
+    const mangaKeywords = ['漫画', 'manga', '漫改', 'comic'];
+    return mangaKeywords.any(value.contains);
   }
 
   Future<void> load({bool forceRefresh = false}) async {
@@ -101,34 +104,47 @@ class BatchImportViewModel extends ChangeNotifier {
       }
 
       final mappingConfig = await _settingsStorage.getMappingConfig();
-      final watchBindings = mappingConfig.watchBindings;
-      final idProperty = watchBindings.bangumiId.trim().isNotEmpty
-          ? watchBindings.bangumiId.trim()
-          : (mappingConfig.bangumiId.trim().isNotEmpty
-              ? mappingConfig.bangumiId.trim()
-              : mappingConfig.idPropertyName.trim());
-      final titleProperty = watchBindings.title.trim().isNotEmpty
-          ? watchBindings.title.trim()
-          : (mappingConfig.title.trim().isNotEmpty
-              ? mappingConfig.title.trim()
-              : '');
+      final resolver = DefaultMappingResolver(mappingConfig);
+      final idProperty = resolver
+          .resolve(
+            MappingSlotKey.bangumiId,
+            MappingModuleId.batchImport,
+            forWrite: false,
+          )
+          .trim();
+      final titleProperty = resolver
+          .resolve(
+            MappingSlotKey.title,
+            MappingModuleId.batchImport,
+            forWrite: false,
+          )
+          .trim();
+      final notionIdProperty = resolver
+          .resolve(
+            MappingSlotKey.notionId,
+            MappingModuleId.identityBinding,
+            forWrite: false,
+          )
+          .trim();
+      final typeProperty = resolver
+          .resolve(
+            MappingSlotKey.type,
+            MappingModuleId.batchImport,
+            forWrite: false,
+          )
+          .trim();
 
       if (idProperty.isEmpty || titleProperty.isEmpty) {
         throw Exception('请在映射配置中设置 Bangumi ID 与标题字段');
       }
-
-      final typeProperty =
-          mappingConfig.dailyRecommendationBindings.type.trim().isNotEmpty
-              ? mappingConfig.dailyRecommendationBindings.type.trim()
-              : '番剧类型';
 
       final pages = await _notionApi.getPagesWithoutBangumiId(
         token: token,
         databaseId: databaseId,
         idPropertyName: idProperty,
         titlePropertyName: titleProperty,
-        notionIdPropertyName: mappingConfig.notionId.trim(),
-        typePropertyName: typeProperty,
+        notionIdPropertyName: notionIdProperty,
+        typePropertyName: typeProperty.isEmpty ? '番剧类型' : typeProperty,
         limit: 30,
       );
 
@@ -174,12 +190,17 @@ class BatchImportViewModel extends ChangeNotifier {
     }
 
     final mappingConfig = await _settingsStorage.getMappingConfig();
-    final watchBindings = mappingConfig.watchBindings;
-    final idProperty = watchBindings.bangumiId.trim().isNotEmpty
-        ? watchBindings.bangumiId.trim()
-        : (mappingConfig.bangumiId.trim().isNotEmpty
-            ? mappingConfig.bangumiId.trim()
-            : mappingConfig.idPropertyName.trim());
+    final resolver = DefaultMappingResolver(mappingConfig);
+    final idProperty = resolver
+        .resolve(
+          MappingSlotKey.bangumiId,
+          MappingModuleId.batchImport,
+          forWrite: true,
+        )
+        .trim();
+    if (idProperty.isEmpty) {
+      throw Exception('缺少 Bangumi ID 字段映射');
+    }
 
     await _notionApi.updatePageNumberProperty(
       token: token,

@@ -118,5 +118,55 @@ void main() {
       expect(field.controller?.text, 'alpha');
       expect(lastKeyword, 'alpha');
     });
+
+    testWidgets('history chip stays tappable during pointer down/up sequence',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        SettingsKeys.searchHistory: ['alpha', 'beta'],
+      });
+
+      String? lastKeyword;
+      final mockClient = MockClient((request) async {
+        if (request.url.path.endsWith('/v0/search/subjects')) {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          lastKeyword = body['keyword'] as String?;
+          return http.Response('{"data":[]}', 200, headers: {
+            'content-type': 'application/json',
+          });
+        }
+        return http.Response('{}', 200, headers: {
+          'content-type': 'application/json',
+        });
+      });
+
+      final settings = AppSettings();
+      final services = AppServices(client: mockClient);
+
+      await pumpSearchPage(
+        tester,
+        settings: settings,
+        services: services,
+      );
+
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
+
+      final chipFinder = find.widgetWithText(ActionChip, 'alpha').first;
+      expect(chipFinder, findsOneWidget);
+
+      final chipCenter = tester.getCenter(chipFinder);
+      final gesture = await tester.startGesture(chipCenter);
+      await tester.pump();
+
+      // Pointer-down should not immediately remove hint chips.
+      expect(find.widgetWithText(ActionChip, 'alpha'), findsWidgets);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller?.text, 'alpha');
+      expect(lastKeyword, 'alpha');
+    });
   });
 }

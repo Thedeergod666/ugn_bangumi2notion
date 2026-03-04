@@ -2,10 +2,12 @@ import 'package:flutter/foundation.dart';
 
 import '../../../app/app_settings.dart';
 import '../../../core/database/settings_storage.dart';
+import '../../../core/mapping/mapping_resolver.dart';
 import '../../../core/network/bangumi_api.dart';
 import '../../../core/network/notion_api.dart';
 import '../../../models/bangumi_models.dart';
 import '../../../models/mapping_config.dart';
+import '../../../models/mapping_schema.dart';
 
 class DetailImportPreparation {
   final MappingConfig mappingConfig;
@@ -143,18 +145,25 @@ class DetailViewModel extends ChangeNotifier {
     _setImporting(true);
     String? existingPageId;
     final mappingConfig = await _settingsStorage.getMappingConfig();
+    final resolver = DefaultMappingResolver(mappingConfig);
 
     try {
       final token = _settings.notionToken;
       final databaseId = _settings.notionDatabaseId;
       if (token.isNotEmpty && databaseId.isNotEmpty && _detail != null) {
+        final bangumiIdProperty = resolver
+            .resolve(
+              MappingSlotKey.bangumiId,
+              MappingModuleId.identityBinding,
+              forWrite: false,
+            )
+            .trim();
         existingPageId = await _notionApi.findPageByBangumiId(
           token: token,
           databaseId: databaseId,
           bangumiId: _detail!.id,
-          propertyName: mappingConfig.bangumiId.isNotEmpty
-              ? mappingConfig.bangumiId
-              : 'Bangumi ID',
+          propertyName:
+              bangumiIdProperty.isEmpty ? 'Bangumi ID' : bangumiIdProperty,
         );
       }
     } catch (_) {
@@ -185,11 +194,18 @@ class DetailViewModel extends ChangeNotifier {
 
     _setImporting(true);
     try {
+      final resolver = DefaultMappingResolver(mappingConfig);
       if (bangumiId != null && bangumiId.isNotEmpty) {
         return await _notionApi.findPageByProperty(
           token: token,
           databaseId: databaseId,
-          propertyName: mappingConfig.idPropertyName,
+          propertyName: resolver
+              .resolve(
+                MappingSlotKey.idProperty,
+                MappingModuleId.identityBinding,
+                forWrite: false,
+              )
+              .trim(),
           value: int.tryParse(bangumiId) ?? 0,
           type: 'number',
         );
@@ -198,7 +214,13 @@ class DetailViewModel extends ChangeNotifier {
         return await _notionApi.findPageByProperty(
           token: token,
           databaseId: databaseId,
-          propertyName: mappingConfig.notionId,
+          propertyName: resolver
+              .resolve(
+                MappingSlotKey.notionId,
+                MappingModuleId.identityBinding,
+                forWrite: false,
+              )
+              .trim(),
           value: notionId,
           type: 'rich_text',
         );

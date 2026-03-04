@@ -1,192 +1,337 @@
-class MappingConfig {
-  final String title;
-  final bool titleEnabled;
-  final String airDate;
-  final bool airDateEnabled;
-  final String airDateRange;
-  final bool airDateRangeEnabled;
-  final String tags;
-  final bool tagsEnabled;
-  final String imageUrl;
-  final bool imageUrlEnabled;
-  final String bangumiId;
-  final bool bangumiIdEnabled;
-  final String score;
-  final bool scoreEnabled;
-  final String totalEpisodes;
-  final bool totalEpisodesEnabled;
-  final String link;
-  final bool linkEnabled;
-  final String animationProduction;
-  final bool animationProductionEnabled;
-  final String director;
-  final bool directorEnabled;
-  final String script;
-  final bool scriptEnabled;
-  final String storyboard;
-  final bool storyboardEnabled;
-  final String content;
-  final bool contentEnabled;
-  final String description;
-  final bool descriptionEnabled;
-  final String idPropertyName;
-  final String notionId;
-  final String watchingStatus;
-  final String watchingStatusValue;
-  final String watchingStatusValueWatched;
-  final String watchedEpisodes;
-  final String followDate;
-  final String lastWatchedAt;
-  final String bangumiUpdatedAt;
-  final String globalIdPropertyName;
-  final NotionDailyRecommendationBindings dailyRecommendationBindings;
-  final NotionWatchBindings watchBindings;
+import 'mapping_schema.dart';
 
-  MappingConfig({
-    this.title = '',
-    this.titleEnabled = true,
-    this.airDate = '',
-    this.airDateEnabled = true,
-    this.airDateRange = '',
-    this.airDateRangeEnabled = true,
-    this.tags = '',
-    this.tagsEnabled = true,
-    this.imageUrl = '',
-    this.imageUrlEnabled = true,
-    this.bangumiId = '',
-    this.bangumiIdEnabled = true,
-    this.score = '',
-    this.scoreEnabled = true,
-    this.totalEpisodes = '',
-    this.totalEpisodesEnabled = true,
-    this.link = '',
-    this.linkEnabled = true,
-    this.animationProduction = '',
-    this.animationProductionEnabled = true,
-    this.director = '',
-    this.directorEnabled = true,
-    this.script = '',
-    this.scriptEnabled = true,
-    this.storyboard = '',
-    this.storyboardEnabled = true,
-    this.content = '',
-    this.contentEnabled = true,
-    this.description = '',
-    this.descriptionEnabled = true,
-    this.idPropertyName = 'Bangumi ID',
-    this.notionId = 'Notion ID',
-    this.watchingStatus = '',
-    this.watchingStatusValue = '',
-    this.watchingStatusValueWatched = '已看',
-    this.watchedEpisodes = '',
-    this.followDate = '',
-    this.lastWatchedAt = '',
-    this.bangumiUpdatedAt = '',
-    this.globalIdPropertyName = 'Bangumi ID',
-    this.dailyRecommendationBindings =
-        const NotionDailyRecommendationBindings(),
-    this.watchBindings = const NotionWatchBindings(),
+const int mappingSchemaVersion = 2;
+
+class FieldBinding {
+  final String propertyName;
+  final String? readOverride;
+  final String? writeOverride;
+  final bool writeEnabledDefault;
+
+  const FieldBinding({
+    this.propertyName = '',
+    this.readOverride,
+    this.writeOverride,
+    this.writeEnabledDefault = true,
   });
+
+  bool get isEmpty {
+    return propertyName.trim().isEmpty &&
+        (readOverride ?? '').trim().isEmpty &&
+        (writeOverride ?? '').trim().isEmpty;
+  }
+
+  FieldBinding copyWith({
+    String? propertyName,
+    String? readOverride,
+    String? writeOverride,
+    bool? writeEnabledDefault,
+    bool clearReadOverride = false,
+    bool clearWriteOverride = false,
+  }) {
+    return FieldBinding(
+      propertyName: propertyName ?? this.propertyName,
+      readOverride:
+          clearReadOverride ? null : (readOverride ?? this.readOverride),
+      writeOverride:
+          clearWriteOverride ? null : (writeOverride ?? this.writeOverride),
+      writeEnabledDefault: writeEnabledDefault ?? this.writeEnabledDefault,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
-      'title': title,
-      'titleEnabled': titleEnabled,
-      'airDate': airDate,
-      'airDateEnabled': airDateEnabled,
-      'airDateRange': airDateRange,
-      'airDateRangeEnabled': airDateRangeEnabled,
-      'tags': tags,
-      'tagsEnabled': tagsEnabled,
-      'imageUrl': imageUrl,
-      'imageUrlEnabled': imageUrlEnabled,
-      'bangumiId': bangumiId,
-      'bangumiIdEnabled': bangumiIdEnabled,
-      'score': score,
-      'scoreEnabled': scoreEnabled,
-      'totalEpisodes': totalEpisodes,
-      'totalEpisodesEnabled': totalEpisodesEnabled,
-      'link': link,
-      'linkEnabled': linkEnabled,
-      'animationProduction': animationProduction,
-      'animationProductionEnabled': animationProductionEnabled,
-      'director': director,
-      'directorEnabled': directorEnabled,
-      'script': script,
-      'scriptEnabled': scriptEnabled,
-      'storyboard': storyboard,
-      'storyboardEnabled': storyboardEnabled,
-      'content': content,
-      'contentEnabled': contentEnabled,
-      'description': description,
-      'descriptionEnabled': descriptionEnabled,
-      'idPropertyName': idPropertyName,
-      'notionId': notionId,
-      'watchingStatus': watchingStatus,
-      'watchingStatusValue': watchingStatusValue,
-      'watchingStatusValueWatched': watchingStatusValueWatched,
-      'watchedEpisodes': watchedEpisodes,
-      'followDate': followDate,
-      'lastWatchedAt': lastWatchedAt,
-      'bangumiUpdatedAt': bangumiUpdatedAt,
-      'globalIdPropertyName': globalIdPropertyName,
-      'dailyRecommendationBindings': dailyRecommendationBindings.toJson(),
-      'watchBindings': watchBindings.toJson(),
+      'propertyName': propertyName,
+      'readOverride': readOverride,
+      'writeOverride': writeOverride,
+      'writeEnabledDefault': writeEnabledDefault,
     };
   }
 
-  factory MappingConfig.fromJson(Map<String, dynamic> json) {
+  factory FieldBinding.fromJson(Map<String, dynamic> json) {
+    String? normalizeOptional(dynamic value) {
+      if (value == null) return null;
+      final text = value.toString();
+      return text.isEmpty ? null : text;
+    }
+
+    return FieldBinding(
+      propertyName: json['propertyName']?.toString() ?? '',
+      readOverride: normalizeOptional(json['readOverride']),
+      writeOverride: normalizeOptional(json['writeOverride']),
+      writeEnabledDefault: json['writeEnabledDefault'] is bool
+          ? json['writeEnabledDefault'] as bool
+          : true,
+    );
+  }
+}
+
+class ModuleFieldOverride {
+  final String? propertyName;
+  final String? readOverride;
+  final String? writeOverride;
+
+  const ModuleFieldOverride({
+    this.propertyName,
+    this.readOverride,
+    this.writeOverride,
+  });
+
+  bool get isEmpty {
+    return (propertyName ?? '').trim().isEmpty &&
+        (readOverride ?? '').trim().isEmpty &&
+        (writeOverride ?? '').trim().isEmpty;
+  }
+
+  ModuleFieldOverride copyWith({
+    String? propertyName,
+    String? readOverride,
+    String? writeOverride,
+    bool clearPropertyName = false,
+    bool clearReadOverride = false,
+    bool clearWriteOverride = false,
+  }) {
+    return ModuleFieldOverride(
+      propertyName:
+          clearPropertyName ? null : (propertyName ?? this.propertyName),
+      readOverride:
+          clearReadOverride ? null : (readOverride ?? this.readOverride),
+      writeOverride:
+          clearWriteOverride ? null : (writeOverride ?? this.writeOverride),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'propertyName': propertyName,
+      'readOverride': readOverride,
+      'writeOverride': writeOverride,
+    };
+  }
+
+  factory ModuleFieldOverride.fromJson(Map<String, dynamic> json) {
+    String? normalizeOptional(dynamic value) {
+      if (value == null) return null;
+      final text = value.toString();
+      return text.isEmpty ? null : text;
+    }
+
+    return ModuleFieldOverride(
+      propertyName: normalizeOptional(json['propertyName']),
+      readOverride: normalizeOptional(json['readOverride']),
+      writeOverride: normalizeOptional(json['writeOverride']),
+    );
+  }
+}
+
+class MappingMigrationResult {
+  final MappingConfig config;
+  final bool migrated;
+  final List<String> notes;
+
+  const MappingMigrationResult({
+    required this.config,
+    required this.migrated,
+    required this.notes,
+  });
+}
+
+class MappingConfig {
+  final int schemaVersion;
+  final Map<MappingSlotKey, FieldBinding> commonBindings;
+  final Map<MappingModuleId, Map<MappingSlotKey, ModuleFieldOverride>>
+      moduleOverrides;
+  final Map<String, String> moduleParams;
+
+  MappingConfig({
+    int? schemaVersion,
+    Map<MappingSlotKey, FieldBinding>? commonBindings,
+    Map<MappingModuleId, Map<MappingSlotKey, ModuleFieldOverride>>?
+        moduleOverrides,
+    Map<String, String>? moduleParams,
+  })  : schemaVersion = schemaVersion ?? mappingSchemaVersion,
+        commonBindings = _normalizeCommonBindings(commonBindings),
+        moduleOverrides = _normalizeModuleOverrides(moduleOverrides),
+        moduleParams = _normalizeModuleParams(moduleParams);
+
+  static Map<MappingSlotKey, FieldBinding> _defaultCommonBindings() {
+    return {
+      for (final slot in MappingSlotKey.values)
+        slot: FieldBinding(
+          writeEnabledDefault:
+              mappingSlotMetaByKey[slot]?.writeSlot ?? false,
+        ),
+    };
+  }
+
+  static Map<MappingSlotKey, FieldBinding> _normalizeCommonBindings(
+    Map<MappingSlotKey, FieldBinding>? value,
+  ) {
+    final result = _defaultCommonBindings();
+    if (value != null) {
+      for (final entry in value.entries) {
+        result[entry.key] = entry.value;
+      }
+    }
+    return Map.unmodifiable(result);
+  }
+
+  static Map<MappingModuleId, Map<MappingSlotKey, ModuleFieldOverride>>
+      _normalizeModuleOverrides(
+    Map<MappingModuleId, Map<MappingSlotKey, ModuleFieldOverride>>? value,
+  ) {
+    final result = <MappingModuleId, Map<MappingSlotKey, ModuleFieldOverride>>{};
+    if (value != null) {
+      for (final moduleEntry in value.entries) {
+        final slots = <MappingSlotKey, ModuleFieldOverride>{};
+        for (final slotEntry in moduleEntry.value.entries) {
+          if (!slotEntry.value.isEmpty) {
+            slots[slotEntry.key] = slotEntry.value;
+          }
+        }
+        if (slots.isNotEmpty) {
+          result[moduleEntry.key] = Map.unmodifiable(slots);
+        }
+      }
+    }
+    return Map.unmodifiable(result);
+  }
+
+  static Map<String, String> _normalizeModuleParams(
+    Map<String, String>? value,
+  ) {
+    final result = <String, String>{
+      mappingParamWatchingStatusValue: '',
+      mappingParamWatchingStatusValueWatched: '已看',
+    };
+    if (value != null) {
+      for (final entry in value.entries) {
+        result[entry.key] = entry.value;
+      }
+    }
+    return Map.unmodifiable(result);
+  }
+
+  FieldBinding bindingFor(MappingSlotKey slot) {
+    return commonBindings[slot] ?? const FieldBinding();
+  }
+
+  ModuleFieldOverride? overrideFor(
+    MappingModuleId module,
+    MappingSlotKey slot,
+  ) {
+    return moduleOverrides[module]?[slot];
+  }
+
+  bool writeEnabledFor(MappingSlotKey slot) {
+    return bindingFor(slot).writeEnabledDefault;
+  }
+
+  String moduleParam(String key, {String defaultValue = ''}) {
+    final value = moduleParams[key];
+    if (value == null || value.trim().isEmpty) return defaultValue;
+    return value.trim();
+  }
+
+  String resolve(
+    MappingSlotKey slot,
+    MappingModuleId module, {
+    required bool forWrite,
+  }) {
+    if (slot == MappingSlotKey.watchingStatusValue) {
+      return moduleParam(mappingParamWatchingStatusValue, defaultValue: '');
+    }
+    if (slot == MappingSlotKey.watchingStatusValueWatched) {
+      return moduleParam(
+        mappingParamWatchingStatusValueWatched,
+        defaultValue: '已看',
+      );
+    }
+
+    final common = bindingFor(slot);
+    final override = overrideFor(module, slot);
+    if (forWrite) {
+      return _firstNonEmpty([
+        override?.writeOverride,
+        override?.propertyName,
+        common.writeOverride,
+        common.propertyName,
+      ]);
+    }
+    return _firstNonEmpty([
+      override?.readOverride,
+      override?.propertyName,
+      common.readOverride,
+      common.propertyName,
+    ]);
+  }
+
+  String _firstNonEmpty(List<String?> values) {
+    for (final raw in values) {
+      final value = (raw ?? '').trim();
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  MappingConfig updateBinding(MappingSlotKey slot, FieldBinding binding) {
+    final nextBindings = Map<MappingSlotKey, FieldBinding>.from(commonBindings);
+    nextBindings[slot] = binding;
     return MappingConfig(
-      title: json['title'] ?? '',
-      titleEnabled: json['titleEnabled'] ?? true,
-      airDate: json['airDate'] ?? '',
-      airDateEnabled: json['airDateEnabled'] ?? true,
-      airDateRange: json['airDateRange'] ?? '',
-      airDateRangeEnabled: json['airDateRangeEnabled'] ?? true,
-      tags: json['tags'] ?? '',
-      tagsEnabled: json['tagsEnabled'] ?? true,
-      imageUrl: json['imageUrl'] ?? '',
-      imageUrlEnabled: json['imageUrlEnabled'] ?? true,
-      bangumiId: json['bangumiId'] ?? '',
-      bangumiIdEnabled: json['bangumiIdEnabled'] ?? true,
-      score: json['score'] ?? '',
-      scoreEnabled: json['scoreEnabled'] ?? true,
-      totalEpisodes: json['totalEpisodes'] ?? '',
-      totalEpisodesEnabled: json['totalEpisodesEnabled'] ?? true,
-      link: json['link'] ?? '',
-      linkEnabled: json['linkEnabled'] ?? true,
-      animationProduction: json['animationProduction'] ?? '',
-      animationProductionEnabled: json['animationProductionEnabled'] ?? true,
-      director: json['director'] ?? '',
-      directorEnabled: json['directorEnabled'] ?? true,
-      script: json['script'] ?? '',
-      scriptEnabled: json['scriptEnabled'] ?? true,
-      storyboard: json['storyboard'] ?? '',
-      storyboardEnabled: json['storyboardEnabled'] ?? true,
-      content: json['content'] ?? '',
-      contentEnabled: json['contentEnabled'] ?? true,
-      description: json['description'] ?? '',
-      descriptionEnabled: json['descriptionEnabled'] ?? true,
-      idPropertyName: json['idPropertyName'] ?? 'Bangumi ID',
-      notionId: json['notionId'] ?? 'Notion ID',
-      watchingStatus: json['watchingStatus'] ?? '',
-      watchingStatusValue: json['watchingStatusValue'] ?? '',
-      watchingStatusValueWatched: json['watchingStatusValueWatched'] ?? '已看',
-      watchedEpisodes: json['watchedEpisodes'] ?? '',
-      followDate: json['followDate'] ?? '',
-      lastWatchedAt: json['lastWatchedAt'] ?? '',
-      bangumiUpdatedAt: json['bangumiUpdatedAt'] ?? '',
-      globalIdPropertyName:
-          json['globalIdPropertyName'] ?? 'Bangumi ID',
-      dailyRecommendationBindings: NotionDailyRecommendationBindings.fromJson(
-        json['dailyRecommendationBindings'] ?? {},
-      ),
-      watchBindings:
-          NotionWatchBindings.fromJson(json['watchBindings'] ?? {}),
+      schemaVersion: schemaVersion,
+      commonBindings: nextBindings,
+      moduleOverrides: moduleOverrides,
+      moduleParams: moduleParams,
+    );
+  }
+
+  MappingConfig updateModuleOverride(
+    MappingModuleId module,
+    MappingSlotKey slot,
+    ModuleFieldOverride override,
+  ) {
+    final next = <MappingModuleId, Map<MappingSlotKey, ModuleFieldOverride>>{
+      for (final entry in moduleOverrides.entries)
+        entry.key: Map<MappingSlotKey, ModuleFieldOverride>.from(entry.value),
+    };
+    final slots = next.putIfAbsent(
+      module,
+      () => <MappingSlotKey, ModuleFieldOverride>{},
+    );
+    if (override.isEmpty) {
+      slots.remove(slot);
+    } else {
+      slots[slot] = override;
+    }
+    if (slots.isEmpty) {
+      next.remove(module);
+    }
+
+    return MappingConfig(
+      schemaVersion: schemaVersion,
+      commonBindings: commonBindings,
+      moduleOverrides: next,
+      moduleParams: moduleParams,
+    );
+  }
+
+  MappingConfig updateModuleParam(String key, String value) {
+    final nextParams = Map<String, String>.from(moduleParams);
+    nextParams[key] = value;
+    return MappingConfig(
+      schemaVersion: schemaVersion,
+      commonBindings: commonBindings,
+      moduleOverrides: moduleOverrides,
+      moduleParams: nextParams,
     );
   }
 
   MappingConfig copyWith({
+    int? schemaVersion,
+    Map<MappingSlotKey, FieldBinding>? commonBindings,
+    Map<MappingModuleId, Map<MappingSlotKey, ModuleFieldOverride>>?
+        moduleOverrides,
+    Map<String, String>? moduleParams,
     String? title,
     bool? titleEnabled,
     String? airDate,
@@ -213,8 +358,6 @@ class MappingConfig {
     bool? scriptEnabled,
     String? storyboard,
     bool? storyboardEnabled,
-    String? content,
-    bool? contentEnabled,
     String? description,
     bool? descriptionEnabled,
     String? idPropertyName,
@@ -230,55 +373,674 @@ class MappingConfig {
     NotionDailyRecommendationBindings? dailyRecommendationBindings,
     NotionWatchBindings? watchBindings,
   }) {
-    return MappingConfig(
-      title: title ?? this.title,
-      titleEnabled: titleEnabled ?? this.titleEnabled,
-      airDate: airDate ?? this.airDate,
-      airDateEnabled: airDateEnabled ?? this.airDateEnabled,
-      airDateRange: airDateRange ?? this.airDateRange,
-      airDateRangeEnabled: airDateRangeEnabled ?? this.airDateRangeEnabled,
-      tags: tags ?? this.tags,
-      tagsEnabled: tagsEnabled ?? this.tagsEnabled,
-      imageUrl: imageUrl ?? this.imageUrl,
-      imageUrlEnabled: imageUrlEnabled ?? this.imageUrlEnabled,
-      bangumiId: bangumiId ?? this.bangumiId,
-      bangumiIdEnabled: bangumiIdEnabled ?? this.bangumiIdEnabled,
-      score: score ?? this.score,
-      scoreEnabled: scoreEnabled ?? this.scoreEnabled,
-      totalEpisodes: totalEpisodes ?? this.totalEpisodes,
-      totalEpisodesEnabled: totalEpisodesEnabled ?? this.totalEpisodesEnabled,
-      link: link ?? this.link,
-      linkEnabled: linkEnabled ?? this.linkEnabled,
-      animationProduction: animationProduction ?? this.animationProduction,
-      animationProductionEnabled:
-          animationProductionEnabled ?? this.animationProductionEnabled,
-      director: director ?? this.director,
-      directorEnabled: directorEnabled ?? this.directorEnabled,
-      script: script ?? this.script,
-      scriptEnabled: scriptEnabled ?? this.scriptEnabled,
-      storyboard: storyboard ?? this.storyboard,
-      storyboardEnabled: storyboardEnabled ?? this.storyboardEnabled,
-      content: content ?? this.content,
-      contentEnabled: contentEnabled ?? this.contentEnabled,
-      description: description ?? this.description,
-      descriptionEnabled: descriptionEnabled ?? this.descriptionEnabled,
-      idPropertyName: idPropertyName ?? this.idPropertyName,
-      notionId: notionId ?? this.notionId,
-      watchingStatus: watchingStatus ?? this.watchingStatus,
-      watchingStatusValue: watchingStatusValue ?? this.watchingStatusValue,
-      watchingStatusValueWatched:
-          watchingStatusValueWatched ?? this.watchingStatusValueWatched,
-      watchedEpisodes: watchedEpisodes ?? this.watchedEpisodes,
-      followDate: followDate ?? this.followDate,
-      lastWatchedAt: lastWatchedAt ?? this.lastWatchedAt,
-      bangumiUpdatedAt: bangumiUpdatedAt ?? this.bangumiUpdatedAt,
-      globalIdPropertyName:
-          globalIdPropertyName ?? this.globalIdPropertyName,
-      dailyRecommendationBindings:
-          dailyRecommendationBindings ?? this.dailyRecommendationBindings,
-      watchBindings: watchBindings ?? this.watchBindings,
+    var next = MappingConfig(
+      schemaVersion: schemaVersion ?? this.schemaVersion,
+      commonBindings: commonBindings ?? this.commonBindings,
+      moduleOverrides: moduleOverrides ?? this.moduleOverrides,
+      moduleParams: moduleParams ?? this.moduleParams,
+    );
+
+    void setSlot(MappingSlotKey slot, String? value) {
+      if (value == null) return;
+      next = next.updateBinding(
+        slot,
+        next.bindingFor(slot).copyWith(propertyName: value),
+      );
+    }
+
+    void setEnabled(MappingSlotKey slot, bool? value) {
+      if (value == null) return;
+      next = next.updateBinding(
+        slot,
+        next.bindingFor(slot).copyWith(writeEnabledDefault: value),
+      );
+    }
+
+    setSlot(MappingSlotKey.title, title);
+    setEnabled(MappingSlotKey.title, titleEnabled);
+    setSlot(MappingSlotKey.airDate, airDate);
+    setEnabled(MappingSlotKey.airDate, airDateEnabled);
+    setSlot(MappingSlotKey.airDateRange, airDateRange);
+    setEnabled(MappingSlotKey.airDateRange, airDateRangeEnabled);
+    setSlot(MappingSlotKey.tags, tags);
+    setEnabled(MappingSlotKey.tags, tagsEnabled);
+    setSlot(MappingSlotKey.cover, imageUrl);
+    setEnabled(MappingSlotKey.cover, imageUrlEnabled);
+    setSlot(MappingSlotKey.bangumiId, bangumiId);
+    setEnabled(MappingSlotKey.bangumiId, bangumiIdEnabled);
+    setSlot(MappingSlotKey.score, score);
+    setEnabled(MappingSlotKey.score, scoreEnabled);
+    setSlot(MappingSlotKey.totalEpisodes, totalEpisodes);
+    setEnabled(MappingSlotKey.totalEpisodes, totalEpisodesEnabled);
+    setSlot(MappingSlotKey.link, link);
+    setEnabled(MappingSlotKey.link, linkEnabled);
+    setSlot(MappingSlotKey.animationProduction, animationProduction);
+    setEnabled(MappingSlotKey.animationProduction, animationProductionEnabled);
+    setSlot(MappingSlotKey.director, director);
+    setEnabled(MappingSlotKey.director, directorEnabled);
+    setSlot(MappingSlotKey.script, script);
+    setEnabled(MappingSlotKey.script, scriptEnabled);
+    setSlot(MappingSlotKey.storyboard, storyboard);
+    setEnabled(MappingSlotKey.storyboard, storyboardEnabled);
+    setSlot(MappingSlotKey.description, description);
+    setEnabled(MappingSlotKey.description, descriptionEnabled);
+    setSlot(MappingSlotKey.idProperty, idPropertyName);
+    setSlot(MappingSlotKey.notionId, notionId);
+    setSlot(MappingSlotKey.watchingStatus, watchingStatus);
+    setSlot(MappingSlotKey.watchedEpisodes, watchedEpisodes);
+    setSlot(MappingSlotKey.followDate, followDate);
+    setSlot(MappingSlotKey.lastWatchedAt, lastWatchedAt);
+    setSlot(MappingSlotKey.bangumiUpdatedAt, bangumiUpdatedAt);
+    setSlot(MappingSlotKey.globalIdProperty, globalIdPropertyName);
+
+    if (watchingStatusValue != null) {
+      next = next.updateModuleParam(
+        mappingParamWatchingStatusValue,
+        watchingStatusValue,
+      );
+    }
+    if (watchingStatusValueWatched != null) {
+      next = next.updateModuleParam(
+        mappingParamWatchingStatusValueWatched,
+        watchingStatusValueWatched,
+      );
+    }
+
+    if (dailyRecommendationBindings != null) {
+      setSlot(MappingSlotKey.title, dailyRecommendationBindings.title);
+      setSlot(MappingSlotKey.yougnScore, dailyRecommendationBindings.yougnScore);
+      setSlot(
+        MappingSlotKey.bangumiScore,
+        dailyRecommendationBindings.bangumiScore,
+      );
+      setSlot(MappingSlotKey.bangumiRank, dailyRecommendationBindings.bangumiRank);
+      setSlot(MappingSlotKey.followDate, dailyRecommendationBindings.followDate);
+      setSlot(MappingSlotKey.airDate, dailyRecommendationBindings.airDate);
+      setSlot(
+        MappingSlotKey.airDateRange,
+        dailyRecommendationBindings.airDateRange,
+      );
+      setSlot(MappingSlotKey.tags, dailyRecommendationBindings.tags);
+      setSlot(MappingSlotKey.type, dailyRecommendationBindings.type);
+      setSlot(MappingSlotKey.shortReview, dailyRecommendationBindings.shortReview);
+      setSlot(MappingSlotKey.longReview, dailyRecommendationBindings.longReview);
+      setSlot(MappingSlotKey.cover, dailyRecommendationBindings.cover);
+      setSlot(
+        MappingSlotKey.animationProduction,
+        dailyRecommendationBindings.animationProduction,
+      );
+      setSlot(MappingSlotKey.director, dailyRecommendationBindings.director);
+      setSlot(MappingSlotKey.script, dailyRecommendationBindings.script);
+      setSlot(MappingSlotKey.storyboard, dailyRecommendationBindings.storyboard);
+      setSlot(MappingSlotKey.bangumiId, dailyRecommendationBindings.bangumiId);
+      setSlot(MappingSlotKey.subjectId, dailyRecommendationBindings.subjectId);
+    }
+
+    if (watchBindings != null) {
+      setSlot(MappingSlotKey.title, watchBindings.title);
+      setSlot(MappingSlotKey.cover, watchBindings.cover);
+      setSlot(MappingSlotKey.bangumiId, watchBindings.bangumiId);
+      setSlot(MappingSlotKey.watchedEpisodes, watchBindings.watchedEpisodes);
+      setSlot(MappingSlotKey.totalEpisodes, watchBindings.totalEpisodes);
+      setSlot(MappingSlotKey.watchingStatus, watchBindings.watchingStatus);
+      setSlot(MappingSlotKey.followDate, watchBindings.followDate);
+      setSlot(MappingSlotKey.lastWatchedAt, watchBindings.lastWatchedAt);
+      setSlot(MappingSlotKey.tags, watchBindings.tags);
+      setSlot(MappingSlotKey.yougnScore, watchBindings.yougnScore);
+    }
+
+    return next;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'schemaVersion': schemaVersion,
+      'commonBindings': {
+        for (final entry in commonBindings.entries)
+          entry.key.name: entry.value.toJson(),
+      },
+      'moduleOverrides': {
+        for (final entry in moduleOverrides.entries)
+          entry.key.name: {
+            for (final slotEntry in entry.value.entries)
+              slotEntry.key.name: slotEntry.value.toJson(),
+          },
+      },
+      'moduleParams': moduleParams,
+    };
+  }
+
+  factory MappingConfig.fromJson(Map<String, dynamic> json) {
+    final version = json['schemaVersion'];
+    if (version == mappingSchemaVersion) {
+      final rawBindings = json['commonBindings'] as Map<String, dynamic>? ?? {};
+      final bindings = <MappingSlotKey, FieldBinding>{};
+      for (final entry in rawBindings.entries) {
+        final slot = mappingSlotKeyFromName(entry.key);
+        final raw = entry.value;
+        if (raw is Map<String, dynamic>) {
+          bindings[slot] = FieldBinding.fromJson(raw);
+        } else if (raw is Map) {
+          bindings[slot] =
+              FieldBinding.fromJson(raw.cast<String, dynamic>());
+        }
+      }
+
+      final rawOverrides =
+          json['moduleOverrides'] as Map<String, dynamic>? ?? {};
+      final overrides =
+          <MappingModuleId, Map<MappingSlotKey, ModuleFieldOverride>>{};
+      for (final moduleEntry in rawOverrides.entries) {
+        final module = mappingModuleIdFromName(moduleEntry.key);
+        final moduleValue = moduleEntry.value;
+        if (moduleValue is! Map) continue;
+        final slotMap = <MappingSlotKey, ModuleFieldOverride>{};
+        for (final slotEntry in moduleValue.entries) {
+          final slot = mappingSlotKeyFromName(slotEntry.key.toString());
+          final raw = slotEntry.value;
+          if (raw is Map<String, dynamic>) {
+            final parsed = ModuleFieldOverride.fromJson(raw);
+            if (!parsed.isEmpty) slotMap[slot] = parsed;
+          } else if (raw is Map) {
+            final parsed = ModuleFieldOverride.fromJson(
+              raw.cast<String, dynamic>(),
+            );
+            if (!parsed.isEmpty) slotMap[slot] = parsed;
+          }
+        }
+        if (slotMap.isNotEmpty) overrides[module] = slotMap;
+      }
+
+      final rawParams = json['moduleParams'] as Map<String, dynamic>? ?? {};
+      final params = <String, String>{};
+      for (final entry in rawParams.entries) {
+        params[entry.key] = entry.value?.toString() ?? '';
+      }
+
+      return MappingConfig(
+        schemaVersion: mappingSchemaVersion,
+        commonBindings: bindings,
+        moduleOverrides: overrides,
+        moduleParams: params,
+      );
+    }
+
+    return MappingConfig.migrateFromLegacy(
+      v1Config: json,
+      legacyDailyBindings: const {},
+    ).config;
+  }
+
+  static MappingMigrationResult migrateFromLegacy({
+    Map<String, dynamic>? v1Config,
+    Map<String, dynamic>? legacyDailyBindings,
+  }) {
+    final sourceConfig = v1Config ?? const <String, dynamic>{};
+    final watchBindings =
+        _legacyMap(sourceConfig['watchBindings']) ?? const <String, dynamic>{};
+    final dailyInConfig = _legacyMap(sourceConfig['dailyRecommendationBindings']);
+    final dailyFromLegacy = legacyDailyBindings ?? const <String, dynamic>{};
+    final dailyBindings = (dailyInConfig != null && dailyInConfig.isNotEmpty)
+        ? dailyInConfig
+        : dailyFromLegacy;
+
+    String pick(List<String?> values) {
+      for (final raw in values) {
+        final text = (raw ?? '').trim();
+        if (text.isNotEmpty) return text;
+      }
+      return '';
+    }
+
+    String fromWatch(String key) => watchBindings[key]?.toString() ?? '';
+    String fromDaily(String key) => dailyBindings[key]?.toString() ?? '';
+    String fromConfig(String key) => sourceConfig[key]?.toString() ?? '';
+
+    bool boolFromConfig(String key, bool fallback) {
+      final raw = sourceConfig[key];
+      if (raw is bool) return raw;
+      return fallback;
+    }
+
+    var next = MappingConfig();
+    int migrationCount = 0;
+
+    void setSlot(
+      MappingSlotKey slot,
+      String value, {
+      bool? writeEnabledDefault,
+    }) {
+      final normalized = value.trim();
+      final binding = next.bindingFor(slot).copyWith(
+            propertyName: normalized,
+            writeEnabledDefault:
+                writeEnabledDefault ?? next.bindingFor(slot).writeEnabledDefault,
+          );
+      next = next.updateBinding(slot, binding);
+      migrationCount += 1;
+    }
+
+    void setWriteEnabled(MappingSlotKey slot, bool enabled) {
+      next = next.updateBinding(
+        slot,
+        next.bindingFor(slot).copyWith(writeEnabledDefault: enabled),
+      );
+    }
+
+    // Priority: watchBindings > dailyBindings > old config
+    setSlot(
+      MappingSlotKey.title,
+      pick([fromWatch('title'), fromDaily('title'), fromConfig('title')]),
+      writeEnabledDefault: boolFromConfig('titleEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.cover,
+      pick([fromWatch('cover'), fromDaily('cover'), fromConfig('imageUrl')]),
+      writeEnabledDefault: boolFromConfig('imageUrlEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.bangumiId,
+      pick([
+        fromWatch('bangumiId'),
+        fromDaily('bangumiId'),
+        fromConfig('bangumiId'),
+        fromConfig('idPropertyName'),
+      ]),
+      writeEnabledDefault: boolFromConfig('bangumiIdEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.score,
+      fromConfig('score'),
+      writeEnabledDefault: boolFromConfig('scoreEnabled', true),
+    );
+    setSlot(MappingSlotKey.bangumiScore, fromDaily('bangumiScore'));
+    setSlot(MappingSlotKey.bangumiRank, fromDaily('bangumiRank'));
+    setSlot(
+      MappingSlotKey.yougnScore,
+      pick([fromWatch('yougnScore'), fromDaily('yougnScore')]),
+    );
+    setSlot(
+      MappingSlotKey.tags,
+      pick([fromWatch('tags'), fromDaily('tags'), fromConfig('tags')]),
+      writeEnabledDefault: boolFromConfig('tagsEnabled', true),
+    );
+    setSlot(MappingSlotKey.type, fromDaily('type'));
+    setSlot(
+      MappingSlotKey.airDate,
+      pick([fromDaily('airDate'), fromConfig('airDate')]),
+      writeEnabledDefault: boolFromConfig('airDateEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.airDateRange,
+      pick([fromDaily('airDateRange'), fromConfig('airDateRange')]),
+      writeEnabledDefault: boolFromConfig('airDateRangeEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.totalEpisodes,
+      pick([fromWatch('totalEpisodes'), fromConfig('totalEpisodes')]),
+      writeEnabledDefault: boolFromConfig('totalEpisodesEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.watchedEpisodes,
+      pick([fromWatch('watchedEpisodes'), fromConfig('watchedEpisodes')]),
+    );
+    setSlot(
+      MappingSlotKey.followDate,
+      pick([
+        fromWatch('followDate'),
+        fromDaily('followDate'),
+        fromConfig('followDate')
+      ]),
+    );
+    setSlot(
+      MappingSlotKey.lastWatchedAt,
+      pick([fromWatch('lastWatchedAt'), fromConfig('lastWatchedAt')]),
+    );
+    setSlot(
+      MappingSlotKey.watchingStatus,
+      pick([fromWatch('watchingStatus'), fromConfig('watchingStatus')]),
+    );
+    setSlot(
+      MappingSlotKey.link,
+      fromConfig('link'),
+      writeEnabledDefault: boolFromConfig('linkEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.animationProduction,
+      pick([fromDaily('animationProduction'), fromConfig('animationProduction')]),
+      writeEnabledDefault: boolFromConfig('animationProductionEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.director,
+      pick([fromDaily('director'), fromConfig('director')]),
+      writeEnabledDefault: boolFromConfig('directorEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.script,
+      pick([fromDaily('script'), fromConfig('script')]),
+      writeEnabledDefault: boolFromConfig('scriptEnabled', true),
+    );
+    setSlot(
+      MappingSlotKey.storyboard,
+      pick([fromDaily('storyboard'), fromConfig('storyboard')]),
+      writeEnabledDefault: boolFromConfig('storyboardEnabled', true),
+    );
+    setSlot(MappingSlotKey.shortReview, fromDaily('shortReview'));
+    setSlot(MappingSlotKey.longReview, fromDaily('longReview'));
+    setSlot(
+      MappingSlotKey.description,
+      fromConfig('description'),
+      writeEnabledDefault: boolFromConfig('descriptionEnabled', true),
+    );
+    setSlot(MappingSlotKey.subjectId, fromDaily('subjectId'));
+    setSlot(
+      MappingSlotKey.bangumiUpdatedAt,
+      fromConfig('bangumiUpdatedAt'),
+      writeEnabledDefault: true,
+    );
+    setSlot(MappingSlotKey.notionId, fromConfig('notionId'));
+    setSlot(MappingSlotKey.globalIdProperty, fromConfig('globalIdPropertyName'));
+    setSlot(MappingSlotKey.idProperty, fromConfig('idPropertyName'));
+
+    setWriteEnabled(
+      MappingSlotKey.title,
+      boolFromConfig('titleEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.cover,
+      boolFromConfig('imageUrlEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.bangumiId,
+      boolFromConfig('bangumiIdEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.score,
+      boolFromConfig('scoreEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.tags,
+      boolFromConfig('tagsEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.airDate,
+      boolFromConfig('airDateEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.airDateRange,
+      boolFromConfig('airDateRangeEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.totalEpisodes,
+      boolFromConfig('totalEpisodesEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.link,
+      boolFromConfig('linkEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.animationProduction,
+      boolFromConfig('animationProductionEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.director,
+      boolFromConfig('directorEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.script,
+      boolFromConfig('scriptEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.storyboard,
+      boolFromConfig('storyboardEnabled', true),
+    );
+    setWriteEnabled(
+      MappingSlotKey.description,
+      boolFromConfig('descriptionEnabled', true),
+    );
+
+    next = next
+        .updateModuleParam(
+          mappingParamWatchingStatusValue,
+          sourceConfig['watchingStatusValue']?.toString() ?? '',
+        )
+        .updateModuleParam(
+          mappingParamWatchingStatusValueWatched,
+          sourceConfig['watchingStatusValueWatched']?.toString() ?? '已看',
+        );
+
+    final notes = <String>[
+      'Migrated legacy mapping config to schema v2.',
+      'Conflict priority: watchBindings > dailyBindings > old config.',
+      'Updated slots: $migrationCount',
+    ];
+
+    return MappingMigrationResult(
+      config: next,
+      migrated: true,
+      notes: notes,
     );
   }
+
+  static Map<String, dynamic>? _legacyMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+    return null;
+  }
+
+  NotionDailyRecommendationBindings toDailyRecommendationBindings() {
+    return NotionDailyRecommendationBindings(
+      title: resolve(
+        MappingSlotKey.title,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      yougnScore: resolve(
+        MappingSlotKey.yougnScore,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      bangumiScore: resolve(
+        MappingSlotKey.bangumiScore,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      bangumiRank: resolve(
+        MappingSlotKey.bangumiRank,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      followDate: resolve(
+        MappingSlotKey.followDate,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      airDate: resolve(
+        MappingSlotKey.airDate,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      airDateRange: resolve(
+        MappingSlotKey.airDateRange,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      tags: resolve(
+        MappingSlotKey.tags,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      type: resolve(
+        MappingSlotKey.type,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      shortReview: resolve(
+        MappingSlotKey.shortReview,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      longReview: resolve(
+        MappingSlotKey.longReview,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      cover: resolve(
+        MappingSlotKey.cover,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      animationProduction: resolve(
+        MappingSlotKey.animationProduction,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      director: resolve(
+        MappingSlotKey.director,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      script: resolve(
+        MappingSlotKey.script,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      storyboard: resolve(
+        MappingSlotKey.storyboard,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      bangumiId: resolve(
+        MappingSlotKey.bangumiId,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+      subjectId: resolve(
+        MappingSlotKey.subjectId,
+        MappingModuleId.recommendationRead,
+        forWrite: false,
+      ),
+    );
+  }
+
+  NotionWatchBindings toWatchBindings() {
+    return NotionWatchBindings(
+      title: resolve(
+        MappingSlotKey.title,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+      cover: resolve(
+        MappingSlotKey.cover,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+      bangumiId: resolve(
+        MappingSlotKey.bangumiId,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+      watchedEpisodes: resolve(
+        MappingSlotKey.watchedEpisodes,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+      totalEpisodes: resolve(
+        MappingSlotKey.totalEpisodes,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+      watchingStatus: resolve(
+        MappingSlotKey.watchingStatus,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+      followDate: resolve(
+        MappingSlotKey.followDate,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+      lastWatchedAt: resolve(
+        MappingSlotKey.lastWatchedAt,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+      tags: resolve(
+        MappingSlotKey.tags,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+      yougnScore: resolve(
+        MappingSlotKey.yougnScore,
+        MappingModuleId.watchRead,
+        forWrite: false,
+      ),
+    );
+  }
+
+  // Compatibility getters used by existing code paths.
+  String get title => bindingFor(MappingSlotKey.title).propertyName;
+  bool get titleEnabled => bindingFor(MappingSlotKey.title).writeEnabledDefault;
+  String get airDate => bindingFor(MappingSlotKey.airDate).propertyName;
+  bool get airDateEnabled =>
+      bindingFor(MappingSlotKey.airDate).writeEnabledDefault;
+  String get airDateRange => bindingFor(MappingSlotKey.airDateRange).propertyName;
+  bool get airDateRangeEnabled =>
+      bindingFor(MappingSlotKey.airDateRange).writeEnabledDefault;
+  String get tags => bindingFor(MappingSlotKey.tags).propertyName;
+  bool get tagsEnabled => bindingFor(MappingSlotKey.tags).writeEnabledDefault;
+  String get imageUrl => bindingFor(MappingSlotKey.cover).propertyName;
+  bool get imageUrlEnabled => bindingFor(MappingSlotKey.cover).writeEnabledDefault;
+  String get bangumiId => bindingFor(MappingSlotKey.bangumiId).propertyName;
+  bool get bangumiIdEnabled =>
+      bindingFor(MappingSlotKey.bangumiId).writeEnabledDefault;
+  String get score => bindingFor(MappingSlotKey.score).propertyName;
+  bool get scoreEnabled => bindingFor(MappingSlotKey.score).writeEnabledDefault;
+  String get totalEpisodes =>
+      bindingFor(MappingSlotKey.totalEpisodes).propertyName;
+  bool get totalEpisodesEnabled =>
+      bindingFor(MappingSlotKey.totalEpisodes).writeEnabledDefault;
+  String get link => bindingFor(MappingSlotKey.link).propertyName;
+  bool get linkEnabled => bindingFor(MappingSlotKey.link).writeEnabledDefault;
+  String get animationProduction =>
+      bindingFor(MappingSlotKey.animationProduction).propertyName;
+  bool get animationProductionEnabled =>
+      bindingFor(MappingSlotKey.animationProduction).writeEnabledDefault;
+  String get director => bindingFor(MappingSlotKey.director).propertyName;
+  bool get directorEnabled =>
+      bindingFor(MappingSlotKey.director).writeEnabledDefault;
+  String get script => bindingFor(MappingSlotKey.script).propertyName;
+  bool get scriptEnabled => bindingFor(MappingSlotKey.script).writeEnabledDefault;
+  String get storyboard => bindingFor(MappingSlotKey.storyboard).propertyName;
+  bool get storyboardEnabled =>
+      bindingFor(MappingSlotKey.storyboard).writeEnabledDefault;
+  String get description => bindingFor(MappingSlotKey.description).propertyName;
+  bool get descriptionEnabled =>
+      bindingFor(MappingSlotKey.description).writeEnabledDefault;
+  String get idPropertyName => bindingFor(MappingSlotKey.idProperty).propertyName;
+  String get notionId => bindingFor(MappingSlotKey.notionId).propertyName;
+  String get watchingStatus =>
+      bindingFor(MappingSlotKey.watchingStatus).propertyName;
+  String get watchingStatusValue =>
+      moduleParam(mappingParamWatchingStatusValue, defaultValue: '');
+  String get watchingStatusValueWatched => moduleParam(
+        mappingParamWatchingStatusValueWatched,
+        defaultValue: '已看',
+      );
+  String get watchedEpisodes =>
+      bindingFor(MappingSlotKey.watchedEpisodes).propertyName;
+  String get followDate => bindingFor(MappingSlotKey.followDate).propertyName;
+  String get lastWatchedAt =>
+      bindingFor(MappingSlotKey.lastWatchedAt).propertyName;
+  String get bangumiUpdatedAt =>
+      bindingFor(MappingSlotKey.bangumiUpdatedAt).propertyName;
+  String get globalIdPropertyName =>
+      bindingFor(MappingSlotKey.globalIdProperty).propertyName;
+  NotionDailyRecommendationBindings get dailyRecommendationBindings =>
+      toDailyRecommendationBindings();
+  NotionWatchBindings get watchBindings => toWatchBindings();
 }
 
 class NotionWatchBindings {
@@ -336,16 +1098,16 @@ class NotionWatchBindings {
 
   factory NotionWatchBindings.fromJson(Map<String, dynamic> json) {
     return NotionWatchBindings(
-      title: json['title'] ?? '',
-      cover: json['cover'] ?? '',
-      bangumiId: json['bangumiId'] ?? '',
-      watchedEpisodes: json['watchedEpisodes'] ?? '',
-      totalEpisodes: json['totalEpisodes'] ?? '',
-      watchingStatus: json['watchingStatus'] ?? '',
-      followDate: json['followDate'] ?? '',
-      lastWatchedAt: json['lastWatchedAt'] ?? '',
-      tags: json['tags'] ?? '',
-      yougnScore: json['yougnScore'] ?? '',
+      title: json['title']?.toString() ?? '',
+      cover: json['cover']?.toString() ?? '',
+      bangumiId: json['bangumiId']?.toString() ?? '',
+      watchedEpisodes: json['watchedEpisodes']?.toString() ?? '',
+      totalEpisodes: json['totalEpisodes']?.toString() ?? '',
+      watchingStatus: json['watchingStatus']?.toString() ?? '',
+      followDate: json['followDate']?.toString() ?? '',
+      lastWatchedAt: json['lastWatchedAt']?.toString() ?? '',
+      tags: json['tags']?.toString() ?? '',
+      yougnScore: json['yougnScore']?.toString() ?? '',
     );
   }
 
@@ -471,22 +1233,22 @@ class NotionDailyRecommendationBindings {
     }
 
     return NotionDailyRecommendationBindings(
-      title: json['title'] ?? '',
-      yougnScore: json['yougnScore'] ?? '',
-      bangumiScore: json['bangumiScore'] ?? '',
-      bangumiRank: json['bangumiRank'] ?? '',
-      followDate: json['followDate'] ?? '',
-      airDate: json['airDate'] ?? '',
-      airDateRange: json['airDateRange'] ?? '',
-      tags: json['tags'] ?? '',
-      type: json['type'] ?? '',
-      shortReview: json['shortReview'] ?? '',
-      longReview: json['longReview'] ?? '',
-      cover: json['cover'] ?? '',
-      animationProduction: json['animationProduction'] ?? '',
-      director: json['director'] ?? '',
-      script: json['script'] ?? '',
-      storyboard: json['storyboard'] ?? '',
+      title: json['title']?.toString() ?? '',
+      yougnScore: json['yougnScore']?.toString() ?? '',
+      bangumiScore: json['bangumiScore']?.toString() ?? '',
+      bangumiRank: json['bangumiRank']?.toString() ?? '',
+      followDate: json['followDate']?.toString() ?? '',
+      airDate: json['airDate']?.toString() ?? '',
+      airDateRange: json['airDateRange']?.toString() ?? '',
+      tags: json['tags']?.toString() ?? '',
+      type: json['type']?.toString() ?? '',
+      shortReview: json['shortReview']?.toString() ?? '',
+      longReview: json['longReview']?.toString() ?? '',
+      cover: json['cover']?.toString() ?? '',
+      animationProduction: json['animationProduction']?.toString() ?? '',
+      director: json['director']?.toString() ?? '',
+      script: json['script']?.toString() ?? '',
+      storyboard: json['storyboard']?.toString() ?? '',
       bangumiId: normalizeOptionalString(json['bangumiId']),
       subjectId: normalizeOptionalString(json['subjectId']),
     );

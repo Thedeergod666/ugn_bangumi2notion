@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,15 +10,8 @@ import '../../../../core/widgets/navigation_shell.dart';
 import '../../providers/mapping_view_model.dart';
 import 'mapping_view.dart';
 
-class MappingPage extends StatefulWidget {
+class MappingPage extends StatelessWidget {
   const MappingPage({super.key});
-
-  @override
-  State<MappingPage> createState() => _MappingPageState();
-}
-
-class _MappingPageState extends State<MappingPage> {
-  MappingSegment _segment = MappingSegment.bangumi;
 
   @override
   Widget build(BuildContext context) {
@@ -42,30 +37,15 @@ class _MappingPageState extends State<MappingPage> {
               ),
               IconButton(
                 tooltip: '保存',
-                onPressed: model.isLoading ? null : () => _handleSave(model),
+                onPressed:
+                    model.isLoading ? null : () => unawaited(_handleSave(context)),
                 icon: const Icon(Icons.save),
               ),
               const SizedBox(width: 8),
             ],
             child: MappingView(
-              state: MappingViewState(
-                segment: _segment,
-                isLoading: model.isLoading,
-                isConfigured: model.isConfigured,
-                error: model.error,
-                config: model.config,
-                notionProperties: model.notionProperties,
-                bindings: model.bindings,
-                watchBindings: model.watchBindings,
-              ),
-              callbacks: MappingViewCallbacks(
-                onSegmentChanged: (segment) =>
-                    setState(() => _segment = segment),
-                onApplyMagicMap: model.applyMagicMap,
-                onConfigChanged: model.updateConfig,
-                onBindingsChanged: model.updateBindings,
-                onWatchBindingsChanged: model.updateWatchBindings,
-              ),
+              model: model,
+              onApplyMagicMap: model.applyMagicMap,
             ),
           );
         },
@@ -73,19 +53,16 @@ class _MappingPageState extends State<MappingPage> {
     );
   }
 
-  Future<void> _handleSave(MappingViewModel model) async {
+  Future<void> _handleSave(BuildContext context) async {
+    final model = context.read<MappingViewModel>();
     try {
-      if (_segment == MappingSegment.bangumi) {
-        await model.saveConfig();
-      } else {
-        await model.saveBindings();
-      }
-      if (!mounted) return;
+      await model.saveConfig();
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('保存成功')),
       );
     } catch (error, stackTrace) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('保存失败，请稍后重试'),

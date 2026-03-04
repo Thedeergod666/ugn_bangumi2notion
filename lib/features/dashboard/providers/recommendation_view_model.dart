@@ -7,10 +7,12 @@ import 'package:flutter/scheduler.dart';
 
 import '../../../app/app_settings.dart';
 import '../../../core/database/settings_storage.dart';
+import '../../../core/mapping/mapping_resolver.dart';
 import '../../../core/network/bangumi_api.dart';
 import '../../../core/network/notion_api.dart';
 import '../../../models/bangumi_models.dart';
 import '../../../models/mapping_config.dart';
+import '../../../models/mapping_schema.dart';
 import '../../../models/notion_models.dart';
 
 class RecommendationNotionContent {
@@ -494,9 +496,7 @@ class RecommendationViewModel extends ChangeNotifier {
 
   Future<NotionDailyRecommendationBindings?> _loadBindings() async {
     final mappingConfig = await _settingsStorage.getMappingConfig();
-    final legacyBindings =
-        await _settingsStorage.getDailyRecommendationBindings();
-    final bindings = _resolveBindings(mappingConfig, legacyBindings);
+    final bindings = mappingConfig.toDailyRecommendationBindings();
     return bindings.isEmpty ? null : bindings;
   }
 
@@ -546,31 +546,96 @@ class RecommendationViewModel extends ChangeNotifier {
 
     try {
       final mappingConfig = await _settingsStorage.getMappingConfig();
-      final watchBindings = mappingConfig.watchBindings;
-      final bindings = await _loadBindings();
+      final resolver = DefaultMappingResolver(mappingConfig);
 
-      final titleProperty = watchBindings.title.trim().isNotEmpty
-          ? watchBindings.title.trim()
-          : (mappingConfig.title.trim().isNotEmpty
-              ? mappingConfig.title.trim()
-              : (bindings?.title.trim() ?? ''));
-      final coverProperty = watchBindings.cover.trim().isNotEmpty
-          ? watchBindings.cover.trim()
-          : (mappingConfig.imageUrl.trim().isNotEmpty
-              ? mappingConfig.imageUrl.trim()
-              : (bindings?.cover.trim() ?? ''));
+      final titleProperty = resolver
+          .resolve(
+            MappingSlotKey.title,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final coverProperty = resolver
+          .resolve(
+            MappingSlotKey.cover,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
 
-      final idProperty = watchBindings.bangumiId.trim().isNotEmpty
-          ? watchBindings.bangumiId.trim()
-          : (mappingConfig.bangumiId.trim().isNotEmpty
-              ? mappingConfig.bangumiId.trim()
-              : mappingConfig.idPropertyName.trim());
-      final statusProperty = watchBindings.watchingStatus.trim().isNotEmpty
-          ? watchBindings.watchingStatus.trim()
-          : mappingConfig.watchingStatus.trim();
-      final watchingValue = mappingConfig.watchingStatusValue.trim();
-      final watchedValue = mappingConfig.watchingStatusValueWatched.trim();
-      if (statusProperty.isEmpty || watchingValue.isEmpty) {
+      final idProperty = resolver
+          .resolve(
+            MappingSlotKey.bangumiId,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final statusProperty = resolver
+          .resolve(
+            MappingSlotKey.watchingStatus,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final watchingValue = resolver
+          .resolve(
+            MappingSlotKey.watchingStatusValue,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final watchedValue = resolver
+          .resolve(
+            MappingSlotKey.watchingStatusValueWatched,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final watchedEpisodesProperty = resolver
+          .resolve(
+            MappingSlotKey.watchedEpisodes,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final totalEpisodesProperty = resolver
+          .resolve(
+            MappingSlotKey.totalEpisodes,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final lastWatchedAtProperty = resolver
+          .resolve(
+            MappingSlotKey.lastWatchedAt,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final followDateProperty = resolver
+          .resolve(
+            MappingSlotKey.followDate,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final tagsProperty = resolver
+          .resolve(
+            MappingSlotKey.tags,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      final yougnScoreProperty = resolver
+          .resolve(
+            MappingSlotKey.yougnScore,
+            MappingModuleId.watchRead,
+            forWrite: false,
+          )
+          .trim();
+      if (idProperty.isEmpty ||
+          statusProperty.isEmpty ||
+          watchingValue.isEmpty) {
         _recentMessage = '请先在映射页配置追番状态字段';
         _recentWatching = [];
         _recentWatched = [];
@@ -583,22 +648,14 @@ class RecommendationViewModel extends ChangeNotifier {
         idPropertyName: idProperty,
         titlePropertyName: titleProperty,
         coverPropertyName: coverProperty,
-        watchedEpisodesProperty: watchBindings.watchedEpisodes.isNotEmpty
-            ? watchBindings.watchedEpisodes
-            : mappingConfig.watchedEpisodes,
-        totalEpisodesProperty: watchBindings.totalEpisodes.isNotEmpty
-            ? watchBindings.totalEpisodes
-            : mappingConfig.totalEpisodes,
-        lastWatchedAtProperty: watchBindings.lastWatchedAt.isNotEmpty
-            ? watchBindings.lastWatchedAt
-            : mappingConfig.lastWatchedAt,
-        followDateProperty: watchBindings.followDate.isNotEmpty
-            ? watchBindings.followDate
-            : mappingConfig.followDate,
-        tagsProperty: watchBindings.tags.isNotEmpty ? watchBindings.tags : '',
-        yougnScoreProperty: watchBindings.yougnScore.isNotEmpty
-            ? watchBindings.yougnScore
-            : bindings?.yougnScore,
+        watchedEpisodesProperty: watchedEpisodesProperty,
+        totalEpisodesProperty: totalEpisodesProperty,
+        lastWatchedAtProperty:
+            lastWatchedAtProperty.isEmpty ? null : lastWatchedAtProperty,
+        followDateProperty: followDateProperty,
+        tagsProperty: tagsProperty,
+        yougnScoreProperty:
+            yougnScoreProperty.isEmpty ? null : yougnScoreProperty,
         statusPropertyName: statusProperty,
         statusValue: watchingValue,
         limit: 10,
@@ -609,22 +666,14 @@ class RecommendationViewModel extends ChangeNotifier {
         idPropertyName: idProperty,
         titlePropertyName: titleProperty,
         coverPropertyName: coverProperty,
-        watchedEpisodesProperty: watchBindings.watchedEpisodes.isNotEmpty
-            ? watchBindings.watchedEpisodes
-            : mappingConfig.watchedEpisodes,
-        totalEpisodesProperty: watchBindings.totalEpisodes.isNotEmpty
-            ? watchBindings.totalEpisodes
-            : mappingConfig.totalEpisodes,
-        lastWatchedAtProperty: watchBindings.lastWatchedAt.isNotEmpty
-            ? watchBindings.lastWatchedAt
-            : mappingConfig.lastWatchedAt,
-        followDateProperty: watchBindings.followDate.isNotEmpty
-            ? watchBindings.followDate
-            : mappingConfig.followDate,
-        tagsProperty: watchBindings.tags.isNotEmpty ? watchBindings.tags : '',
-        yougnScoreProperty: watchBindings.yougnScore.isNotEmpty
-            ? watchBindings.yougnScore
-            : bindings?.yougnScore,
+        watchedEpisodesProperty: watchedEpisodesProperty,
+        totalEpisodesProperty: totalEpisodesProperty,
+        lastWatchedAtProperty:
+            lastWatchedAtProperty.isEmpty ? null : lastWatchedAtProperty,
+        followDateProperty: followDateProperty,
+        tagsProperty: tagsProperty,
+        yougnScoreProperty:
+            yougnScoreProperty.isEmpty ? null : yougnScoreProperty,
         statusPropertyName: statusProperty,
         statusValue: watchedValue.isEmpty ? '已看' : watchedValue,
         limit: 10,
@@ -659,13 +708,21 @@ class RecommendationViewModel extends ChangeNotifier {
     if (entry.id.isEmpty) return null;
 
     final mappingConfig = await _settingsStorage.getMappingConfig();
-    final watchBindings = mappingConfig.watchBindings;
-    final watchedProperty = watchBindings.watchedEpisodes.isNotEmpty
-        ? watchBindings.watchedEpisodes
-        : mappingConfig.watchedEpisodes;
-    final lastWatchedProperty = watchBindings.lastWatchedAt.isNotEmpty
-        ? watchBindings.lastWatchedAt
-        : mappingConfig.lastWatchedAt;
+    final resolver = DefaultMappingResolver(mappingConfig);
+    final watchedProperty = resolver
+        .resolve(
+          MappingSlotKey.watchedEpisodes,
+          MappingModuleId.watchWrite,
+          forWrite: true,
+        )
+        .trim();
+    final lastWatchedProperty = resolver
+        .resolve(
+          MappingSlotKey.lastWatchedAt,
+          MappingModuleId.watchWrite,
+          forWrite: true,
+        )
+        .trim();
     if (watchedProperty.trim().isEmpty) return null;
 
     final currentWatched = entry.watchedEpisodes ?? 0;
@@ -723,13 +780,21 @@ class RecommendationViewModel extends ChangeNotifier {
   Future<void> revertRecentWatch(RecentWatchUpdateResult result) async {
     if (_notionToken.isEmpty) return;
     final mappingConfig = await _settingsStorage.getMappingConfig();
-    final watchBindings = mappingConfig.watchBindings;
-    final watchedProperty = watchBindings.watchedEpisodes.isNotEmpty
-        ? watchBindings.watchedEpisodes
-        : mappingConfig.watchedEpisodes;
-    final lastWatchedProperty = watchBindings.lastWatchedAt.isNotEmpty
-        ? watchBindings.lastWatchedAt
-        : mappingConfig.lastWatchedAt;
+    final resolver = DefaultMappingResolver(mappingConfig);
+    final watchedProperty = resolver
+        .resolve(
+          MappingSlotKey.watchedEpisodes,
+          MappingModuleId.watchWrite,
+          forWrite: true,
+        )
+        .trim();
+    final lastWatchedProperty = resolver
+        .resolve(
+          MappingSlotKey.lastWatchedAt,
+          MappingModuleId.watchWrite,
+          forWrite: true,
+        )
+        .trim();
     if (watchedProperty.trim().isEmpty) return;
 
     await _notionApi.updateWatchProgress(
@@ -904,15 +969,6 @@ class RecommendationViewModel extends ChangeNotifier {
     final valid = indices.where((i) => i >= 0 && i < count).toList();
     if (valid.isEmpty) return _pickHeroIndices(count);
     return valid;
-  }
-
-  NotionDailyRecommendationBindings _resolveBindings(
-    MappingConfig config,
-    NotionDailyRecommendationBindings legacyBindings,
-  ) {
-    return config.dailyRecommendationBindings.isEmpty
-        ? legacyBindings
-        : config.dailyRecommendationBindings;
   }
 
   void _stopRotationTimer() {

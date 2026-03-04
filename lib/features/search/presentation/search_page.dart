@@ -24,6 +24,7 @@ class _SearchPageState extends State<SearchPage> {
   late final FocusNode _searchFocusNode;
   bool _initializedFromArgs = false;
   bool _showHints = false;
+  Timer? _hideHintsTimer;
 
   @override
   void initState() {
@@ -32,7 +33,17 @@ class _SearchPageState extends State<SearchPage> {
     _searchFocusNode = FocusNode();
     _searchFocusNode.addListener(() {
       if (!mounted) return;
-      setState(() => _showHints = _searchFocusNode.hasFocus);
+      _hideHintsTimer?.cancel();
+      if (_searchFocusNode.hasFocus) {
+        if (!_showHints) {
+          setState(() => _showHints = true);
+        }
+        return;
+      }
+      _hideHintsTimer = Timer(const Duration(milliseconds: 120), () {
+        if (!mounted || _searchFocusNode.hasFocus) return;
+        setState(() => _showHints = false);
+      });
     });
     _viewModel = SearchViewModel(
       bangumiApi: context.read<AppServices>().bangumiApi,
@@ -69,6 +80,7 @@ class _SearchPageState extends State<SearchPage> {
 
   @override
   void dispose() {
+    _hideHintsTimer?.cancel();
     _controller.dispose();
     _searchFocusNode.dispose();
     _viewModel.dispose();

@@ -113,6 +113,7 @@ class SearchView extends StatelessWidget {
                 child: TextFieldTapRegion(
                   groupId: tapRegionGroupId,
                   child: TextField(
+                    groupId: tapRegionGroupId,
                     controller: state.controller,
                     focusNode: state.searchFocusNode,
                     decoration: const InputDecoration(

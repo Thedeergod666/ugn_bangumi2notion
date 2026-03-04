@@ -34,6 +34,7 @@ class SettingsStorage {
   Future<SharedPreferences> get _prefs async => SharedPreferences.getInstance();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   Map<String, String>? _cache;
+  List<String>? _lastMappingMigrationNotes;
 
   Future<void> saveBangumiRedirectPort(String port) async {
     final prefs = await _prefs;
@@ -224,41 +225,83 @@ class SettingsStorage {
       SettingsKeys.dailyRecommendationBindings,
       jsonEncode(bindings.toJson()),
     );
+    final config = await getMappingConfig();
+    await saveMappingConfig(
+      config.copyWith(dailyRecommendationBindings: bindings),
+    );
   }
 
   Future<MappingConfig> getMappingConfig() async {
     final prefs = await _prefs;
     final jsonStr = prefs.getString(SettingsKeys.mappingConfig);
-    if (jsonStr == null || jsonStr.isEmpty) {
-      final legacyBindings = await getDailyRecommendationBindings();
-      return MappingConfig(dailyRecommendationBindings: legacyBindings);
-    }
-    try {
-      final config = MappingConfig.fromJson(jsonDecode(jsonStr));
-      final legacyBindings = await getDailyRecommendationBindings();
-      if (config.dailyRecommendationBindings.isEmpty) {
-        return config.copyWith(dailyRecommendationBindings: legacyBindings);
+    final legacyRaw =
+        prefs.getString(SettingsKeys.dailyRecommendationBindings) ?? '';
+    Map<String, dynamic> legacyDailyMap = const <String, dynamic>{};
+    if (legacyRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(legacyRaw);
+        if (decoded is Map<String, dynamic>) {
+          legacyDailyMap = decoded;
+        } else if (decoded is Map) {
+          legacyDailyMap = decoded.cast<String, dynamic>();
+        }
+      } catch (_) {
+        legacyDailyMap = const <String, dynamic>{};
       }
-      return config;
+    }
+
+    if (jsonStr == null || jsonStr.isEmpty) {
+      final migration = MappingConfig.migrateFromLegacy(
+        v1Config: const <String, dynamic>{},
+        legacyDailyBindings: legacyDailyMap,
+      );
+      await saveMappingConfig(migration.config);
+      _lastMappingMigrationNotes = migration.notes;
+      return migration.config;
+    }
+
+    try {
+      final decoded = jsonDecode(jsonStr);
+      if (decoded is! Map) {
+        throw Exception('Invalid mapping config json');
+      }
+      final rawMap = decoded is Map<String, dynamic>
+          ? decoded
+          : decoded.cast<String, dynamic>();
+      final schemaVersion = rawMap['schemaVersion'];
+      if (schemaVersion == mappingSchemaVersion) {
+        _lastMappingMigrationNotes = null;
+        return MappingConfig.fromJson(rawMap);
+      }
+
+      final migration = MappingConfig.migrateFromLegacy(
+        v1Config: rawMap,
+        legacyDailyBindings: legacyDailyMap,
+      );
+      await saveMappingConfig(migration.config);
+      _lastMappingMigrationNotes = migration.notes;
+      return migration.config;
     } catch (_) {
-      final legacyBindings = await getDailyRecommendationBindings();
-      return MappingConfig(dailyRecommendationBindings: legacyBindings);
+      final migration = MappingConfig.migrateFromLegacy(
+        v1Config: const <String, dynamic>{},
+        legacyDailyBindings: legacyDailyMap,
+      );
+      await saveMappingConfig(migration.config);
+      _lastMappingMigrationNotes = migration.notes;
+      return migration.config;
     }
   }
 
   Future<NotionDailyRecommendationBindings>
       getDailyRecommendationBindings() async {
-    final prefs = await _prefs;
-    final jsonStr =
-        prefs.getString(SettingsKeys.dailyRecommendationBindings) ?? '';
-    if (jsonStr.isEmpty) {
-      return const NotionDailyRecommendationBindings();
-    }
-    try {
-      return NotionDailyRecommendationBindings.fromJson(jsonDecode(jsonStr));
-    } catch (_) {
-      return const NotionDailyRecommendationBindings();
-    }
+    final config = await getMappingConfig();
+    return config.toDailyRecommendationBindings();
+  }
+
+  List<String>? takeLastMappingMigrationNotes() {
+    final notes = _lastMappingMigrationNotes;
+    _lastMappingMigrationNotes = null;
+    return notes;
   }
 
   Future<Map<String, String>> loadAll({bool forceRefresh = false}) async {
