@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 
 import 'batch_binding_ui_models.dart';
 import 'batch_import_view_model.dart';
@@ -31,7 +31,8 @@ class BatchBindingUiController extends ChangeNotifier {
   }
 
   BatchUiItem? get activeItem {
-    final current = _activePageId == null ? null : _itemsByPageId[_activePageId];
+    final current =
+        _activePageId == null ? null : _itemsByPageId[_activePageId];
     if (current != null && _isVisible(current)) {
       return current;
     }
@@ -192,7 +193,8 @@ class BatchBindingUiController extends ChangeNotifier {
 
   List<BatchUiItem> selectedVisibleItemsForBinding() {
     return visibleItems
-        .where((item) => item.selected && !item.isBound && item.scoredMatches.isNotEmpty)
+        .where((item) =>
+            item.selected && !item.isBound && item.scoredMatches.isNotEmpty)
         .toList();
   }
 

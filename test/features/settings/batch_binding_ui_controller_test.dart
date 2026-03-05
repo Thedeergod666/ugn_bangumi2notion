@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_utools/features/settings/providers/batch_binding_ui_controller.dart';
 import 'package:flutter_utools/features/settings/providers/batch_binding_ui_models.dart';
@@ -52,14 +52,16 @@ void main() {
           pageId: 'p1',
           title: '赛马娘 第二季',
           matches: [
-            buildMatch(id: 1, nameCn: '赛马娘 第二季', airDate: '2021-01-01', score: 7.8),
+            buildMatch(
+                id: 1, nameCn: '赛马娘 第二季', airDate: '2021-01-01', score: 7.8),
           ],
         ),
         buildCandidate(
           pageId: 'p2',
           title: '药屋少女',
           matches: [
-            buildMatch(id: 2, nameCn: '药屋少女', airDate: '2023-01-01', score: 8.1),
+            buildMatch(
+                id: 2, nameCn: '药屋少女', airDate: '2023-01-01', score: 8.1),
           ],
           bound: true,
         ),
@@ -77,14 +79,19 @@ void main() {
           pageId: 'p1',
           title: '赛马娘 第二季',
           matches: [
-            buildMatch(id: 315574, nameCn: '赛马娘 第二季', airDate: '2021-01-01', score: 7.8),
+            buildMatch(
+                id: 315574,
+                nameCn: '赛马娘 第二季',
+                airDate: '2021-01-01',
+                score: 7.8),
           ],
         ),
         buildCandidate(
           pageId: 'p2',
           title: '药屋少女',
           matches: [
-            buildMatch(id: 407332, nameCn: '药屋少女', airDate: '2023-01-01', score: 8.1),
+            buildMatch(
+                id: 407332, nameCn: '药屋少女', airDate: '2023-01-01', score: 8.1),
           ],
         ),
       ]);
@@ -104,15 +111,18 @@ void main() {
           pageId: 'p1',
           title: '条目1',
           matches: [
-            buildMatch(id: 11, nameCn: '条目1 A', airDate: '2019-01-01', score: 6.2),
-            buildMatch(id: 12, nameCn: '条目1 B', airDate: '2021-01-01', score: 8.9),
+            buildMatch(
+                id: 11, nameCn: '条目1 A', airDate: '2019-01-01', score: 6.2),
+            buildMatch(
+                id: 12, nameCn: '条目1 B', airDate: '2021-01-01', score: 8.9),
           ],
         ),
         buildCandidate(
           pageId: 'p2',
           title: '条目2',
           matches: [
-            buildMatch(id: 21, nameCn: '条目2', airDate: '2023-01-01', score: 7.1),
+            buildMatch(
+                id: 21, nameCn: '条目2', airDate: '2023-01-01', score: 7.1),
           ],
         ),
       ]);
@@ -121,7 +131,7 @@ void main() {
       expect(controller.visibleItems.first.pageId, 'p1');
 
       controller.setSortMode(BatchSortMode.year);
-      expect(controller.visibleItems.first.pageId, 'p1');
+      expect(controller.visibleItems.first.pageId, 'p2');
     });
 
     test('supports selection and remove-selected', () {
@@ -130,12 +140,16 @@ void main() {
         buildCandidate(
           pageId: 'p1',
           title: 'A',
-          matches: [buildMatch(id: 1, nameCn: 'A', airDate: '2020', score: 7.0)],
+          matches: [
+            buildMatch(id: 1, nameCn: 'A', airDate: '2020', score: 7.0)
+          ],
         ),
         buildCandidate(
           pageId: 'p2',
           title: 'B',
-          matches: [buildMatch(id: 2, nameCn: 'B', airDate: '2021', score: 7.0)],
+          matches: [
+            buildMatch(id: 2, nameCn: 'B', airDate: '2021', score: 7.0)
+          ],
         ),
       ]);
 

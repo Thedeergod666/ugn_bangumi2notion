@@ -1,11 +1,12 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_utools/features/settings/providers/batch_binding_similarity.dart';
 
 void main() {
   group('computeTitleSimilarity', () {
     test('returns 100 for exact match', () {
-      final score = computeTitleSimilarity('赛马娘 Pretty Derby 第二季', '赛马娘 Pretty Derby 第二季');
+      final score = computeTitleSimilarity(
+          '赛马娘 Pretty Derby 第二季', '赛马娘 Pretty Derby 第二季');
       expect(score, 100);
     });
 

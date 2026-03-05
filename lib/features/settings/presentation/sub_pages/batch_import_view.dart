@@ -1,27 +1,86 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../models/bangumi_models.dart';
-import '../../providers/batch_import_view_model.dart';
+import '../../providers/batch_binding_ui_models.dart';
+import 'widgets/batch_import_debug_ribbon.dart';
+import 'widgets/batch_import_left_pane.dart';
+import 'widgets/batch_import_progress_bar.dart';
+import 'widgets/batch_import_right_pane.dart';
+import 'widgets/batch_import_top_actions.dart';
 
 class BatchImportViewState {
   const BatchImportViewState({
     required this.isLoading,
     required this.errorMessage,
-    required this.candidates,
+    required this.searchController,
+    required this.manualInputController,
+    required this.onlyUnbound,
+    required this.sortMode,
+    required this.visibleItems,
+    required this.activeItem,
+    required this.pendingCount,
+    required this.completedCount,
+    required this.selectedCount,
+    required this.isBulkBinding,
+    required this.isManualVerifying,
+    required this.manualVerifiedId,
+    required this.manualVerifiedDetail,
   });
 
   final bool isLoading;
   final String? errorMessage;
-  final List<BatchImportCandidate> candidates;
+  final TextEditingController searchController;
+  final TextEditingController manualInputController;
+  final bool onlyUnbound;
+  final BatchSortMode sortMode;
+  final List<BatchUiItem> visibleItems;
+  final BatchUiItem? activeItem;
+  final int pendingCount;
+  final int completedCount;
+  final int selectedCount;
+  final bool isBulkBinding;
+  final bool isManualVerifying;
+  final int? manualVerifiedId;
+  final BangumiSubjectDetail? manualVerifiedDetail;
 }
 
 class BatchImportViewCallbacks {
   const BatchImportViewCallbacks({
-    required this.onBind,
+    required this.onSearchChanged,
+    required this.onOnlyUnboundChanged,
+    required this.onSortChanged,
+    required this.onOneClickBind,
+    required this.onSelectItem,
+    required this.onToggleItemSelected,
+    required this.onSkipSelected,
+    required this.onBindSelected,
+    required this.onBindSingle,
+    required this.onOpenNotionDetail,
+    required this.onOpenBangumiDetail,
+    required this.onOpenBangumiExternal,
+    required this.onManualInputChanged,
+    required this.onVerifyManual,
+    required this.onBindManual,
+    required this.onToggleConflict,
   });
 
-  final void Function(BatchImportCandidate candidate, int bangumiId) onBind;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<bool> onOnlyUnboundChanged;
+  final ValueChanged<BatchSortMode> onSortChanged;
+  final VoidCallback onOneClickBind;
+  final ValueChanged<String> onSelectItem;
+  final ValueChanged<String> onToggleItemSelected;
+  final VoidCallback onSkipSelected;
+  final VoidCallback onBindSelected;
+  final void Function(BatchUiItem item, int bangumiId) onBindSingle;
+  final ValueChanged<BatchUiItem> onOpenNotionDetail;
+  final ValueChanged<int> onOpenBangumiDetail;
+  final ValueChanged<int> onOpenBangumiExternal;
+  final ValueChanged<String> onManualInputChanged;
+  final VoidCallback onVerifyManual;
+  final VoidCallback onBindManual;
+  final ValueChanged<String> onToggleConflict;
 }
 
 class BatchImportView extends StatelessWidget {
@@ -49,207 +108,120 @@ class BatchImportView extends StatelessWidget {
       );
     }
 
-    if (state.candidates.isEmpty) {
+    if (state.visibleItems.isEmpty && state.activeItem == null) {
       return const Center(child: Text('暂无待绑定条目'));
     }
 
-    return ListView.separated(
-      itemCount: state.candidates.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final candidate = state.candidates[index];
-        return _BatchImportCard(
-          candidate: candidate,
-          onBind: (id) => callbacks.onBind(candidate, id),
-        );
-      },
-    );
-  }
-}
-
-class _BatchImportCard extends StatefulWidget {
-  const _BatchImportCard({
-    required this.candidate,
-    required this.onBind,
-  });
-
-  final BatchImportCandidate candidate;
-  final ValueChanged<int> onBind;
-
-  @override
-  State<_BatchImportCard> createState() => _BatchImportCardState();
-}
-
-class _BatchImportCardState extends State<_BatchImportCard> {
-  final TextEditingController _manualController = TextEditingController();
-
-  @override
-  void dispose() {
-    _manualController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final candidate = widget.candidate;
-    final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      color: colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _NotionSide(title: candidate.notionItem.title)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _BangumiSide(
-                    matches: candidate.matches,
-                    onBind: widget.onBind,
-                    bound: candidate.bound,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (!candidate.bound)
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _manualController,
-                      decoration: const InputDecoration(
-                        labelText: '手动输入 Bangumi ID',
-                        border: OutlineInputBorder(),
-                        isDense: true,
+    final content = Column(
+      children: [
+        BatchImportTopActions(
+          searchController: state.searchController,
+          onlyUnbound: state.onlyUnbound,
+          onSearchChanged: callbacks.onSearchChanged,
+          onOnlyUnboundChanged: callbacks.onOnlyUnboundChanged,
+          onOneClickBind: callbacks.onOneClickBind,
+          isBinding: state.isBulkBinding,
+        ),
+        const SizedBox(height: 10),
+        BatchImportProgressBar(
+          pendingCount: state.pendingCount,
+          completedCount: state.completedCount,
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 600;
+              if (isNarrow) {
+                return Column(
+                  children: [
+                    Expanded(
+                      child: BatchImportLeftPane(
+                        items: state.visibleItems,
+                        activePageId: state.activeItem?.pageId,
+                        sortMode: state.sortMode,
+                        selectedCount: state.selectedCount,
+                        isBusy: state.isBulkBinding,
+                        onSortChanged: callbacks.onSortChanged,
+                        onSelectItem: callbacks.onSelectItem,
+                        onToggleItemSelected: callbacks.onToggleItemSelected,
+                        onSkipSelected: callbacks.onSkipSelected,
+                        onBindSelected: callbacks.onBindSelected,
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: BatchImportRightPane(
+                        activeItem: state.activeItem,
+                        manualInputController: state.manualInputController,
+                        isManualVerifying: state.isManualVerifying,
+                        manualVerifiedId: state.manualVerifiedId,
+                        manualVerifiedDetail: state.manualVerifiedDetail,
+                        isBusy: state.isBulkBinding,
+                        onOpenNotionDetail: callbacks.onOpenNotionDetail,
+                        onBindSingle: callbacks.onBindSingle,
+                        onOpenBangumiDetail: callbacks.onOpenBangumiDetail,
+                        onOpenBangumiExternal: callbacks.onOpenBangumiExternal,
+                        onManualInputChanged: callbacks.onManualInputChanged,
+                        onVerifyManual: callbacks.onVerifyManual,
+                        onBindManual: callbacks.onBindManual,
+                        onToggleConflict: callbacks.onToggleConflict,
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: 390,
+                    child: BatchImportLeftPane(
+                      items: state.visibleItems,
+                      activePageId: state.activeItem?.pageId,
+                      sortMode: state.sortMode,
+                      selectedCount: state.selectedCount,
+                      isBusy: state.isBulkBinding,
+                      onSortChanged: callbacks.onSortChanged,
+                      onSelectItem: callbacks.onSelectItem,
+                      onToggleItemSelected: callbacks.onToggleItemSelected,
+                      onSkipSelected: callbacks.onSkipSelected,
+                      onBindSelected: callbacks.onBindSelected,
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: () {
-                      final id = int.tryParse(_manualController.text.trim());
-                      if (id == null || id <= 0) return;
-                      widget.onBind(id);
-                    },
-                    child: const Text('绑定'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: BatchImportRightPane(
+                      activeItem: state.activeItem,
+                      manualInputController: state.manualInputController,
+                      isManualVerifying: state.isManualVerifying,
+                      manualVerifiedId: state.manualVerifiedId,
+                      manualVerifiedDetail: state.manualVerifiedDetail,
+                      isBusy: state.isBulkBinding,
+                      onOpenNotionDetail: callbacks.onOpenNotionDetail,
+                      onBindSingle: callbacks.onBindSingle,
+                      onOpenBangumiDetail: callbacks.onOpenBangumiDetail,
+                      onOpenBangumiExternal: callbacks.onOpenBangumiExternal,
+                      onManualInputChanged: callbacks.onManualInputChanged,
+                      onVerifyManual: callbacks.onVerifyManual,
+                      onBindManual: callbacks.onBindManual,
+                      onToggleConflict: callbacks.onToggleConflict,
+                    ),
                   ),
                 ],
-              ),
-          ],
+              );
+            },
+          ),
         ),
-      ),
+      ],
+    );
+
+    return Stack(
+      children: [
+        Positioned.fill(child: content),
+        if (kDebugMode) const BatchImportDebugRibbon(),
+      ],
     );
   }
 }
-
-class _NotionSide extends StatelessWidget {
-  const _NotionSide({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.description_outlined),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BangumiSide extends StatelessWidget {
-  const _BangumiSide({
-    required this.matches,
-    required this.onBind,
-    required this.bound,
-  });
-
-  final List<BangumiSearchItem> matches;
-  final ValueChanged<int> onBind;
-  final bool bound;
-
-  @override
-  Widget build(BuildContext context) {
-    if (bound) {
-      return const Text('已绑定');
-    }
-    if (matches.isEmpty) {
-      return const Text('未找到匹配项');
-    }
-    return Column(
-      children: matches.map((item) {
-        final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
-        return ListTile(
-          dense: true,
-          leading: _CoverThumb(url: item.imageUrl),
-          title: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text('ID ${item.id}'),
-          trailing: TextButton(
-            onPressed: () => onBind(item.id),
-            child: const Text('绑定'),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-class _CoverThumb extends StatelessWidget {
-  const _CoverThumb({required this.url});
-
-  final String url;
-
-  @override
-  Widget build(BuildContext context) {
-    if (url.isEmpty) {
-      return const SizedBox(width: 36, height: 48, child: Icon(Icons.image));
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: CachedNetworkImage(
-        imageUrl: url,
-        width: 36,
-        height: 48,
-        fit: BoxFit.cover,
-        errorWidget: (_, __, ___) => const SizedBox(
-          width: 36,
-          height: 48,
-          child: Icon(Icons.broken_image),
-        ),
-      ),
-    );
-  }
-}
-

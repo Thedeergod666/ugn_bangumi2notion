@@ -1,5 +1,5 @@
-﻿import '../../../models/bangumi_models.dart';
-import '../../../models/notion_models.dart';
+import '../../../models/bangumi_models.dart';
+import 'batch_import_view_model.dart';
 import 'batch_binding_similarity.dart';
 
 enum BatchSortMode {
@@ -33,11 +33,11 @@ BatchMatchLevel resolveMatchLevel(int similarity) {
 String matchLevelText(BatchMatchLevel level) {
   switch (level) {
     case BatchMatchLevel.best:
-      return '最匹配';
+      return 'Best Match';
     case BatchMatchLevel.near:
-      return '标题相近';
+      return 'Title Similar';
     case BatchMatchLevel.suspicious:
-      return '疑似误匹配';
+      return 'Possible Mismatch';
   }
 }
 
