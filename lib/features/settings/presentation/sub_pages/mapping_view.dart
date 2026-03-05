@@ -43,14 +43,16 @@ class MappingView extends StatelessWidget {
                 if (!model.isConfigured)
                   _buildNoticeCard(
                     context,
-                    '请先在设置页配置 Notion Token 与 Database ID，才能加载属性列表。',
+                    '请先在设置页配置 Notion Token 和 Database ID，才能加载属性列表。',
                   ),
                 _buildValidationCard(context),
+                const SizedBox(height: 12),
+                _buildCommonBindingsCard(context),
                 const SizedBox(height: 12),
                 ...mappingModuleMetas.map(
                   (module) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildModuleCard(context, module),
+                    child: _buildModuleSummaryCard(context, module),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -183,16 +185,51 @@ class MappingView extends StatelessWidget {
     );
   }
 
-  Widget _buildModuleCard(BuildContext context, MappingModuleMeta module) {
+  Widget _buildCommonBindingsCard(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '通用字段池（每个槽位仅出现一次）',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '同一字段只绑定一次，模块通过“使用去向”自动复用。',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 10),
+          ...mappingSlotMetas.map(
+            (slotMeta) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _buildSlotRow(context, slotMeta),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModuleSummaryCard(
+      BuildContext context, MappingModuleMeta module) {
     final moduleIssues = model.moduleValidationIssues
         .where((issue) => issue.module == module.id)
         .toList();
-    final slots = mappingSlotMetas
-        .where((meta) => meta.modules.contains(module.id))
-        .toList();
-
     final complete = moduleIssues.isEmpty;
     final colorScheme = Theme.of(context).colorScheme;
+    final forWrite = _forWriteModule(module.id);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -240,18 +277,21 @@ class MappingView extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 10),
-          if (slots.isEmpty)
-            Text(
-              '该模块没有可配置的主槽位。',
-              style: Theme.of(context).textTheme.bodySmall,
-            )
-          else
-            ...slots.map(
-              (slotMeta) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _buildSlotRow(context, module.id, slotMeta),
+          ...module.criticalSlots.map((slot) {
+            final slotLabel = mappingSlotMetaByKey[slot]?.label ?? slot.name;
+            final resolved = model.resolveForModule(
+              slot,
+              module.id,
+              forWrite: forWrite,
+            );
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '• $slotLabel: ${resolved.trim().isEmpty ? '未配置' : resolved.trim()}',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
-            ),
+            );
+          }),
           if (moduleIssues.isNotEmpty) ...[
             const Divider(height: 18),
             ...moduleIssues.map(
@@ -269,16 +309,17 @@ class MappingView extends StatelessWidget {
     );
   }
 
-  Widget _buildSlotRow(
-    BuildContext context,
-    MappingModuleId module,
-    MappingSlotMeta slotMeta,
-  ) {
+  Widget _buildSlotRow(BuildContext context, MappingSlotMeta slotMeta) {
     final slot = slotMeta.key;
     final binding = model.config.bindingFor(slot);
     final isParamSlot = slot == MappingSlotKey.watchingStatusValue ||
         slot == MappingSlotKey.watchingStatusValueWatched;
-    final usageModules = model.usageOfSlot(slot);
+
+    final usageModules = [...model.usageOfSlot(slot)]..sort((a, b) {
+        final aIndex = mappingModuleMetas.indexWhere((meta) => meta.id == a);
+        final bIndex = mappingModuleMetas.indexWhere((meta) => meta.id == b);
+        return aIndex.compareTo(bIndex);
+      });
     final usageText = usageModules
         .map((moduleId) =>
             mappingModuleMetaById[moduleId]?.label ?? moduleId.name)
@@ -292,7 +333,7 @@ class MappingView extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
-        if (slotMeta.writeSlot && module == MappingModuleId.importWrite)
+        if (slotMeta.writeSlot)
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -382,7 +423,7 @@ class MappingView extends StatelessWidget {
         input,
         const SizedBox(height: 4),
         Text(
-          '使用去向：$usageText',
+          '使用去向: $usageText',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -477,6 +518,11 @@ class MappingView extends StatelessWidget {
             ),
       ),
     );
+  }
+
+  bool _forWriteModule(MappingModuleId module) {
+    return module == MappingModuleId.importWrite ||
+        module == MappingModuleId.watchWrite;
   }
 
   String _typeLabel(String type) {

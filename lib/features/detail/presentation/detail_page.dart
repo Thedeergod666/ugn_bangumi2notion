@@ -150,6 +150,11 @@ class _DetailPageState extends State<DetailPage> {
 
     final mappingConfig = preparation.mappingConfig;
     final existingPageId = preparation.existingPageId;
+    final subjectTitle = detail.nameCn.trim().isNotEmpty
+        ? detail.nameCn.trim()
+        : detail.name.trim().isNotEmpty
+            ? detail.name.trim()
+            : 'Untitled';
 
     String formatLabel(String bangumiLabel, String? notionLabel) {
       if (notionLabel == null || notionLabel.trim().isEmpty) return '';
@@ -236,6 +241,8 @@ class _DetailPageState extends State<DetailPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      _buildSubjectHeader(subjectTitle),
+                      const SizedBox(height: 8),
                       _buildDialogSectionTitle('目标定位'),
                       if (isUpdateMode)
                         ListTile(
@@ -533,6 +540,42 @@ class _DetailPageState extends State<DetailPage> {
       child: Text(
         title,
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      ),
+    );
+  }
+
+  Widget _buildSubjectHeader(String title) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.movie_outlined, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            '番剧：',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+        ],
       ),
     );
   }
