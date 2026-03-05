@@ -56,12 +56,19 @@ class BatchImportViewModel extends ChangeNotifier {
   final SettingsStorage _settingsStorage;
 
   bool _loading = false;
+  bool _disposed = false;
   String? _errorMessage;
   List<BatchImportCandidate> _candidates = [];
 
   bool get isLoading => _loading;
+  bool get isDisposed => _disposed;
   String? get errorMessage => _errorMessage;
   List<BatchImportCandidate> get candidates => _candidates;
+
+  void _notifySafely() {
+    if (_disposed) return;
+    notifyListeners();
+  }
 
   bool get _hasValidCache {
     final at = _candidateCacheAt;
@@ -83,18 +90,19 @@ class BatchImportViewModel extends ChangeNotifier {
   }
 
   Future<void> load({bool forceRefresh = false}) async {
+    if (_disposed) return;
     if (_loading) return;
     if (!forceRefresh && _hasValidCache) {
       _errorMessage = null;
       _candidates = List<BatchImportCandidate>.from(_candidateCache);
-      notifyListeners();
+      _notifySafely();
       return;
     }
 
     _loading = true;
     _errorMessage = null;
     _candidates = [];
-    notifyListeners();
+    _notifySafely();
 
     try {
       final token = _settings.notionToken;
@@ -150,6 +158,7 @@ class BatchImportViewModel extends ChangeNotifier {
 
       final results = <BatchImportCandidate>[];
       for (final item in pages) {
+        if (_disposed) return;
         if (_isMangaType(item.notionType)) continue;
         final keyword = item.title.trim();
         if (keyword.isEmpty) continue;
@@ -166,16 +175,19 @@ class BatchImportViewModel extends ChangeNotifier {
             matches: matches.take(3).toList(),
           ),
         );
+        if (_disposed) return;
         await Future.delayed(const Duration(milliseconds: 400));
       }
 
+      if (_disposed) return;
       _candidates = results;
       _syncCacheFromState();
     } catch (e) {
+      if (_disposed) return;
       _errorMessage = e.toString().replaceAll('Exception: ', '');
     } finally {
       _loading = false;
-      notifyListeners();
+      _notifySafely();
     }
   }
 
@@ -213,13 +225,14 @@ class BatchImportViewModel extends ChangeNotifier {
   }
 
   void markCandidateBound(String pageId) {
+    if (_disposed) return;
     if (pageId.trim().isEmpty) return;
     _candidates = _candidates
         .map((item) =>
             item.notionItem.id == pageId ? item.copyWith(bound: true) : item)
         .toList();
     _syncCacheFromState();
-    notifyListeners();
+    _notifySafely();
   }
 
   Future<BangumiSubjectDetail> getSubjectDetail(int subjectId) async {
@@ -233,5 +246,11 @@ class BatchImportViewModel extends ChangeNotifier {
     );
     _subjectDetailCache[subjectId] = detail;
     return detail;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

@@ -345,7 +345,9 @@ class _CandidateCard extends StatelessWidget {
                   runSpacing: 6,
                   children: [
                     _TinyChip(
-                      text: 'bgm ${match.item.score.toStringAsFixed(1)}',
+                      text: match.item.score > 0
+                          ? 'bgm ${match.item.score.toStringAsFixed(1)}'
+                          : 'bgm -',
                       backgroundColor: Colors.amber.withValues(alpha: 0.2),
                       textColor: Colors.amber.shade800,
                     ),

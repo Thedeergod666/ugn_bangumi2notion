@@ -1,9 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../models/bangumi_models.dart';
 import '../../providers/batch_binding_ui_models.dart';
-import 'widgets/batch_import_debug_ribbon.dart';
 import 'widgets/batch_import_left_pane.dart';
 import 'widgets/batch_import_progress_bar.dart';
 import 'widgets/batch_import_right_pane.dart';
@@ -217,11 +215,6 @@ class BatchImportView extends StatelessWidget {
       ],
     );
 
-    return Stack(
-      children: [
-        Positioned.fill(child: content),
-        if (kDebugMode) const BatchImportDebugRibbon(),
-      ],
-    );
+    return content;
   }
 }

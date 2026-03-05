@@ -21,6 +21,7 @@ class BangumiSearchItem {
 
   factory BangumiSearchItem.fromJson(Map<String, dynamic> json) {
     final images = json['images'] as Map<String, dynamic>?;
+    final rating = json['rating'] as Map<String, dynamic>?;
     return BangumiSearchItem(
       id: (json['id'] as num?)?.toInt() ?? 0,
       name: json['name'] as String? ?? '',
@@ -28,8 +29,12 @@ class BangumiSearchItem {
       summary: json['summary'] as String? ?? '',
       imageUrl: images?['medium'] as String? ?? '',
       airDate: json['date'] as String? ?? '',
-      score: (json['score'] as num?)?.toDouble() ?? 0,
-      rank: (json['rank'] as num?)?.toInt() ?? 0,
+      score: (rating?['score'] as num?)?.toDouble() ??
+          (json['score'] as num?)?.toDouble() ??
+          0,
+      rank: (rating?['rank'] as num?)?.toInt() ??
+          (json['rank'] as num?)?.toInt() ??
+          0,
     );
   }
 }
@@ -89,12 +94,11 @@ class BangumiCalendarItem {
       if (value is String) {
         final trimmed = value.trim();
         if (trimmed.isEmpty) return 0;
-        return int.tryParse(trimmed) ??
-            double.tryParse(trimmed)?.round() ??
-            0;
+        return int.tryParse(trimmed) ?? double.tryParse(trimmed)?.round() ?? 0;
       }
       return 0;
     }
+
     return BangumiCalendarItem(
       id: parseInt(json['id']),
       type: parseInt(json['type']),
