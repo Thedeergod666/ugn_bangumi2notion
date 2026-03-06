@@ -255,7 +255,13 @@ const List<MappingSlotMeta> mappingSlotMetas = [
   MappingSlotMeta(
     key: MappingSlotKey.type,
     label: '类型',
-    allowedNotionTypes: ['select', 'multi_select', 'rich_text', 'title'],
+    allowedNotionTypes: [
+      'status',
+      'select',
+      'multi_select',
+      'rich_text',
+      'title'
+    ],
     modules: [
       MappingModuleId.recommendationRead,
       MappingModuleId.batchImport,
@@ -390,7 +396,13 @@ const List<MappingSlotMeta> mappingSlotMetas = [
   MappingSlotMeta(
     key: MappingSlotKey.subjectId,
     label: 'Subject ID',
-    allowedNotionTypes: ['number', 'rich_text', 'formula', 'rollup'],
+    allowedNotionTypes: [
+      'number',
+      'rich_text',
+      'formula',
+      'rollup',
+      'unique_id'
+    ],
     modules: [MappingModuleId.recommendationRead],
     writeSlot: false,
   ),
@@ -404,21 +416,27 @@ const List<MappingSlotMeta> mappingSlotMetas = [
   MappingSlotMeta(
     key: MappingSlotKey.notionId,
     label: 'Notion ID 字段',
-    allowedNotionTypes: ['title', 'rich_text', 'url'],
+    allowedNotionTypes: ['title', 'rich_text', 'url', 'unique_id'],
     modules: [MappingModuleId.identityBinding, MappingModuleId.batchImport],
     writeSlot: false,
   ),
   MappingSlotMeta(
     key: MappingSlotKey.globalIdProperty,
     label: '全局唯一 ID 字段',
-    allowedNotionTypes: ['title', 'rich_text', 'url'],
+    allowedNotionTypes: ['title', 'rich_text', 'url', 'unique_id'],
     modules: [MappingModuleId.identityBinding],
     writeSlot: false,
   ),
   MappingSlotMeta(
     key: MappingSlotKey.idProperty,
     label: 'Bangumi ID 查询字段',
-    allowedNotionTypes: ['number', 'rich_text', 'formula', 'rollup'],
+    allowedNotionTypes: [
+      'number',
+      'rich_text',
+      'formula',
+      'rollup',
+      'unique_id'
+    ],
     modules: [MappingModuleId.identityBinding],
     writeSlot: false,
   ),

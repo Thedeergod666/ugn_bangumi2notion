@@ -67,6 +67,7 @@ BatchImportView buildView() {
       onSkipSelected: () {},
       onBindSelected: () {},
       onBindSingle: (_, __) {},
+      onSelectCandidate: (_, __) {},
       onOpenNotionDetail: (_) {},
       onOpenBangumiDetail: (_) {},
       onOpenBangumiExternal: (_) {},

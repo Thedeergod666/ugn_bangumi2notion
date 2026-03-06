@@ -41,6 +41,7 @@ void main() {
             'properties': {
               'Name': {'type': 'title'},
               'Bangumi ID': {'type': 'number'},
+              'ID': {'type': 'unique_id'},
               'Official URL': {'type': 'url'},
               'Text Field': {'type': 'rich_text'},
               'Watch Status': {'type': 'status'},
@@ -101,6 +102,27 @@ void main() {
       (item) => item.slot == MappingSlotKey.link,
     );
     expect(linkRow.status, MappingRowStatus.configured);
+  });
+
+  test(
+      'rowsForUi treats unique_id and status as valid types for configured slots',
+      () async {
+    final model = await createLoadedModel();
+
+    model.updateSlotProperty(MappingSlotKey.notionId, 'ID');
+    model.updateSlotProperty(MappingSlotKey.type, 'Watch Status');
+
+    final notionIdRow = model.rowsForUi.firstWhere(
+      (item) => item.slot == MappingSlotKey.notionId,
+    );
+    final typeRow = model.rowsForUi.firstWhere(
+      (item) => item.slot == MappingSlotKey.type,
+    );
+
+    expect(notionIdRow.notionPropertyType, 'unique_id');
+    expect(notionIdRow.status, MappingRowStatus.configured);
+    expect(typeRow.notionPropertyType, 'status');
+    expect(typeRow.status, MappingRowStatus.configured);
   });
 
   test('resetDraft reverts to latest loaded or saved snapshot', () async {
