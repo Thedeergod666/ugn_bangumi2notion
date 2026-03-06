@@ -62,6 +62,8 @@ class MappingSlotMeta {
   final List<String> allowedNotionTypes;
   final List<MappingModuleId> modules;
   final bool writeSlot;
+  final String _sourceTypeTag;
+  final String _helpText;
 
   const MappingSlotMeta({
     required this.key,
@@ -69,7 +71,34 @@ class MappingSlotMeta {
     required this.allowedNotionTypes,
     required this.modules,
     required this.writeSlot,
-  });
+    String sourceTypeTag = '',
+    String helpText = '',
+  })  : _sourceTypeTag = sourceTypeTag,
+        _helpText = helpText;
+
+  String get sourceTypeTag {
+    if (_sourceTypeTag.isNotEmpty) return _sourceTypeTag;
+    if (key == MappingSlotKey.watchingStatusValue ||
+        key == MappingSlotKey.watchingStatusValueWatched) {
+      return 'param';
+    }
+    if (allowedNotionTypes.contains('title')) return 'title';
+    if (allowedNotionTypes.contains('date')) return 'date';
+    if (allowedNotionTypes.contains('multi_select')) return 'multi-select';
+    if (allowedNotionTypes.contains('url')) return 'url';
+    if (allowedNotionTypes.contains('number')) return 'number';
+    if (allowedNotionTypes.contains('files')) return 'image';
+    return 'text';
+  }
+
+  String get helpText {
+    if (_helpText.isNotEmpty) return _helpText;
+    final moduleLabels = modules
+        .map((module) => mappingModuleMetaById[module]?.label ?? module.name)
+        .toList();
+    final usage = moduleLabels.isEmpty ? '' : '（用于${moduleLabels.join(' / ')}）';
+    return '$label 的映射配置$usage';
+  }
 }
 
 class ModuleValidationIssue {

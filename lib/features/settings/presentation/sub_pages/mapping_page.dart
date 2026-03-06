@@ -22,7 +22,7 @@ class MappingPage extends StatelessWidget {
       child: Consumer<MappingViewModel>(
         builder: (context, model, _) {
           return NavigationShell(
-            title: '映射设置',
+            title: '数据映射',
             selectedRoute: '/mapping',
             actions: [
               IconButton(
@@ -35,22 +35,28 @@ class MappingPage extends StatelessWidget {
                         ),
                 icon: const Icon(Icons.refresh),
               ),
-              IconButton(
-                tooltip: '保存',
-                onPressed:
-                    model.isLoading ? null : () => unawaited(_handleSave(context)),
-                icon: const Icon(Icons.save),
-              ),
               const SizedBox(width: 8),
             ],
             child: MappingView(
               model: model,
               onApplyMagicMap: model.applyMagicMap,
+              onBack: () => _handleBack(context),
+              onReset: model.resetDraft,
+              onSave: () => unawaited(_handleSave(context)),
             ),
           );
         },
       ),
     );
+  }
+
+  void _handleBack(BuildContext context) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    navigator.pushReplacementNamed('/settings');
   }
 
   Future<void> _handleSave(BuildContext context) async {

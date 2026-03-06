@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/app_settings.dart';
@@ -7,6 +9,58 @@ import '../../../core/network/notion_api.dart';
 import '../../../models/mapping_config.dart';
 import '../../../models/mapping_schema.dart';
 import '../../../models/notion_models.dart';
+
+enum MappingRowStatus {
+  configured,
+  unconfigured,
+  error,
+}
+
+class MappingRowVm {
+  const MappingRowVm({
+    required this.slot,
+    required this.label,
+    required this.sourceTypeTag,
+    required this.notionPropertyName,
+    required this.notionPropertyType,
+    required this.usageText,
+    required this.helpText,
+    required this.isRequired,
+    required this.isParamSlot,
+    required this.status,
+  });
+
+  final MappingSlotKey slot;
+  final String label;
+  final String sourceTypeTag;
+  final String notionPropertyName;
+  final String notionPropertyType;
+  final String usageText;
+  final String helpText;
+  final bool isRequired;
+  final bool isParamSlot;
+  final MappingRowStatus status;
+}
+
+class MappingStatusSummaryVm {
+  const MappingStatusSummaryVm({
+    required this.total,
+    required this.configured,
+    required this.unconfigured,
+    required this.error,
+  });
+
+  const MappingStatusSummaryVm.empty()
+      : total = 0,
+        configured = 0,
+        unconfigured = 0,
+        error = 0;
+
+  final int total;
+  final int configured;
+  final int unconfigured;
+  final int error;
+}
 
 class MappingViewModel extends ChangeNotifier {
   MappingViewModel({
@@ -28,6 +82,10 @@ class MappingViewModel extends ChangeNotifier {
   Map<String, List<MappingSlotUsage>> _propertyUsageIndex = {};
   List<String>? _migrationNotes;
   final Map<MappingSlotKey, List<NotionProperty>> _optionsCache = {};
+  List<MappingRowVm> _rowsForUi = const [];
+  MappingStatusSummaryVm _statusSummary = const MappingStatusSummaryVm.empty();
+  MappingConfig _loadedSnapshot = MappingConfig();
+  String _loadedSnapshotDigest = '';
 
   bool get isLoading => _loading;
   Object? get error => _error;
@@ -38,8 +96,11 @@ class MappingViewModel extends ChangeNotifier {
   Map<String, List<MappingSlotUsage>> get propertyUsageIndex =>
       _propertyUsageIndex;
   List<String>? get migrationNotes => _migrationNotes;
+  List<MappingRowVm> get rowsForUi => _rowsForUi;
+  MappingStatusSummaryVm get statusSummary => _statusSummary;
   bool get isConfigured =>
       _notionToken.isNotEmpty && _notionDatabaseId.isNotEmpty;
+  bool get hasUnsavedChanges => _currentDigest() != _loadedSnapshotDigest;
 
   Future<void> load(
     AppSettings settings, {
@@ -72,6 +133,7 @@ class MappingViewModel extends ChangeNotifier {
 
       _optionsCache.clear();
       _rebuildDerivedState();
+      _captureSnapshot();
     } catch (err) {
       _error = err;
     } finally {
@@ -83,12 +145,22 @@ class MappingViewModel extends ChangeNotifier {
   Future<void> saveConfig() async {
     await _settingsStorage.saveMappingConfig(_config);
     _migrationNotes = null;
+    _captureSnapshot();
+    _rebuildDerivedState();
+    notifyListeners();
+  }
+
+  void resetDraft() {
+    _config = MappingConfig.fromJson(_loadedSnapshot.toJson());
+    _rebuildDerivedState();
+    notifyListeners();
   }
 
   List<NotionProperty> optionsForSlot(MappingSlotKey slot) {
     final currentValue = _config.bindingFor(slot).propertyName;
     final base = _optionsCache.putIfAbsent(slot, () {
-      final allowed = mappingSlotMetaByKey[slot]?.allowedNotionTypes ?? const [];
+      final allowed =
+          mappingSlotMetaByKey[slot]?.allowedNotionTypes ?? const [];
       return [
         NotionProperty(name: '', type: ''),
         NotionProperty(name: '正文', type: 'page_content'),
@@ -333,5 +405,153 @@ class MappingViewModel extends ChangeNotifier {
     _resolver = DefaultMappingResolver(_config);
     _moduleValidationIssues = _resolver.validateByModule();
     _propertyUsageIndex = _resolver.buildPropertyUsageIndex();
+    _rowsForUi = _buildRowsForUi();
+    _statusSummary = _buildStatusSummary(_rowsForUi);
+  }
+
+  List<MappingRowVm> _buildRowsForUi() {
+    final moduleOrder = {
+      for (var i = 0; i < mappingModuleMetas.length; i++)
+        mappingModuleMetas[i].id: i,
+    };
+    final blockingSlots = _moduleValidationIssues
+        .where((issue) => issue.blocking && issue.slot != null)
+        .map((issue) => issue.slot!)
+        .toSet();
+
+    final rows = <MappingRowVm>[];
+    for (final meta in mappingSlotMetas) {
+      final slot = meta.key;
+      final isParamSlot = slot == MappingSlotKey.watchingStatusValue ||
+          slot == MappingSlotKey.watchingStatusValueWatched;
+      final rawName = isParamSlot
+          ? _config.moduleParam(
+              slot == MappingSlotKey.watchingStatusValue
+                  ? mappingParamWatchingStatusValue
+                  : mappingParamWatchingStatusValueWatched,
+              defaultValue:
+                  slot == MappingSlotKey.watchingStatusValueWatched ? '已看' : '',
+            )
+          : _config.bindingFor(slot).propertyName;
+      final propertyName = rawName.trim();
+
+      String propertyType = '';
+      if (isParamSlot) {
+        propertyType = 'param';
+      } else if (_isPageContentProperty(propertyName)) {
+        propertyType = 'page_content';
+      } else if (propertyName.isNotEmpty) {
+        final prop =
+            _notionProperties.where((item) => item.name == propertyName);
+        if (prop.isNotEmpty) {
+          propertyType = prop.first.type;
+        } else {
+          propertyType = 'unknown';
+        }
+      }
+
+      final status = _rowStatusOf(
+        slot: slot,
+        propertyName: propertyName,
+        propertyType: propertyType,
+        isParamSlot: isParamSlot,
+        blockingSlots: blockingSlots,
+      );
+
+      final usageModules = [...usageOfSlot(slot)]..sort(
+          (a, b) => (moduleOrder[a] ?? 999).compareTo(moduleOrder[b] ?? 999),
+        );
+      final usageText = usageModules
+          .map((moduleId) =>
+              mappingModuleMetaById[moduleId]?.label ?? moduleId.name)
+          .join('、');
+
+      rows.add(
+        MappingRowVm(
+          slot: slot,
+          label: meta.label,
+          sourceTypeTag: meta.sourceTypeTag,
+          notionPropertyName: propertyName,
+          notionPropertyType: propertyType,
+          usageText: usageText,
+          helpText: meta.helpText,
+          isRequired: slot == MappingSlotKey.bangumiId,
+          isParamSlot: isParamSlot,
+          status: status,
+        ),
+      );
+    }
+    return rows;
+  }
+
+  MappingRowStatus _rowStatusOf({
+    required MappingSlotKey slot,
+    required String propertyName,
+    required String propertyType,
+    required bool isParamSlot,
+    required Set<MappingSlotKey> blockingSlots,
+  }) {
+    final requiredByRule = slot == MappingSlotKey.bangumiId;
+    if (propertyName.isEmpty) {
+      if (requiredByRule || blockingSlots.contains(slot)) {
+        return MappingRowStatus.error;
+      }
+      return MappingRowStatus.unconfigured;
+    }
+
+    if (isParamSlot) {
+      return MappingRowStatus.configured;
+    }
+
+    final meta = mappingSlotMetaByKey[slot];
+    if (meta == null) return MappingRowStatus.error;
+    if (propertyType == 'unknown') return MappingRowStatus.error;
+    if (propertyType.isEmpty) return MappingRowStatus.unconfigured;
+
+    final allowed = meta.allowedNotionTypes;
+    if (allowed.isNotEmpty &&
+        !allowed.contains(propertyType) &&
+        propertyType != 'page_content') {
+      return MappingRowStatus.error;
+    }
+    return MappingRowStatus.configured;
+  }
+
+  MappingStatusSummaryVm _buildStatusSummary(List<MappingRowVm> rows) {
+    var configured = 0;
+    var unconfigured = 0;
+    var error = 0;
+    for (final row in rows) {
+      switch (row.status) {
+        case MappingRowStatus.configured:
+          configured++;
+          break;
+        case MappingRowStatus.unconfigured:
+          unconfigured++;
+          break;
+        case MappingRowStatus.error:
+          error++;
+          break;
+      }
+    }
+    return MappingStatusSummaryVm(
+      total: rows.length,
+      configured: configured,
+      unconfigured: unconfigured,
+      error: error,
+    );
+  }
+
+  bool _isPageContentProperty(String value) {
+    return value == '正文' || value == '姝ｆ枃';
+  }
+
+  void _captureSnapshot() {
+    _loadedSnapshot = MappingConfig.fromJson(_config.toJson());
+    _loadedSnapshotDigest = _currentDigest();
+  }
+
+  String _currentDigest() {
+    return jsonEncode(_config.toJson());
   }
 }

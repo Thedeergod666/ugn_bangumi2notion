@@ -1,10 +1,11 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../app/app_settings.dart';
 import '../layout/breakpoints.dart';
+import '../theme/mapping_theme_extension.dart';
 // import 'sidebar_recommendation_card.dart';
 
 class NavigationShell extends StatelessWidget {
@@ -81,6 +82,7 @@ class NavigationShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final mappingExt = Theme.of(context).extension<MappingThemeExtension>();
     final settings = context.watch<AppSettings>();
     final isDesktop =
         Platform.isWindows || Platform.isMacOS || Platform.isLinux;
@@ -96,16 +98,30 @@ class NavigationShell extends StatelessWidget {
         final useBottomNav = isCompact && onBack == null;
 
         final contentRadius =
-            isCompact ? BorderRadius.zero : BorderRadius.circular(28);
+            isCompact ? BorderRadius.zero : BorderRadius.circular(24);
         final surfaceBorder = isCompact
             ? null
-            : Border.all(color: colorScheme.outlineVariant);
+            : Border.all(
+                color:
+                    mappingExt?.panelBorderColor ?? colorScheme.outlineVariant,
+              );
 
         final content = Container(
           decoration: BoxDecoration(
-            color: colorScheme.surface,
+            color: mappingExt?.panelColor ?? colorScheme.surface,
             borderRadius: contentRadius,
             border: surfaceBorder,
+            boxShadow: isCompact
+                ? null
+                : [
+                    BoxShadow(
+                      color: colorScheme.shadow.withValues(
+                        alpha: mappingExt?.elevationShadowOpacity ?? 0.08,
+                      ),
+                      blurRadius: 28,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
           ),
           child: ClipRRect(
             borderRadius: contentRadius,
@@ -114,7 +130,7 @@ class NavigationShell extends StatelessWidget {
         );
 
         return Scaffold(
-          backgroundColor: colorScheme.surface,
+          backgroundColor: mappingExt?.pageBgBottom ?? colorScheme.surface,
           appBar: showAppBar
               ? AppBar(
                   title: Text(title),
@@ -159,8 +175,8 @@ class NavigationShell extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  colorScheme.surfaceContainerLowest,
-                  colorScheme.surface,
+                  mappingExt?.pageBgTop ?? colorScheme.surfaceContainerLowest,
+                  mappingExt?.pageBgBottom ?? colorScheme.surface,
                 ],
               ),
             ),
@@ -173,16 +189,21 @@ class NavigationShell extends StatelessWidget {
                           width: isExpanded ? 240 : 88,
                           child: Container(
                             decoration: BoxDecoration(
-                              color: colorScheme.surface,
+                              color:
+                                  mappingExt?.panelColor ?? colorScheme.surface,
                               borderRadius: BorderRadius.circular(24),
-                              border:
-                                  Border.all(color: colorScheme.outlineVariant),
+                              border: Border.all(
+                                color: mappingExt?.panelBorderColor ??
+                                    colorScheme.outlineVariant,
+                              ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: colorScheme.shadow
-                                      .withValues(alpha: 0.08),
-                                  blurRadius: 24,
-                                  offset: const Offset(0, 10),
+                                  color: colorScheme.shadow.withValues(
+                                    alpha: mappingExt?.elevationShadowOpacity ??
+                                        0.08,
+                                  ),
+                                  blurRadius: 26,
+                                  offset: const Offset(0, 12),
                                 ),
                               ],
                             ),
@@ -261,12 +282,12 @@ class NavigationShell extends StatelessWidget {
                                             label: Text(label),
                                             style: TextButton.styleFrom(
                                               alignment: Alignment.centerLeft,
-                                              minimumSize:
-                                                  const Size(double.infinity, 48),
+                                              minimumSize: const Size(
+                                                  double.infinity, 48),
                                               backgroundColor: colorScheme
                                                   .surfaceContainerLow,
-                                              foregroundColor: colorScheme
-                                                  .onSurfaceVariant,
+                                              foregroundColor:
+                                                  colorScheme.onSurfaceVariant,
                                             ),
                                           );
                                         },

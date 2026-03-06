@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'mapping_theme_extension.dart';
+
 class ThemeSeed {
   const ThemeSeed({
     required this.id,
@@ -40,8 +42,7 @@ class KazumiTheme {
     required ColorScheme scheme,
     bool useSystemFont = false,
   }) {
-    final textTheme =
-        _buildTextTheme(scheme, Brightness.light, useSystemFont);
+    final textTheme = _buildTextTheme(scheme, Brightness.light, useSystemFont);
     return _buildTheme(scheme, textTheme);
   }
 
@@ -49,8 +50,7 @@ class KazumiTheme {
     required ColorScheme scheme,
     bool useSystemFont = false,
   }) {
-    final textTheme =
-        _buildTextTheme(scheme, Brightness.dark, useSystemFont);
+    final textTheme = _buildTextTheme(scheme, Brightness.dark, useSystemFont);
     return _buildTheme(scheme, textTheme);
   }
 
@@ -93,13 +93,17 @@ class KazumiTheme {
   }
 
   static ThemeData _buildTheme(ColorScheme scheme, TextTheme textTheme) {
+    final mappingExt = MappingThemeExtension.fromScheme(scheme);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       textTheme: textTheme,
-      scaffoldBackgroundColor: scheme.surface,
+      scaffoldBackgroundColor: mappingExt.pageBgBottom,
+      extensions: <ThemeExtension<dynamic>>[
+        mappingExt,
+      ],
       appBarTheme: AppBarTheme(
-        backgroundColor: scheme.surface,
+        backgroundColor: mappingExt.pageBgBottom,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: false,
@@ -109,23 +113,24 @@ class KazumiTheme {
         iconTheme: IconThemeData(color: scheme.onSurface),
       ),
       cardTheme: CardThemeData(
-        color: scheme.surfaceContainerLowest,
+        color: mappingExt.panelColor,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_cardRadius),
+          borderRadius: BorderRadius.circular(mappingExt.panelRadius + 6),
+          side: BorderSide(color: mappingExt.panelBorderColor),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surfaceContainerLow,
+        fillColor: Color.lerp(mappingExt.panelColor, scheme.surface, 0.25),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_radius),
-          borderSide: BorderSide(color: scheme.outlineVariant),
+          borderSide: BorderSide(color: mappingExt.panelBorderColor),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_radius),
-          borderSide: BorderSide(color: scheme.outlineVariant),
+          borderSide: BorderSide(color: mappingExt.panelBorderColor),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_radius),
@@ -141,13 +146,13 @@ class KazumiTheme {
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: scheme.surfaceContainerLow,
+        backgroundColor: mappingExt.tableRowOddColor,
         selectedColor: scheme.primaryContainer,
         labelStyle: textTheme.labelLarge,
         secondaryLabelStyle:
             textTheme.labelLarge?.copyWith(color: scheme.onPrimaryContainer),
         shape: StadiumBorder(
-          side: BorderSide(color: scheme.outlineVariant),
+          side: BorderSide(color: mappingExt.panelBorderColor),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       ),
@@ -162,7 +167,7 @@ class KazumiTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           shape: const StadiumBorder(),
-          side: BorderSide(color: scheme.outlineVariant),
+          side: BorderSide(color: mappingExt.panelBorderColor),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           textStyle:
               textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
@@ -197,23 +202,27 @@ class KazumiTheme {
         labelStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: scheme.surfaceContainerHigh,
+        backgroundColor: mappingExt.panelColor,
         contentTextStyle:
             textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(mappingExt.panelRadius),
+          side: BorderSide(color: mappingExt.panelBorderColor),
         ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: scheme.surface,
+        backgroundColor: mappingExt.panelColor,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(mappingExt.panelRadius + 6),
+          side: BorderSide(color: mappingExt.panelBorderColor),
         ),
       ),
       listTileTheme: ListTileThemeData(
+        tileColor: mappingExt.tableRowEvenColor,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(mappingExt.rowRadius + 2),
+          side: BorderSide(color: mappingExt.panelBorderColor),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       ),
