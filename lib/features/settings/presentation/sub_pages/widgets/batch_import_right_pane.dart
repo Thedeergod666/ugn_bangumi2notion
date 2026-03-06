@@ -14,6 +14,7 @@ class BatchImportRightPane extends StatelessWidget {
     required this.isBusy,
     required this.onOpenNotionDetail,
     required this.onBindSingle,
+    required this.onSelectCandidate,
     required this.onOpenBangumiDetail,
     required this.onOpenBangumiExternal,
     required this.onManualInputChanged,
@@ -30,6 +31,7 @@ class BatchImportRightPane extends StatelessWidget {
   final bool isBusy;
   final ValueChanged<BatchUiItem> onOpenNotionDetail;
   final void Function(BatchUiItem item, int bangumiId) onBindSingle;
+  final void Function(BatchUiItem item, int bangumiId) onSelectCandidate;
   final ValueChanged<int> onOpenBangumiDetail;
   final ValueChanged<int> onOpenBangumiExternal;
   final ValueChanged<String> onManualInputChanged;
@@ -99,10 +101,12 @@ class BatchImportRightPane extends StatelessWidget {
                     child: _CandidateCard(
                       item: item,
                       match: match,
+                      selected: item.selectedMatchId == match.item.id,
                       recommended:
                           match.item.id == item.bestSimilarityMatch?.item.id,
                       busy: isBusy,
                       onBind: () => onBindSingle(item, match.item.id),
+                      onSelect: () => onSelectCandidate(item, match.item.id),
                       onOpenDetail: () => onOpenBangumiDetail(match.item.id),
                       onOpenExternal: () =>
                           onOpenBangumiExternal(match.item.id),
@@ -120,7 +124,7 @@ class BatchImportRightPane extends StatelessWidget {
                   controller: manualInputController,
                   onChanged: onManualInputChanged,
                   decoration: const InputDecoration(
-                    hintText: '例如：315574 或 https://bgm.tv/subject/315574',
+                    hintText: '例如：15574 或 https://bgm.tv/subject/315574',
                     isDense: true,
                   ),
                 ),
@@ -183,7 +187,7 @@ class BatchImportRightPane extends StatelessWidget {
                         child: Text(
                           item.status == BatchItemStatus.conflict
                               ? '取消冲突'
-                              : '标记为冲突',
+                              : '标记冲突',
                         ),
                       ),
                     ],
@@ -269,123 +273,153 @@ class _CandidateCard extends StatelessWidget {
   const _CandidateCard({
     required this.item,
     required this.match,
+    required this.selected,
     required this.recommended,
     required this.busy,
     required this.onBind,
+    required this.onSelect,
     required this.onOpenDetail,
     required this.onOpenExternal,
   });
 
   final BatchUiItem item;
   final BatchScoredMatch match;
+  final bool selected;
   final bool recommended;
   final bool busy;
   final VoidCallback onBind;
+  final VoidCallback onSelect;
   final VoidCallback onOpenDetail;
   final VoidCallback onOpenExternal;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: recommended
-            ? colorScheme.primaryContainer.withValues(alpha: 0.35)
-            : colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: recommended ? colorScheme.primary : colorScheme.outlineVariant,
+    final backgroundColor = selected
+        ? colorScheme.primaryContainer.withValues(alpha: 0.42)
+        : (recommended
+            ? colorScheme.primaryContainer.withValues(alpha: 0.28)
+            : colorScheme.surface);
+    final borderColor = selected
+        ? colorScheme.primary
+        : (recommended
+            ? colorScheme.primary.withValues(alpha: 0.65)
+            : colorScheme.outlineVariant);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: item.isBound || busy ? null : onSelect,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor),
         ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
-              image: match.item.imageUrl.trim().isEmpty
-                  ? null
-                  : DecorationImage(
-                      image: NetworkImage(match.item.imageUrl),
-                      fit: BoxFit.cover,
-                    ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+                image: match.item.imageUrl.trim().isEmpty
+                    ? null
+                    : DecorationImage(
+                        image: NetworkImage(match.item.imageUrl),
+                        fit: BoxFit.cover,
+                      ),
+              ),
+              alignment: Alignment.center,
+              child: match.item.imageUrl.trim().isEmpty
+                  ? const Icon(Icons.image_outlined)
+                  : null,
             ),
-            alignment: Alignment.center,
-            child: match.item.imageUrl.trim().isEmpty
-                ? const Icon(Icons.image_outlined)
-                : null,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          match.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                        ),
+                      ),
+                      if (selected)
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 18,
+                          color: colorScheme.primary,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Bangumi ID · ${match.item.id} · ${match.year == 0 ? '-' : match.year}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _TinyChip(
+                        text: match.item.score > 0
+                            ? 'bgm ${match.item.score.toStringAsFixed(1)}'
+                            : 'bgm -',
+                        backgroundColor: Colors.amber.withValues(alpha: 0.2),
+                        textColor: Colors.amber.shade800,
+                      ),
+                      _TinyChip(
+                        text: matchLevelText(match.level),
+                        backgroundColor: colorScheme.surfaceContainerHighest,
+                        textColor: colorScheme.onSurfaceVariant,
+                      ),
+                      _TinyChip(
+                        text: '${match.similarity}%',
+                        backgroundColor: colorScheme.primaryContainer,
+                        textColor: colorScheme.onPrimaryContainer,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
               children: [
-                Text(
-                  match.displayTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                FilledButton(
+                  onPressed: item.isBound || busy
+                      ? null
+                      : (selected ? onBind : onSelect),
+                  child: Text(selected ? '绑定已选' : '选中此项'),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Bangumi ID · ${match.item.id} · ${match.year == 0 ? '-' : match.year}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                const SizedBox(height: 6),
+                OutlinedButton(
+                  onPressed: onOpenDetail,
+                  child: const Text('查看 Bangumi'),
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _TinyChip(
-                      text: match.item.score > 0
-                          ? 'bgm ${match.item.score.toStringAsFixed(1)}'
-                          : 'bgm -',
-                      backgroundColor: Colors.amber.withValues(alpha: 0.2),
-                      textColor: Colors.amber.shade800,
-                    ),
-                    _TinyChip(
-                      text: matchLevelText(match.level),
-                      backgroundColor: colorScheme.surfaceContainerHighest,
-                      textColor: colorScheme.onSurfaceVariant,
-                    ),
-                    _TinyChip(
-                      text: '${match.similarity}%',
-                      backgroundColor: colorScheme.primaryContainer,
-                      textColor: colorScheme.onPrimaryContainer,
-                    ),
-                  ],
+                IconButton(
+                  onPressed: onOpenExternal,
+                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                  tooltip: '浏览器打开',
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            children: [
-              FilledButton(
-                onPressed: item.isBound || busy ? null : onBind,
-                child: const Text('绑定此项'),
-              ),
-              const SizedBox(height: 6),
-              OutlinedButton(
-                onPressed: onOpenDetail,
-                child: const Text('查看 Bangumi'),
-              ),
-              IconButton(
-                onPressed: onOpenExternal,
-                icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                tooltip: '浏览器打开',
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

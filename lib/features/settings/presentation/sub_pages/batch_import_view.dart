@@ -54,6 +54,7 @@ class BatchImportViewCallbacks {
     required this.onSkipSelected,
     required this.onBindSelected,
     required this.onBindSingle,
+    required this.onSelectCandidate,
     required this.onOpenNotionDetail,
     required this.onOpenBangumiDetail,
     required this.onOpenBangumiExternal,
@@ -72,6 +73,7 @@ class BatchImportViewCallbacks {
   final VoidCallback onSkipSelected;
   final VoidCallback onBindSelected;
   final void Function(BatchUiItem item, int bangumiId) onBindSingle;
+  final void Function(BatchUiItem item, int bangumiId) onSelectCandidate;
   final ValueChanged<BatchUiItem> onOpenNotionDetail;
   final ValueChanged<int> onOpenBangumiDetail;
   final ValueChanged<int> onOpenBangumiExternal;
@@ -158,6 +160,7 @@ class BatchImportView extends StatelessWidget {
                         isBusy: state.isBulkBinding,
                         onOpenNotionDetail: callbacks.onOpenNotionDetail,
                         onBindSingle: callbacks.onBindSingle,
+                        onSelectCandidate: callbacks.onSelectCandidate,
                         onOpenBangumiDetail: callbacks.onOpenBangumiDetail,
                         onOpenBangumiExternal: callbacks.onOpenBangumiExternal,
                         onManualInputChanged: callbacks.onManualInputChanged,
@@ -199,6 +202,7 @@ class BatchImportView extends StatelessWidget {
                       isBusy: state.isBulkBinding,
                       onOpenNotionDetail: callbacks.onOpenNotionDetail,
                       onBindSingle: callbacks.onBindSingle,
+                      onSelectCandidate: callbacks.onSelectCandidate,
                       onOpenBangumiDetail: callbacks.onOpenBangumiDetail,
                       onOpenBangumiExternal: callbacks.onOpenBangumiExternal,
                       onManualInputChanged: callbacks.onManualInputChanged,

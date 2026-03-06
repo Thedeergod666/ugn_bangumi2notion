@@ -69,12 +69,14 @@ class BatchUiItem {
     required this.scoredMatches,
     required this.status,
     required this.selected,
+    required this.selectedMatchId,
   });
 
   final BatchImportCandidate candidate;
   final List<BatchScoredMatch> scoredMatches;
   final BatchItemStatus status;
   final bool selected;
+  final int? selectedMatchId;
 
   String get pageId => candidate.notionItem.id;
 
@@ -106,6 +108,19 @@ class BatchUiItem {
       }
     }
     return best;
+  }
+
+  BatchScoredMatch? get selectedMatch {
+    final selectedId = selectedMatchId;
+    if (selectedId == null) {
+      return null;
+    }
+    for (final match in scoredMatches) {
+      if (match.item.id == selectedId) {
+        return match;
+      }
+    }
+    return null;
   }
 
   BatchScoredMatch? get highestScoreMatch {
@@ -151,12 +166,17 @@ class BatchUiItem {
     List<BatchScoredMatch>? scoredMatches,
     BatchItemStatus? status,
     bool? selected,
+    int? selectedMatchId,
+    bool clearSelectedMatchId = false,
   }) {
     return BatchUiItem(
       candidate: candidate ?? this.candidate,
       scoredMatches: scoredMatches ?? this.scoredMatches,
       status: status ?? this.status,
       selected: selected ?? this.selected,
+      selectedMatchId: clearSelectedMatchId
+          ? null
+          : (selectedMatchId ?? this.selectedMatchId),
     );
   }
 }
@@ -181,5 +201,19 @@ BatchUiItem buildBatchUiItem(BatchImportCandidate candidate) {
     scoredMatches: scoredMatches,
     status: candidate.bound ? BatchItemStatus.bound : BatchItemStatus.pending,
     selected: false,
+    selectedMatchId: _pickDefaultSelectedMatchId(scoredMatches),
   );
+}
+
+int? _pickDefaultSelectedMatchId(List<BatchScoredMatch> matches) {
+  if (matches.isEmpty) {
+    return null;
+  }
+  BatchScoredMatch best = matches.first;
+  for (final match in matches.skip(1)) {
+    if (match.similarity > best.similarity) {
+      best = match;
+    }
+  }
+  return best.item.id;
 }

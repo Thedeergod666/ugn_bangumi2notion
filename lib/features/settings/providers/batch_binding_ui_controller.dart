@@ -76,6 +76,10 @@ class BatchBindingUiController extends ChangeNotifier {
       next[pageId] = built.copyWith(
         status: status,
         selected: previous?.selected ?? false,
+        selectedMatchId: _resolveRetainedSelectedMatchId(
+          previous: previous,
+          current: built,
+        ),
       );
     }
 
@@ -122,6 +126,23 @@ class BatchBindingUiController extends ChangeNotifier {
       return;
     }
     _activePageId = pageId;
+    notifyListeners();
+  }
+
+  void selectCandidate(String pageId, int bangumiId) {
+    final item = _itemsByPageId[pageId];
+    if (item == null) {
+      return;
+    }
+    final exists =
+        item.scoredMatches.any((match) => match.item.id == bangumiId);
+    if (!exists) {
+      return;
+    }
+    if (item.selectedMatchId == bangumiId) {
+      return;
+    }
+    _itemsByPageId[pageId] = item.copyWith(selectedMatchId: bangumiId);
     notifyListeners();
   }
 
@@ -198,6 +219,10 @@ class BatchBindingUiController extends ChangeNotifier {
         .toList();
   }
 
+  int? preferredBangumiIdFor(BatchUiItem item) {
+    return item.selectedMatch?.item.id ?? item.bestSimilarityMatch?.item.id;
+  }
+
   List<BatchUiItem> autoBindableVisibleItems() {
     return visibleItems
         .where(
@@ -257,5 +282,21 @@ class BatchBindingUiController extends ChangeNotifier {
     }
 
     return left.title.toLowerCase().compareTo(right.title.toLowerCase());
+  }
+
+  int? _resolveRetainedSelectedMatchId({
+    required BatchUiItem? previous,
+    required BatchUiItem current,
+  }) {
+    final previousSelectedId = previous?.selectedMatchId;
+    if (previousSelectedId == null) {
+      return current.selectedMatchId;
+    }
+    final exists = current.scoredMatches
+        .any((match) => match.item.id == previousSelectedId);
+    if (exists) {
+      return previousSelectedId;
+    }
+    return current.selectedMatchId;
   }
 }

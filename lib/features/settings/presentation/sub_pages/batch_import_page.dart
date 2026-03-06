@@ -179,9 +179,9 @@ class _BatchImportPageState extends State<BatchImportPage> {
     final tasks = _uiController
         .selectedVisibleItemsForBinding()
         .map((item) {
-          final match = item.bestSimilarityMatch;
-          if (match == null) return null;
-          return _BindTask(item: item, bangumiId: match.item.id);
+          final bangumiId = _uiController.preferredBangumiIdFor(item);
+          if (bangumiId == null) return null;
+          return _BindTask(item: item, bangumiId: bangumiId);
         })
         .whereType<_BindTask>()
         .toList();
@@ -401,6 +401,8 @@ class _BatchImportPageState extends State<BatchImportPage> {
                   onBindSelected: () => unawaited(_bindSelectedItems()),
                   onBindSingle: (item, bangumiId) =>
                       unawaited(_bindCandidateWithDialog(item, bangumiId)),
+                  onSelectCandidate: (item, bangumiId) =>
+                      _uiController.selectCandidate(item.pageId, bangumiId),
                   onOpenNotionDetail: _openNotionDetail,
                   onOpenBangumiDetail: _openBangumiDetail,
                   onOpenBangumiExternal: (id) =>
