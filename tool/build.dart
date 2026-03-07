@@ -34,7 +34,7 @@ void main(List<String> args) async {
     );
   }
 
-  final buildArgs = <String>['build', platform];
+  final buildArgs = <String>['build', _resolveBuildTarget(platform)];
   if (parsed.mode != null) {
     buildArgs.add(parsed.mode!);
   }
@@ -47,9 +47,8 @@ void main(List<String> args) async {
   }
 
   final command = Platform.isWindows ? 'cmd' : 'flutter';
-  final commandArgs = Platform.isWindows
-      ? <String>['/c', 'flutter', ...buildArgs]
-      : buildArgs;
+  final commandArgs =
+      Platform.isWindows ? <String>['/c', 'flutter', ...buildArgs] : buildArgs;
 
   final process = await Process.start(
     command,
@@ -134,4 +133,11 @@ _ParsedArgs _parseArgs(List<String> args) {
     showHelp: showHelp,
     exitCode: exitCode,
   );
+}
+
+String _resolveBuildTarget(String platform) {
+  if (platform == 'android') {
+    return 'apk';
+  }
+  return platform;
 }
