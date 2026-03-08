@@ -339,43 +339,62 @@ class _WeekdayChipLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final showBadge = count > 0;
-    final badgeColor = Theme.of(context).colorScheme.primary;
+    final badgeColor = theme.colorScheme.primary;
+    final dateStyle = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      height: 1.1,
+    );
+    final weekdayStyle = theme.textTheme.labelMedium?.copyWith(
+      fontWeight: FontWeight.w600,
+      height: 1.1,
+    );
+    final countStyle = theme.textTheme.labelSmall?.copyWith(
+      color: badgeColor,
+      fontWeight: FontWeight.w700,
+      height: 1.0,
+    );
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           dateLabel,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.fade,
+          style: dateStyle,
         ),
-        const SizedBox(height: 4),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(label),
-            if (showBadge) ...[
-              const SizedBox(width: 6),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: badgeColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 4),
+        const SizedBox(height: 2),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               Text(
-                '$count',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: badgeColor,
-                      fontWeight: FontWeight.w600,
-                    ),
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: weekdayStyle,
               ),
+              if (showBadge) ...[
+                const SizedBox(width: 1),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: badgeColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 1),
+                Text('$count', style: countStyle),
+              ],
             ],
-          ],
+          ),
         ),
       ],
     );
@@ -575,6 +594,7 @@ class _CalendarItemCard extends StatelessWidget {
         .where((name) => name.isNotEmpty)
         .take(20)
         .toList();
+    final compactLayout = isGallery;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -636,7 +656,7 @@ class _CalendarItemCard extends StatelessWidget {
                               ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        SizedBox(height: compactLayout ? 4 : 6),
                         if (hasRating) ...[
                           Row(
                             children: [
@@ -665,10 +685,10 @@ class _CalendarItemCard extends StatelessWidget {
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 4),
+                          SizedBox(height: compactLayout ? 2 : 4),
                         ],
                         Text('放送：$airRangeText'),
-                        const SizedBox(height: 6),
+                        SizedBox(height: compactLayout ? 4 : 6),
                         Row(
                           children: [
                             Expanded(
@@ -695,17 +715,17 @@ class _CalendarItemCard extends StatelessWidget {
                           ],
                         ),
                         if (tagPool.isNotEmpty) ...[
-                          const SizedBox(height: 8),
+                          SizedBox(height: compactLayout ? 6 : 8),
                           LayoutBuilder(
                             builder: (context, constraints) {
                               final maxPerLine =
                                   max(1, (constraints.maxWidth / 88).floor());
-                              final maxLines = isGallery ? 2 : 1;
+                              const maxLines = 1;
                               final maxTags = max(1, maxPerLine * maxLines);
                               final tags = tagPool.take(maxTags).toList();
                               return Wrap(
                                 spacing: 6,
-                                runSpacing: 6,
+                                runSpacing: compactLayout ? 4 : 6,
                                 children: tags.map((tag) {
                                   return Container(
                                     padding: const EdgeInsets.symmetric(
@@ -713,7 +733,8 @@ class _CalendarItemCard extends StatelessWidget {
                                       vertical: 3,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: colorScheme.surfaceContainerHighest,
+                                      color:
+                                          colorScheme.surfaceContainerHighest,
                                       borderRadius: BorderRadius.circular(999),
                                     ),
                                     child: Text(
@@ -729,10 +750,10 @@ class _CalendarItemCard extends StatelessWidget {
                           ),
                         ],
                         if (item.summary.isNotEmpty) ...[
-                          const SizedBox(height: 8),
+                          SizedBox(height: compactLayout ? 6 : 8),
                           Text(
                             item.summary,
-                            maxLines: 2,
+                            maxLines: compactLayout ? 1 : 2,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context)
                                 .textTheme
@@ -797,4 +818,3 @@ class _CoverImage extends StatelessWidget {
     );
   }
 }
-
