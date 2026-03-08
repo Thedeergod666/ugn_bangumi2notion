@@ -57,6 +57,7 @@ void main() {
 
       final settings = AppSettings();
       await settings.load();
+      await logger.restorePersistedErrors();
 
       try {
         await HardwareKeyboard.instance.syncKeyboardState();

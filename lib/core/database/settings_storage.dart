@@ -28,6 +28,16 @@ class SettingsKeys {
   static const searchHistory = 'searchHistory';
   static const notionMovieDatabaseId = 'notionMovieDatabaseId';
   static const notionGameDatabaseId = 'notionGameDatabaseId';
+  static const calendarPageCachePayload = 'calendarPageCachePayload';
+  static const recommendationStatsCachePayload =
+      'recommendationStatsCachePayload';
+  static const recommendationRecentCachePayload =
+      'recommendationRecentCachePayload';
+  static const batchImportCandidatesCachePayload =
+      'batchImportCandidatesCachePayload';
+  static const batchImportUiStateCachePayload =
+      'batchImportUiStateCachePayload';
+  static const errorLogCachePayload = 'errorLogCachePayload';
 }
 
 class SettingsStorage {
@@ -79,7 +89,8 @@ class SettingsStorage {
   }) async {
     final prefs = await _prefs;
     if (movieDatabaseId != null) {
-      await prefs.setString(SettingsKeys.notionMovieDatabaseId, movieDatabaseId);
+      await prefs.setString(
+          SettingsKeys.notionMovieDatabaseId, movieDatabaseId);
       _cache ??= {};
       _cache![SettingsKeys.notionMovieDatabaseId] = movieDatabaseId;
     }
@@ -215,6 +226,237 @@ class SettingsStorage {
     final prefs = await _prefs;
     await prefs.remove(SettingsKeys.dailyRecommendationDate);
     await prefs.remove(SettingsKeys.dailyRecommendationPayload);
+  }
+
+  Future<void> saveCalendarPageCache({
+    required String scope,
+    required int version,
+    required Map<String, dynamic> data,
+  }) {
+    return _saveScopedPayload(
+      key: SettingsKeys.calendarPageCachePayload,
+      scope: scope,
+      version: version,
+      data: data,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getCalendarPageCache({
+    required String scope,
+    int minVersion = 1,
+  }) {
+    return _getScopedPayload(
+      key: SettingsKeys.calendarPageCachePayload,
+      scope: scope,
+      minVersion: minVersion,
+    );
+  }
+
+  Future<void> clearCalendarPageCache() async {
+    final prefs = await _prefs;
+    await prefs.remove(SettingsKeys.calendarPageCachePayload);
+  }
+
+  Future<void> saveRecommendationStatsCache({
+    required String scope,
+    required int version,
+    required Map<String, dynamic> data,
+  }) {
+    return _saveScopedPayload(
+      key: SettingsKeys.recommendationStatsCachePayload,
+      scope: scope,
+      version: version,
+      data: data,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getRecommendationStatsCache({
+    required String scope,
+    int minVersion = 1,
+  }) {
+    return _getScopedPayload(
+      key: SettingsKeys.recommendationStatsCachePayload,
+      scope: scope,
+      minVersion: minVersion,
+    );
+  }
+
+  Future<void> clearRecommendationStatsCache() async {
+    final prefs = await _prefs;
+    await prefs.remove(SettingsKeys.recommendationStatsCachePayload);
+  }
+
+  Future<void> saveRecommendationRecentCache({
+    required String scope,
+    required int version,
+    required Map<String, dynamic> data,
+  }) {
+    return _saveScopedPayload(
+      key: SettingsKeys.recommendationRecentCachePayload,
+      scope: scope,
+      version: version,
+      data: data,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getRecommendationRecentCache({
+    required String scope,
+    int minVersion = 1,
+  }) {
+    return _getScopedPayload(
+      key: SettingsKeys.recommendationRecentCachePayload,
+      scope: scope,
+      minVersion: minVersion,
+    );
+  }
+
+  Future<void> clearRecommendationRecentCache() async {
+    final prefs = await _prefs;
+    await prefs.remove(SettingsKeys.recommendationRecentCachePayload);
+  }
+
+  Future<void> saveBatchImportCandidatesCache({
+    required String scope,
+    required int version,
+    required Map<String, dynamic> data,
+  }) {
+    return _saveScopedPayload(
+      key: SettingsKeys.batchImportCandidatesCachePayload,
+      scope: scope,
+      version: version,
+      data: data,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getBatchImportCandidatesCache({
+    required String scope,
+    int minVersion = 1,
+  }) {
+    return _getScopedPayload(
+      key: SettingsKeys.batchImportCandidatesCachePayload,
+      scope: scope,
+      minVersion: minVersion,
+    );
+  }
+
+  Future<void> clearBatchImportCandidatesCache() async {
+    final prefs = await _prefs;
+    await prefs.remove(SettingsKeys.batchImportCandidatesCachePayload);
+  }
+
+  Future<void> saveBatchImportUiStateCache({
+    required String scope,
+    required int version,
+    required Map<String, dynamic> data,
+  }) {
+    return _saveScopedPayload(
+      key: SettingsKeys.batchImportUiStateCachePayload,
+      scope: scope,
+      version: version,
+      data: data,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getBatchImportUiStateCache({
+    required String scope,
+    int minVersion = 1,
+  }) {
+    return _getScopedPayload(
+      key: SettingsKeys.batchImportUiStateCachePayload,
+      scope: scope,
+      minVersion: minVersion,
+    );
+  }
+
+  Future<void> clearBatchImportUiStateCache() async {
+    final prefs = await _prefs;
+    await prefs.remove(SettingsKeys.batchImportUiStateCachePayload);
+  }
+
+  Future<void> saveErrorLogCache({
+    required int version,
+    required Map<String, dynamic> data,
+  }) {
+    return _saveScopedPayload(
+      key: SettingsKeys.errorLogCachePayload,
+      scope: '',
+      version: version,
+      data: data,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getErrorLogCache({
+    int minVersion = 1,
+  }) {
+    return _getScopedPayload(
+      key: SettingsKeys.errorLogCachePayload,
+      scope: '',
+      minVersion: minVersion,
+    );
+  }
+
+  Future<void> clearErrorLogCache() async {
+    final prefs = await _prefs;
+    await prefs.remove(SettingsKeys.errorLogCachePayload);
+  }
+
+  Future<void> _saveScopedPayload({
+    required String key,
+    required String scope,
+    required int version,
+    required Map<String, dynamic> data,
+  }) async {
+    final prefs = await _prefs;
+    final payload = <String, dynamic>{
+      'version': version,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'scope': scope,
+      'data': data,
+    };
+    await prefs.setString(key, jsonEncode(payload));
+  }
+
+  Future<Map<String, dynamic>?> _getScopedPayload({
+    required String key,
+    required String scope,
+    required int minVersion,
+  }) async {
+    final prefs = await _prefs;
+    final raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        return null;
+      }
+      final payload = decoded is Map<String, dynamic>
+          ? decoded
+          : decoded.cast<String, dynamic>();
+
+      final version = int.tryParse(payload['version']?.toString() ?? '') ?? 0;
+      if (version < minVersion) {
+        return null;
+      }
+
+      final storedScope = payload['scope']?.toString() ?? '';
+      if (storedScope != scope) {
+        return null;
+      }
+
+      final data = payload['data'];
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      if (data is Map) {
+        return data.cast<String, dynamic>();
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> saveDailyRecommendationBindings(

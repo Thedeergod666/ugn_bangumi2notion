@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../app/app_services.dart';
 import '../../../../app/app_settings.dart';
+import '../../../../core/database/settings_storage.dart';
 import '../../../../core/widgets/navigation_shell.dart';
 import '../../../../models/bangumi_models.dart';
 import '../../../../models/notion_models.dart';
@@ -33,6 +34,7 @@ class _BatchImportPageState extends State<BatchImportPage> {
   late final BatchBindingUiController _uiController;
   late final TextEditingController _searchController;
   late final TextEditingController _manualInputController;
+  final SettingsStorage _storage = SettingsStorage();
 
   bool _isBulkBinding = false;
   bool _isManualVerifying = false;
@@ -59,7 +61,7 @@ class _BatchImportPageState extends State<BatchImportPage> {
     _model.addListener(_handleModelUpdated);
     _uiController.addListener(_handleUiUpdated);
 
-    unawaited(_model.load());
+    unawaited(_bootstrap());
   }
 
   @override
@@ -80,6 +82,7 @@ class _BatchImportPageState extends State<BatchImportPage> {
   }
 
   void _handleUiUpdated() {
+    unawaited(_persistUiState());
     final activeId = _uiController.activeItem?.pageId;
     if (_lastActivePageId == activeId) {
       return;
@@ -97,6 +100,36 @@ class _BatchImportPageState extends State<BatchImportPage> {
 
   Future<void> _refresh() async {
     await _model.load(forceRefresh: true);
+  }
+
+  String _cacheScope() => _settings.notionDatabaseId.trim();
+
+  Future<void> _bootstrap() async {
+    await _restoreUiState();
+    await _model.load();
+  }
+
+  Future<void> _restoreUiState() async {
+    final payload = await _storage.getBatchImportUiStateCache(
+      scope: _cacheScope(),
+      minVersion: 1,
+    );
+    if (payload == null) {
+      return;
+    }
+    _uiController.restoreSnapshot(payload, notify: false);
+    final query = _uiController.query;
+    if (query.isNotEmpty) {
+      _searchController.text = query;
+    }
+  }
+
+  Future<void> _persistUiState() async {
+    await _storage.saveBatchImportUiStateCache(
+      scope: _cacheScope(),
+      version: 1,
+      data: _uiController.exportSnapshot(),
+    );
   }
 
   Future<bool> _bindCandidateWithDialog(BatchUiItem item, int bangumiId) async {

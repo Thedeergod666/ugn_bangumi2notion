@@ -47,6 +47,8 @@ class RecommendationViewModel extends ChangeNotifier {
   static const double minScore = 6.5;
   static const int heroSize = 3;
   static const int dailyCacheVersion = 5;
+  static const int statsCacheVersion = 1;
+  static const int recentCacheVersion = 1;
   static const int logTextLimit = 200;
   static const Duration rotationInterval = Duration(seconds: 20);
   static const List<String> scoreLabels = [
@@ -132,13 +134,73 @@ class RecommendationViewModel extends ChangeNotifier {
   Future<void> load(
     AppSettings settings, {
     bool showLoading = true,
+    bool forceRefresh = false,
   }) async {
     _settings = settings;
     _notionToken = settings.notionToken;
     _notionDatabaseId = settings.notionDatabaseId;
     _bangumiToken = settings.bangumiAccessToken;
+    final cacheScope = _cacheScope();
 
-    if (showLoading) {
+    var hasDailyCache = false;
+    var hasStatsCache = false;
+    var hasRecentCache = false;
+
+    if (!forceRefresh) {
+      final cachedDaily = await _loadDailyCache();
+      final cachedStats = await _loadStatsCache(cacheScope);
+      final cachedRecent = await _loadRecentCache(cacheScope);
+
+      if (cachedDaily != null) {
+        hasDailyCache = true;
+        if (kDebugMode) {
+          debugPrint('[DailyReco] cache hit');
+        }
+        final indices = _normalizeHeroIndices(
+          cachedDaily.indices,
+          cachedDaily.candidates.length,
+        );
+        final currentIndex = (cachedDaily.currentIndex >= 0 &&
+                cachedDaily.currentIndex < indices.length)
+            ? cachedDaily.currentIndex
+            : 0;
+        _dailyCandidates = cachedDaily.candidates;
+        _heroIndices = indices;
+        _currentHeroIndex = currentIndex;
+        _pendingJumpIndex = currentIndex;
+        _loading = false;
+        _emptyMessage = _dailyCandidates.isEmpty
+            ? 'No items above ${minScore.toStringAsFixed(1)}'
+            : null;
+      } else if (kDebugMode) {
+        debugPrint('[DailyReco] cache miss');
+      }
+
+      if (cachedStats != null) {
+        hasStatsCache = true;
+        _scoreEntries = cachedStats;
+        _scoreBins = _buildScoreBins(cachedStats);
+        _scoreTotal = cachedStats.length;
+      }
+
+      if (cachedRecent != null) {
+        hasRecentCache = true;
+        _recentWatching = cachedRecent.watching;
+        _recentWatched = cachedRecent.watched;
+        _recentMessage = cachedRecent.message;
+      }
+
+      if (hasDailyCache || hasStatsCache || hasRecentCache) {
+        _errorMessage = null;
+        _configurationMessage = null;
+        _configurationRoute = null;
+        _error = null;
+        _stackTrace = null;
+        notifyListeners();
+      }
+    }
+
+    if (showLoading && !hasDailyCache) {
       _loading = true;
       _dailyCandidates = [];
       _heroIndices = [];
@@ -160,64 +222,30 @@ class RecommendationViewModel extends ChangeNotifier {
 
     _stopRotationTimer();
 
-    try {
-      final cached = await _loadDailyCache();
-      if (cached != null) {
-        if (kDebugMode) {
-          debugPrint('[DailyReco] cache hit');
-        }
-        final indices = _normalizeHeroIndices(
-          cached.indices,
-          cached.candidates.length,
-        );
-        final currentIndex =
-            (cached.currentIndex >= 0 && cached.currentIndex < indices.length)
-                ? cached.currentIndex
-                : 0;
-        _dailyCandidates = cached.candidates;
-        _heroIndices = indices;
-        _currentHeroIndex = currentIndex;
-        _pendingJumpIndex = currentIndex;
-        _loading = false;
-        _emptyMessage = _dailyCandidates.isEmpty
-            ? '暂无 ${minScore.toStringAsFixed(1)}+ 条目'
-            : null;
-        notifyListeners();
-        final bindings = await _loadBindings();
-        if (bindings != null) {
-          await _loadLibraryStats(
-            token: _notionToken,
-            databaseId: _notionDatabaseId,
-            bindings: bindings,
-          );
-        }
-        _loadRecentWatchEntries();
-        return;
-      }
-
-      if (kDebugMode) {
-        debugPrint('[DailyReco] cache miss');
-      }
-
-      if (_notionToken.isEmpty || _notionDatabaseId.isEmpty) {
+    if (_notionToken.isEmpty || _notionDatabaseId.isEmpty) {
+      if (!hasDailyCache) {
         _setConfiguration(
-          '请先在设置页面配置 Notion Token 和 Database ID',
+          'Please configure Notion Token and Database ID in Settings.',
           '/settings',
         );
-        return;
       }
+      return;
+    }
 
-      final bindings = await _loadBindings();
-      if (bindings == null ||
-          bindings.yougnScore.isEmpty ||
-          bindings.title.isEmpty) {
+    final bindings = await _loadBindings();
+    if (bindings == null ||
+        bindings.yougnScore.isEmpty ||
+        bindings.title.isEmpty) {
+      if (!hasDailyCache) {
         _setConfiguration(
-          '请先在映射配置页面绑定每日推荐字段',
+          'Please configure recommendation field mappings in Mapping page.',
           '/mapping',
         );
-        return;
       }
+      return;
+    }
 
+    try {
       final candidates = await _notionApi.getDailyRecommendationCandidates(
         token: _notionToken,
         databaseId: _notionDatabaseId,
@@ -238,25 +266,38 @@ class RecommendationViewModel extends ChangeNotifier {
       _pendingJumpIndex = 0;
       _loading = false;
       if (candidates.isEmpty) {
-        _emptyMessage = '暂无 ${minScore.toStringAsFixed(1)}+ 条目';
+        _emptyMessage = 'No items above ${minScore.toStringAsFixed(1)}';
       }
+      _errorMessage = null;
+      _configurationMessage = null;
+      _configurationRoute = null;
+      _error = null;
+      _stackTrace = null;
       notifyListeners();
 
-      // rotation disabled
       await _loadLibraryStats(
         token: _notionToken,
         databaseId: _notionDatabaseId,
         bindings: bindings,
+        preserveOnError: hasStatsCache,
+        cacheScope: cacheScope,
       );
-      _loadRecentWatchEntries();
+      await _loadRecentWatchEntries(
+        preserveOnError: hasRecentCache,
+        cacheScope: cacheScope,
+      );
     } catch (error, stackTrace) {
-      final isTimeout = error is TimeoutException;
-      _loading = false;
-      _errorMessage = isTimeout ? '网络较慢，点击刷新重试' : '加载失败，请稍后重试';
-      _error = error;
-      _stackTrace = stackTrace;
-      notifyListeners();
-      _stopRotationTimer();
+      if (!hasDailyCache) {
+        final isTimeout = error is TimeoutException;
+        _loading = false;
+        _errorMessage = isTimeout
+            ? 'Network is slow, try refresh again.'
+            : 'Load failed, please try again later.';
+        _error = error;
+        _stackTrace = stackTrace;
+        notifyListeners();
+        _stopRotationTimer();
+      }
     }
   }
 
@@ -504,6 +545,8 @@ class RecommendationViewModel extends ChangeNotifier {
     required String token,
     required String databaseId,
     required NotionDailyRecommendationBindings bindings,
+    bool preserveOnError = false,
+    String? cacheScope,
   }) async {
     if (token.isEmpty || databaseId.isEmpty || bindings.yougnScore.isEmpty) {
       return;
@@ -522,21 +565,31 @@ class RecommendationViewModel extends ChangeNotifier {
       _scoreEntries = entries;
       _scoreBins = _buildScoreBins(entries);
       _scoreTotal = entries.length;
+      if (cacheScope != null) {
+        await _saveStatsCache(cacheScope, entries);
+      }
     } catch (_) {
-      _scoreEntries = [];
-      _scoreBins = [];
-      _scoreTotal = 0;
+      if (!preserveOnError) {
+        _scoreEntries = [];
+        _scoreBins = [];
+        _scoreTotal = 0;
+      }
     } finally {
       _statsLoading = false;
       notifyListeners();
     }
   }
 
-  Future<void> _loadRecentWatchEntries() async {
+  Future<void> _loadRecentWatchEntries({
+    bool preserveOnError = false,
+    String? cacheScope,
+  }) async {
     if (_recentLoading) return;
     if (_notionToken.isEmpty || _notionDatabaseId.isEmpty) {
-      _recentMessage = '未配置 Notion Token 或 Database ID';
-      notifyListeners();
+      if (!preserveOnError) {
+        _recentMessage = 'Notion Token or Database ID is not configured.';
+        notifyListeners();
+      }
       return;
     }
 
@@ -636,9 +689,11 @@ class RecommendationViewModel extends ChangeNotifier {
       if (idProperty.isEmpty ||
           statusProperty.isEmpty ||
           watchingValue.isEmpty) {
-        _recentMessage = '请先在映射页配置追番状态字段';
-        _recentWatching = [];
-        _recentWatched = [];
+        if (!preserveOnError) {
+          _recentMessage = 'Please configure watch status mapping in Mapping.';
+          _recentWatching = [];
+          _recentWatched = [];
+        }
         return;
       }
 
@@ -675,7 +730,7 @@ class RecommendationViewModel extends ChangeNotifier {
         yougnScoreProperty:
             yougnScoreProperty.isEmpty ? null : yougnScoreProperty,
         statusPropertyName: statusProperty,
-        statusValue: watchedValue.isEmpty ? '已看' : watchedValue,
+        statusValue: watchedValue.isEmpty ? 'watched' : watchedValue,
         limit: 10,
       );
 
@@ -691,10 +746,20 @@ class RecommendationViewModel extends ChangeNotifier {
       _recentWatching = watching;
       _recentWatched = sortedWatched;
       if (watching.isEmpty && watched.isEmpty) {
-        _recentMessage = '暂无最近观看条目';
+        _recentMessage = 'No recent watch entries.';
+      }
+      if (cacheScope != null) {
+        await _saveRecentCache(
+          cacheScope,
+          watching: _recentWatching,
+          watched: _recentWatched,
+          message: _recentMessage,
+        );
       }
     } catch (_) {
-      _recentMessage = '最近观看加载失败';
+      if (!preserveOnError) {
+        _recentMessage = 'Failed to load recent watch entries.';
+      }
     } finally {
       _recentLoading = false;
       notifyListeners();
@@ -752,6 +817,12 @@ class RecommendationViewModel extends ChangeNotifier {
             : item)
         .toList();
     notifyListeners();
+    await _saveRecentCache(
+      _cacheScope(),
+      watching: _recentWatching,
+      watched: _recentWatched,
+      message: _recentMessage,
+    );
 
     if (_bangumiToken.isNotEmpty && entry.bangumiId != null) {
       final subjectId = int.tryParse(entry.bangumiId ?? '');
@@ -817,6 +888,12 @@ class RecommendationViewModel extends ChangeNotifier {
             : item)
         .toList();
     notifyListeners();
+    await _saveRecentCache(
+      _cacheScope(),
+      watching: _recentWatching,
+      watched: _recentWatched,
+      message: _recentMessage,
+    );
   }
 
   NotionWatchEntry _copyWatchEntry(
@@ -850,6 +927,8 @@ class RecommendationViewModel extends ChangeNotifier {
     return '$y-$m-$d';
   }
 
+  String _cacheScope() => _notionDatabaseId.trim();
+
   String _clipLog(String? value) {
     if (value == null) return '';
     final trimmed = value.trim();
@@ -858,14 +937,15 @@ class RecommendationViewModel extends ChangeNotifier {
   }
 
   Future<_RecommendationCacheData?> _loadDailyCache() async {
-    final today = _buildTodayKey();
     final cachedDate = await _settingsStorage.getDailyRecommendationCacheDate();
     final payload = await _settingsStorage.getDailyRecommendationCachePayload();
-    if (cachedDate == null || payload == null || payload.isEmpty) {
+    if (payload == null || payload.isEmpty) {
       return null;
     }
-    if (cachedDate != today) {
-      return null;
+    final today = _buildTodayKey();
+    if (kDebugMode && cachedDate != null && cachedDate != today) {
+      debugPrint(
+          '[DailyReco] stale cache fallback date=$cachedDate today=$today');
     }
 
     try {
@@ -943,6 +1023,145 @@ class RecommendationViewModel extends ChangeNotifier {
     await _settingsStorage.saveDailyRecommendationCache(
       date: _buildTodayKey(),
       payload: payload,
+    );
+  }
+
+  Future<List<NotionScoreEntry>?> _loadStatsCache(String scope) async {
+    final payload = await _settingsStorage.getRecommendationStatsCache(
+      scope: scope,
+      minVersion: statsCacheVersion,
+    );
+    if (payload == null) return null;
+    final rawEntries = payload['entries'];
+    if (rawEntries is! List) return null;
+    final result = <NotionScoreEntry>[];
+    for (final item in rawEntries) {
+      if (item is! Map) continue;
+      final map =
+          item is Map<String, dynamic> ? item : item.cast<String, dynamic>();
+      final yougnScore =
+          double.tryParse(map['yougnScore']?.toString() ?? '') ?? 0;
+      final bangumiScore =
+          double.tryParse(map['bangumiScore']?.toString() ?? '') ?? 0;
+      result.add(
+        NotionScoreEntry(
+          yougnScore: yougnScore,
+          bangumiScore: bangumiScore,
+        ),
+      );
+    }
+    return result;
+  }
+
+  Future<void> _saveStatsCache(
+    String scope,
+    List<NotionScoreEntry> entries,
+  ) async {
+    await _settingsStorage.saveRecommendationStatsCache(
+      scope: scope,
+      version: statsCacheVersion,
+      data: {
+        'entries': entries
+            .map(
+              (item) => {
+                'yougnScore': item.yougnScore,
+                'bangumiScore': item.bangumiScore,
+              },
+            )
+            .toList(growable: false),
+      },
+    );
+  }
+
+  Future<_RecentWatchCacheData?> _loadRecentCache(String scope) async {
+    final payload = await _settingsStorage.getRecommendationRecentCache(
+      scope: scope,
+      minVersion: recentCacheVersion,
+    );
+    if (payload == null) return null;
+    final watchingRaw = payload['watching'];
+    final watchedRaw = payload['watched'];
+    if (watchingRaw is! List || watchedRaw is! List) return null;
+    final watching = watchingRaw
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .map(_watchEntryFromJson)
+        .toList();
+    final watched = watchedRaw
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .map(_watchEntryFromJson)
+        .toList();
+    return _RecentWatchCacheData(
+      watching: watching,
+      watched: watched,
+      message: payload['message']?.toString(),
+    );
+  }
+
+  Future<void> _saveRecentCache(
+    String scope, {
+    required List<NotionWatchEntry> watching,
+    required List<NotionWatchEntry> watched,
+    String? message,
+  }) async {
+    await _settingsStorage.saveRecommendationRecentCache(
+      scope: scope,
+      version: recentCacheVersion,
+      data: {
+        'watching': watching.map(_watchEntryToJson).toList(growable: false),
+        'watched': watched.map(_watchEntryToJson).toList(growable: false),
+        'message': message,
+      },
+    );
+  }
+
+  Map<String, dynamic> _watchEntryToJson(NotionWatchEntry entry) {
+    return {
+      'id': entry.id,
+      'title': entry.title,
+      'coverUrl': entry.coverUrl,
+      'watchedEpisodes': entry.watchedEpisodes,
+      'totalEpisodes': entry.totalEpisodes,
+      'updatedEpisodes': entry.updatedEpisodes,
+      'bangumiId': entry.bangumiId,
+      'pageUrl': entry.pageUrl,
+      'lastEditedAt': entry.lastEditedAt?.toIso8601String(),
+      'lastWatchedAt': entry.lastWatchedAt?.toIso8601String(),
+      'followDate': entry.followDate?.toIso8601String(),
+      'status': entry.status,
+      'tags': entry.tags,
+      'yougnScore': entry.yougnScore,
+    };
+  }
+
+  NotionWatchEntry _watchEntryFromJson(Map<String, dynamic> json) {
+    List<String> parseTags(dynamic raw) {
+      if (raw is! List) return const [];
+      return raw.map((item) => item.toString()).toList(growable: false);
+    }
+
+    DateTime? parseDate(dynamic raw) {
+      final text = raw?.toString() ?? '';
+      if (text.isEmpty) return null;
+      return DateTime.tryParse(text);
+    }
+
+    return NotionWatchEntry(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      coverUrl: json['coverUrl']?.toString(),
+      watchedEpisodes: int.tryParse(json['watchedEpisodes']?.toString() ?? ''),
+      totalEpisodes: int.tryParse(json['totalEpisodes']?.toString() ?? ''),
+      updatedEpisodes: int.tryParse(json['updatedEpisodes']?.toString() ?? ''),
+      bangumiId: json['bangumiId']?.toString(),
+      pageUrl: json['pageUrl']?.toString(),
+      lastEditedAt: parseDate(json['lastEditedAt']),
+      lastWatchedAt: parseDate(json['lastWatchedAt']),
+      followDate: parseDate(json['followDate']),
+      status: json['status']?.toString(),
+      tags: parseTags(json['tags']),
+      yougnScore: double.tryParse(json['yougnScore']?.toString() ?? ''),
     );
   }
 
@@ -1032,6 +1251,18 @@ class _RecommendationCacheData {
     required this.candidates,
     required this.indices,
     required this.currentIndex,
+  });
+}
+
+class _RecentWatchCacheData {
+  final List<NotionWatchEntry> watching;
+  final List<NotionWatchEntry> watched;
+  final String? message;
+
+  const _RecentWatchCacheData({
+    required this.watching,
+    required this.watched,
+    required this.message,
   });
 }
 

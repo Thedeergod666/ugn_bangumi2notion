@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
@@ -44,6 +45,7 @@ class CalendarViewModel extends ChangeNotifier {
   final Queue<int> _latestEpisodeQueue = Queue<int>();
   int _latestEpisodeInFlight = 0;
   static const int _latestEpisodeMaxConcurrency = 3;
+  static const int _calendarCacheVersion = 1;
   Map<int, List<BangumiCalendarItem>> _weekdayItems = {};
   Map<int, int> _weekdayBoundCounts = {};
   List<BangumiCalendarItem> _boundItems = [];
@@ -78,37 +80,100 @@ class CalendarViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> load(AppSettings settings) async {
-    final currentToken = ++_loadToken;
-    _settings = settings;
+  String _cacheScope(AppSettings settings) {
+    return settings.notionDatabaseId.trim();
+  }
+
+  void _prepareLoadState({required bool keepData}) {
     _loading = true;
     _errorMessage = null;
-    _days = [];
-    _boundIds = {};
-    _boundItems = [];
-    _watchedEpisodes = {};
-    _yougnScores = {};
-    _lastWatchedAt = {};
-    _notionPageIds = {};
-    _detailCache = {};
+    if (!keepData) {
+      _days = [];
+      _boundIds = {};
+      _boundItems = [];
+      _watchedEpisodes = {};
+      _yougnScores = {};
+      _lastWatchedAt = {};
+      _notionPageIds = {};
+      _detailCache = {};
+      _airEndDateCache = {};
+      _latestEpisodeCache = {};
+      _weekdayItems = {};
+      _weekdayBoundCounts = {};
+      _crossSeasonCandidateIds = {};
+      _notionConfigured = false;
+    }
     _detailLoading.clear();
-    _airEndDateCache = {};
     _airEndDateLoading.clear();
-    _latestEpisodeCache = {};
     _latestEpisodeLoading.clear();
     _latestEpisodeQueue.clear();
     _latestEpisodeInFlight = 0;
-    _crossSeasonCandidateIds = {};
-    _notionConfigured = false;
     _notify();
+  }
 
-    bool shouldAppendOngoing = false;
+  void _applyCalendarState({
+    required List<BangumiCalendarDay> days,
+    required Set<int> boundIds,
+    required Map<int, int> watchedEpisodes,
+    required Map<int, double?> yougnScores,
+    required Map<int, DateTime?> lastWatchedAt,
+    required Map<int, String> notionPageIds,
+    required bool notionConfigured,
+    required Set<int> crossSeasonCandidateIds,
+    int? selectedWeekday,
+  }) {
+    _days = days;
+    _boundIds = boundIds;
+    _watchedEpisodes = watchedEpisodes;
+    _yougnScores = yougnScores;
+    _lastWatchedAt = lastWatchedAt;
+    _notionPageIds = notionPageIds;
+    _weekdayItems = _buildWeekdayItems(days, boundIds);
+    _weekdayBoundCounts = _buildWeekdayBoundCounts(days, boundIds);
+    _boundItems = _buildBoundItems(days, boundIds);
+    _notionConfigured = notionConfigured;
+    _crossSeasonCandidateIds = crossSeasonCandidateIds;
+    if (selectedWeekday != null &&
+        selectedWeekday >= 1 &&
+        selectedWeekday <= 7) {
+      _selectedWeekday = selectedWeekday;
+    }
+  }
+
+  Future<void> load(
+    AppSettings settings, {
+    bool forceRefresh = false,
+  }) async {
+    final currentToken = ++_loadToken;
+    _settings = settings;
+    final cacheScope = _cacheScope(settings);
+    final preservedVisibleData = forceRefresh && _days.isNotEmpty;
+
+    var restoredFromCache = false;
+    if (!forceRefresh) {
+      restoredFromCache = await _restoreCalendarCache(cacheScope);
+      if (_disposed || currentToken != _loadToken) {
+        return;
+      }
+    }
+
+    if (restoredFromCache) {
+      _loading = false;
+      _errorMessage = null;
+      _notify();
+    } else {
+      _prepareLoadState(keepData: forceRefresh);
+    }
+
+    var shouldAppendOngoing = false;
     Set<int> boundIds = {};
     Map<int, int> watchedEpisodes = {};
     Map<int, double?> yougnScores = {};
     Map<int, DateTime?> lastWatchedAt = {};
     Map<int, String> notionPageIds = {};
     bool notionReady = false;
+    Set<int> crossSeasonCandidateIds = {};
+
     try {
       final calendar = await _bangumiApi.fetchCalendar();
       final filteredDays = _filterCalendarDays(calendar);
@@ -206,7 +271,7 @@ class CalendarViewModel extends ChangeNotifier {
                   entry.key: entry.value.pageId!,
             };
             boundIds = progressMap.keys.toSet();
-            _crossSeasonCandidateIds = boundIds;
+            crossSeasonCandidateIds = boundIds;
           }
         } catch (error, stackTrace) {
           notionReady = false;
@@ -215,43 +280,52 @@ class CalendarViewModel extends ChangeNotifier {
           yougnScores = {};
           lastWatchedAt = {};
           notionPageIds = {};
-          _crossSeasonCandidateIds = {};
+          crossSeasonCandidateIds = {};
           debugPrint(
             'Calendar load: notion progress sync failed: $error\n$stackTrace',
           );
         }
       }
 
-      _days = filteredDays;
-      _boundIds = boundIds;
-      _watchedEpisodes = watchedEpisodes;
-      _yougnScores = yougnScores;
-      _lastWatchedAt = lastWatchedAt;
-      _notionPageIds = notionPageIds;
-      _weekdayItems = _buildWeekdayItems(filteredDays, boundIds);
-      _weekdayBoundCounts = _buildWeekdayBoundCounts(filteredDays, boundIds);
-      _boundItems = _buildBoundItems(filteredDays, boundIds);
-      _notionConfigured = notionReady;
+      _applyCalendarState(
+        days: filteredDays,
+        boundIds: boundIds,
+        watchedEpisodes: watchedEpisodes,
+        yougnScores: yougnScores,
+        lastWatchedAt: lastWatchedAt,
+        notionPageIds: notionPageIds,
+        notionConfigured: notionReady,
+        crossSeasonCandidateIds: crossSeasonCandidateIds,
+      );
       _loading = false;
+      _errorMessage = null;
       shouldAppendOngoing =
           _notionConfigured && _crossSeasonCandidateIds.isNotEmpty;
+      _notify();
+      unawaited(_persistCalendarCache());
     } catch (error, stackTrace) {
       _loading = false;
-      _errorMessage = '加载放送列表失败，请稍后重试';
+      if (restoredFromCache || preservedVisibleData) {
+        _errorMessage = null;
+      } else {
+        _errorMessage = '加载放送列表失败，请稍后重试';
+      }
       debugPrint('Calendar load failed: $error\n$stackTrace');
+      _notify();
     }
-    _notify();
+
     if (shouldAppendOngoing &&
         !_disposed &&
         currentToken == _loadToken &&
         _errorMessage == null) {
-      _appendBoundItemsFromNotion(currentToken);
+      unawaited(_appendBoundItemsFromNotion(currentToken));
     }
   }
 
   void selectWeekday(int weekday) {
     _selectedWeekday = weekday;
     _notify();
+    unawaited(_persistCalendarCache());
   }
 
   void scheduleDetailLoad(int subjectId) {
@@ -365,6 +439,266 @@ class CalendarViewModel extends ChangeNotifier {
           result.add(item);
         }
       }
+    }
+    return result;
+  }
+
+  Future<bool> _restoreCalendarCache(String scope) async {
+    final payload = await _settingsStorage.getCalendarPageCache(
+      scope: scope,
+      minVersion: _calendarCacheVersion,
+    );
+    if (payload == null) {
+      return false;
+    }
+
+    final days = _parseCalendarDays(payload['days']);
+    if (days == null) {
+      return false;
+    }
+
+    final boundIds = _parseIntSet(payload['boundIds']);
+    final watchedEpisodes = _parseIntIntMap(payload['watchedEpisodes']);
+    final yougnScores = _parseIntNullableDoubleMap(payload['yougnScores']);
+    final lastWatchedAt = _parseIntNullableDateMap(payload['lastWatchedAt']);
+    final notionPageIds = _parseIntStringMap(payload['notionPageIds']);
+    final notionConfigured = payload['notionConfigured'] == true;
+    final selectedWeekday =
+        int.tryParse(payload['selectedWeekday']?.toString() ?? '');
+    final crossSeasonCandidateIds = _parseIntSet(
+      payload['crossSeasonCandidateIds'] ?? payload['crossSeasonIds'],
+    );
+
+    _applyCalendarState(
+      days: days,
+      boundIds: boundIds,
+      watchedEpisodes: watchedEpisodes,
+      yougnScores: yougnScores,
+      lastWatchedAt: lastWatchedAt,
+      notionPageIds: notionPageIds,
+      notionConfigured: notionConfigured,
+      crossSeasonCandidateIds:
+          crossSeasonCandidateIds.isEmpty ? boundIds : crossSeasonCandidateIds,
+      selectedWeekday: selectedWeekday,
+    );
+    return true;
+  }
+
+  Future<void> _persistCalendarCache() async {
+    final settings = _settings;
+    if (settings == null) {
+      return;
+    }
+    await _settingsStorage.saveCalendarPageCache(
+      scope: _cacheScope(settings),
+      version: _calendarCacheVersion,
+      data: {
+        'days': _days.map(_calendarDayToJson).toList(growable: false),
+        'boundIds': _boundIds.toList(growable: false),
+        'watchedEpisodes': {
+          for (final entry in _watchedEpisodes.entries)
+            entry.key.toString(): entry.value,
+        },
+        'yougnScores': {
+          for (final entry in _yougnScores.entries)
+            entry.key.toString(): entry.value,
+        },
+        'lastWatchedAt': {
+          for (final entry in _lastWatchedAt.entries)
+            entry.key.toString(): entry.value?.toIso8601String(),
+        },
+        'notionPageIds': {
+          for (final entry in _notionPageIds.entries)
+            entry.key.toString(): entry.value,
+        },
+        'notionConfigured': _notionConfigured,
+        'selectedWeekday': _selectedWeekday,
+        'crossSeasonCandidateIds':
+            _crossSeasonCandidateIds.toList(growable: false),
+      },
+    );
+  }
+
+  List<BangumiCalendarDay>? _parseCalendarDays(dynamic raw) {
+    if (raw is! List) {
+      return null;
+    }
+    final result = <BangumiCalendarDay>[];
+    for (final item in raw) {
+      if (item is! Map) {
+        continue;
+      }
+      final map =
+          item is Map<String, dynamic> ? item : item.cast<String, dynamic>();
+      final parsed = _calendarDayFromJson(map);
+      if (parsed == null) {
+        continue;
+      }
+      result.add(parsed);
+    }
+    return result;
+  }
+
+  Map<String, dynamic> _calendarDayToJson(BangumiCalendarDay day) {
+    return {
+      'weekday': {
+        'id': day.weekday.id,
+        'en': day.weekday.en,
+        'cn': day.weekday.cn,
+        'ja': day.weekday.ja,
+      },
+      'items': day.items
+          .map(
+            (item) => {
+              'id': item.id,
+              'type': item.type,
+              'name': item.name,
+              'nameCn': item.nameCn,
+              'summary': item.summary,
+              'imageUrl': item.imageUrl,
+              'airDate': item.airDate,
+              'airWeekday': item.airWeekday,
+              'eps': item.eps,
+              'epsCount': item.epsCount,
+            },
+          )
+          .toList(growable: false),
+    };
+  }
+
+  BangumiCalendarDay? _calendarDayFromJson(Map<String, dynamic> json) {
+    final weekdayRaw = json['weekday'];
+    if (weekdayRaw is! Map) {
+      return null;
+    }
+    final weekdayMap = weekdayRaw is Map<String, dynamic>
+        ? weekdayRaw
+        : weekdayRaw.cast<String, dynamic>();
+    final weekday = BangumiCalendarWeekday(
+      id: int.tryParse(weekdayMap['id']?.toString() ?? '') ?? 0,
+      en: weekdayMap['en']?.toString() ?? '',
+      cn: weekdayMap['cn']?.toString() ?? '',
+      ja: weekdayMap['ja']?.toString() ?? '',
+    );
+
+    final rawItems = json['items'];
+    if (rawItems is! List) {
+      return BangumiCalendarDay(weekday: weekday, items: const []);
+    }
+
+    final items = <BangumiCalendarItem>[];
+    for (final item in rawItems) {
+      if (item is! Map) {
+        continue;
+      }
+      final map =
+          item is Map<String, dynamic> ? item : item.cast<String, dynamic>();
+      final parsed = _calendarItemFromJson(map);
+      if (parsed == null) {
+        continue;
+      }
+      items.add(parsed);
+    }
+    return BangumiCalendarDay(weekday: weekday, items: items);
+  }
+
+  BangumiCalendarItem? _calendarItemFromJson(Map<String, dynamic> json) {
+    final id = int.tryParse(json['id']?.toString() ?? '') ?? 0;
+    if (id <= 0) {
+      return null;
+    }
+    return BangumiCalendarItem(
+      id: id,
+      type: int.tryParse(json['type']?.toString() ?? '') ?? 0,
+      name: json['name']?.toString() ?? '',
+      nameCn: json['nameCn']?.toString() ?? '',
+      summary: json['summary']?.toString() ?? '',
+      imageUrl: json['imageUrl']?.toString() ?? '',
+      airDate: json['airDate']?.toString() ?? '',
+      airWeekday: int.tryParse(json['airWeekday']?.toString() ?? '') ?? 0,
+      eps: int.tryParse(json['eps']?.toString() ?? '') ?? 0,
+      epsCount: int.tryParse(json['epsCount']?.toString() ?? '') ?? 0,
+    );
+  }
+
+  Set<int> _parseIntSet(dynamic raw) {
+    if (raw is! List) {
+      return <int>{};
+    }
+    final result = <int>{};
+    for (final value in raw) {
+      final parsed = int.tryParse(value.toString());
+      if (parsed == null) {
+        continue;
+      }
+      result.add(parsed);
+    }
+    return result;
+  }
+
+  Map<int, int> _parseIntIntMap(dynamic raw) {
+    if (raw is! Map) {
+      return <int, int>{};
+    }
+    final result = <int, int>{};
+    for (final entry in raw.entries) {
+      final key = int.tryParse(entry.key.toString());
+      final value = int.tryParse(entry.value.toString());
+      if (key == null || value == null) {
+        continue;
+      }
+      result[key] = value;
+    }
+    return result;
+  }
+
+  Map<int, double?> _parseIntNullableDoubleMap(dynamic raw) {
+    if (raw is! Map) {
+      return <int, double?>{};
+    }
+    final result = <int, double?>{};
+    for (final entry in raw.entries) {
+      final key = int.tryParse(entry.key.toString());
+      if (key == null) {
+        continue;
+      }
+      final valueText = entry.value?.toString() ?? '';
+      result[key] = valueText.isEmpty ? null : double.tryParse(valueText);
+    }
+    return result;
+  }
+
+  Map<int, DateTime?> _parseIntNullableDateMap(dynamic raw) {
+    if (raw is! Map) {
+      return <int, DateTime?>{};
+    }
+    final result = <int, DateTime?>{};
+    for (final entry in raw.entries) {
+      final key = int.tryParse(entry.key.toString());
+      if (key == null) {
+        continue;
+      }
+      final valueText = entry.value?.toString() ?? '';
+      result[key] = valueText.isEmpty ? null : DateTime.tryParse(valueText);
+    }
+    return result;
+  }
+
+  Map<int, String> _parseIntStringMap(dynamic raw) {
+    if (raw is! Map) {
+      return <int, String>{};
+    }
+    final result = <int, String>{};
+    for (final entry in raw.entries) {
+      final key = int.tryParse(entry.key.toString());
+      if (key == null) {
+        continue;
+      }
+      final value = entry.value?.toString() ?? '';
+      if (value.trim().isEmpty) {
+        continue;
+      }
+      result[key] = value;
     }
     return result;
   }
@@ -551,6 +885,7 @@ class CalendarViewModel extends ChangeNotifier {
     _lastWatchedAt[subjectId] =
         lastWatchedProperty.trim().isEmpty ? previousWatchedAt : now;
     _notify();
+    unawaited(_persistCalendarCache());
 
     final bangumiToken = settings.bangumiAccessToken;
     if (bangumiToken.isNotEmpty) {
@@ -615,6 +950,7 @@ class CalendarViewModel extends ChangeNotifier {
     _watchedEpisodes[result.subjectId] = result.oldWatched;
     _lastWatchedAt[result.subjectId] = result.oldLastWatchedAt;
     _notify();
+    unawaited(_persistCalendarCache());
   }
 
   Future<void> _appendBoundItemsFromNotion(int token) async {
@@ -682,6 +1018,7 @@ class CalendarViewModel extends ChangeNotifier {
     _weekdayBoundCounts = _buildWeekdayBoundCounts(updatedDays, _boundIds);
     _boundItems = _buildBoundItems(updatedDays, _boundIds);
     _notify();
+    unawaited(_persistCalendarCache());
   }
 
   Future<List<BangumiSubjectDetail>> _fetchOngoingSubjectDetails(

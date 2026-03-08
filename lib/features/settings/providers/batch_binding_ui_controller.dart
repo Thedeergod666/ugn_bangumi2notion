@@ -11,6 +11,7 @@ class BatchBindingUiController extends ChangeNotifier {
 
   final int autoBindThreshold;
   final Map<String, BatchUiItem> _itemsByPageId = {};
+  final Set<String> _dismissedPageIds = {};
 
   String _query = '';
   bool _onlyUnbound;
@@ -59,6 +60,9 @@ class BatchBindingUiController extends ChangeNotifier {
     for (final candidate in candidates) {
       final pageId = candidate.notionItem.id;
       if (pageId.trim().isEmpty) {
+        continue;
+      }
+      if (_dismissedPageIds.contains(pageId)) {
         continue;
       }
 
@@ -204,6 +208,7 @@ class BatchBindingUiController extends ChangeNotifier {
     }
 
     for (final item in targets) {
+      _dismissedPageIds.add(item.pageId);
       _itemsByPageId.remove(item.pageId);
     }
 
@@ -235,10 +240,117 @@ class BatchBindingUiController extends ChangeNotifier {
   }
 
   bool _isVisible(BatchUiItem item) {
+    if (_dismissedPageIds.contains(item.pageId)) {
+      return false;
+    }
     if (_onlyUnbound && item.isBound) {
       return false;
     }
     return item.matchesQuery(_query);
+  }
+
+  Map<String, dynamic> exportSnapshot() {
+    final selectedPageIds = _itemsByPageId.values
+        .where((item) => item.selected)
+        .map((item) => item.pageId)
+        .toList(growable: false);
+    final selectedMatchByPageId = <String, int>{};
+    final conflictPageIds = <String>[];
+    for (final item in _itemsByPageId.values) {
+      final selectedMatchId = item.selectedMatchId;
+      if (selectedMatchId != null) {
+        selectedMatchByPageId[item.pageId] = selectedMatchId;
+      }
+      if (item.status == BatchItemStatus.conflict) {
+        conflictPageIds.add(item.pageId);
+      }
+    }
+
+    return {
+      'query': _query,
+      'onlyUnbound': _onlyUnbound,
+      'sortMode': _sortMode.name,
+      'activePageId': _activePageId,
+      'selectedPageIds': selectedPageIds,
+      'selectedMatchByPageId': selectedMatchByPageId,
+      'conflictPageIds': conflictPageIds,
+      'dismissedPageIds': _dismissedPageIds.toList(growable: false),
+    };
+  }
+
+  void restoreSnapshot(
+    Map<String, dynamic> snapshot, {
+    bool notify = true,
+  }) {
+    final query = snapshot['query']?.toString() ?? '';
+    final onlyUnbound = snapshot['onlyUnbound'] == true;
+    final sortModeName = snapshot['sortMode']?.toString();
+    final activePageId = snapshot['activePageId']?.toString();
+    final dismissed = _parseStringSet(snapshot['dismissedPageIds']);
+
+    _query = query;
+    _onlyUnbound = onlyUnbound;
+    _sortMode = BatchSortMode.values.firstWhere(
+      (item) => item.name == sortModeName,
+      orElse: () => BatchSortMode.similarity,
+    );
+    _activePageId = activePageId;
+
+    _dismissedPageIds
+      ..clear()
+      ..addAll(dismissed);
+
+    final selectedPageIds = _parseStringSet(snapshot['selectedPageIds']);
+    final selectedMatchByPageId =
+        _parseSelectedMatchMap(snapshot['selectedMatchByPageId']);
+    final conflictPageIds = _parseStringSet(snapshot['conflictPageIds']);
+
+    final keys = _itemsByPageId.keys.toList(growable: false);
+    for (final pageId in keys) {
+      final current = _itemsByPageId[pageId];
+      if (current == null) continue;
+      final selected = selectedPageIds.contains(pageId);
+      final selectedMatchId = selectedMatchByPageId[pageId];
+      final keepSelectedMatch = selectedMatchId != null &&
+          current.scoredMatches
+              .any((match) => match.item.id == selectedMatchId);
+      final status = current.isBound
+          ? BatchItemStatus.bound
+          : (conflictPageIds.contains(pageId)
+              ? BatchItemStatus.conflict
+              : BatchItemStatus.pending);
+      _itemsByPageId[pageId] = current.copyWith(
+        selected: selected,
+        status: status,
+        selectedMatchId: keepSelectedMatch ? selectedMatchId : null,
+        clearSelectedMatchId: !keepSelectedMatch,
+      );
+    }
+
+    _ensureActiveItem();
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  Set<String> _parseStringSet(dynamic raw) {
+    if (raw is! List) return <String>{};
+    return raw
+        .map((item) => item.toString())
+        .where((item) => item.trim().isNotEmpty)
+        .toSet();
+  }
+
+  Map<String, int> _parseSelectedMatchMap(dynamic raw) {
+    if (raw is! Map) return const {};
+    final result = <String, int>{};
+    for (final entry in raw.entries) {
+      final key = entry.key.toString();
+      final value = int.tryParse(entry.value.toString());
+      if (key.trim().isEmpty || value == null) continue;
+      result[key] = value;
+    }
+    return result;
   }
 
   void _ensureActiveItem() {

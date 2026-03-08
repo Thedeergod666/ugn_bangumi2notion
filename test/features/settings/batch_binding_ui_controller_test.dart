@@ -204,5 +204,103 @@ void main() {
       expect(targets.length, 1);
       expect(targets.first.pageId, 'p1');
     });
+
+    test('restores snapshot for query/sort/conflict/dismissed state', () {
+      final original = BatchBindingUiController(autoBindThreshold: 85);
+      original.applyCandidates([
+        buildCandidate(
+          pageId: 'p1',
+          title: 'Alpha',
+          matches: [
+            buildMatch(id: 1, nameCn: 'Alpha', airDate: '2021', score: 7.8),
+          ],
+        ),
+        buildCandidate(
+          pageId: 'p2',
+          title: 'Beta',
+          matches: [
+            buildMatch(id: 2, nameCn: 'Beta', airDate: '2020', score: 8.0),
+          ],
+        ),
+      ]);
+
+      original.setSortMode(BatchSortMode.year);
+      original.toggleConflict('p2');
+      original.toggleItemSelected('p1');
+      final removed = original.removeSelectedVisibleItems();
+      expect(removed.map((item) => item.pageId), ['p1']);
+      original.setQuery('Beta');
+
+      final snapshot = original.exportSnapshot();
+
+      final restored = BatchBindingUiController(autoBindThreshold: 85);
+      restored.applyCandidates([
+        buildCandidate(
+          pageId: 'p1',
+          title: 'Alpha',
+          matches: [
+            buildMatch(id: 1, nameCn: 'Alpha', airDate: '2021', score: 7.8),
+          ],
+        ),
+        buildCandidate(
+          pageId: 'p2',
+          title: 'Beta',
+          matches: [
+            buildMatch(id: 2, nameCn: 'Beta', airDate: '2020', score: 8.0),
+          ],
+        ),
+      ]);
+      restored.restoreSnapshot(snapshot);
+
+      expect(restored.query, 'Beta');
+      expect(restored.sortMode, BatchSortMode.year);
+      expect(restored.visibleItems.map((item) => item.pageId), ['p2']);
+      expect(
+        restored.visibleItems.any((item) => item.pageId == 'p1'),
+        isFalse,
+      );
+      expect(restored.activeItem?.pageId, 'p2');
+      expect(restored.activeItem?.status, BatchItemStatus.conflict);
+    });
+
+    test('restores retained selection after applying refreshed candidates', () {
+      final controller = BatchBindingUiController(autoBindThreshold: 85);
+      controller.applyCandidates([
+        buildCandidate(
+          pageId: 'p1',
+          title: 'Alpha',
+          matches: [
+            buildMatch(
+                id: 11, nameCn: 'Alpha old', airDate: '2020', score: 6.5),
+            buildMatch(
+                id: 12, nameCn: 'Alpha keep', airDate: '2021', score: 8.8),
+          ],
+        ),
+      ]);
+
+      controller.selectCandidate('p1', 12);
+      controller.toggleItemSelected('p1');
+      controller.toggleConflict('p1');
+      final snapshot = controller.exportSnapshot();
+
+      controller.applyCandidates([
+        buildCandidate(
+          pageId: 'p1',
+          title: 'Alpha',
+          matches: [
+            buildMatch(
+                id: 12, nameCn: 'Alpha keep', airDate: '2021', score: 8.8),
+            buildMatch(
+                id: 13, nameCn: 'Alpha new', airDate: '2024', score: 7.9),
+          ],
+        ),
+      ]);
+      controller.restoreSnapshot(snapshot);
+
+      final item = controller.allItems.single;
+      expect(item.selected, isTrue);
+      expect(item.selectedMatchId, 12);
+      expect(item.status, BatchItemStatus.conflict);
+    });
   });
 }

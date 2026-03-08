@@ -40,7 +40,9 @@ class _CalendarPageBody extends StatelessWidget {
           actions: [
             IconButton(
               tooltip: '刷新',
-              onPressed: model.isLoading ? null : () => model.load(settings),
+              onPressed: model.isLoading
+                  ? null
+                  : () => model.load(settings, forceRefresh: true),
               icon: const Icon(Icons.refresh),
             ),
           ],
@@ -65,7 +67,7 @@ class _CalendarPageBody extends StatelessWidget {
         icon: Icons.error_outline,
         title: model.errorMessage!,
         actionLabel: '重试',
-        onAction: () => model.load(settings),
+        onAction: () => model.load(settings, forceRefresh: true),
       );
     }
 
@@ -75,12 +77,13 @@ class _CalendarPageBody extends StatelessWidget {
         icon: Icons.inbox_outlined,
         title: '暂无放送数据',
         actionLabel: '刷新',
-        onAction: () => model.load(settings),
+        onAction: () => model.load(settings, forceRefresh: true),
       );
     }
 
     final selectedDay = model.days.firstWhere(
-      (day) => model.normalizeWeekdayId(day.weekday.id) == model.selectedWeekday,
+      (day) =>
+          model.normalizeWeekdayId(day.weekday.id) == model.selectedWeekday,
       orElse: () => const BangumiCalendarDay(
         weekday: BangumiCalendarWeekday(id: 0, en: '', cn: '', ja: ''),
         items: [],
@@ -210,4 +213,3 @@ class _CalendarPageBody extends StatelessWidget {
     }
   }
 }
-

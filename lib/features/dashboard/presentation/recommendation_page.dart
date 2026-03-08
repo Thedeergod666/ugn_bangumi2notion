@@ -208,7 +208,10 @@ class _RecommendationPageState extends State<RecommendationPage> {
         actionLabel: '重试',
         onAction: model.isLoading
             ? null
-            : () => model.load(context.read<AppSettings>()),
+            : () => model.load(
+                  context.read<AppSettings>(),
+                  forceRefresh: true,
+                ),
         secondaryLabel: '查看详情',
         onSecondaryAction: (model.error != null && model.stackTrace != null)
             ? () => showDialog(
@@ -230,7 +233,10 @@ class _RecommendationPageState extends State<RecommendationPage> {
         actionLabel: '刷新',
         onAction: model.isLoading
             ? null
-            : () => model.load(context.read<AppSettings>()),
+            : () => model.load(
+                  context.read<AppSettings>(),
+                  forceRefresh: true,
+                ),
       );
     }
 
@@ -242,7 +248,10 @@ class _RecommendationPageState extends State<RecommendationPage> {
         actionLabel: '刷新',
         onAction: model.isLoading
             ? null
-            : () => model.load(context.read<AppSettings>()),
+            : () => model.load(
+                  context.read<AppSettings>(),
+                  forceRefresh: true,
+                ),
       );
     }
 
