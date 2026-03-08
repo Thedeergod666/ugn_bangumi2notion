@@ -297,13 +297,11 @@ class _CandidateCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final backgroundColor = selected
         ? colorScheme.primaryContainer.withValues(alpha: 0.42)
-        : (recommended
-            ? colorScheme.primaryContainer.withValues(alpha: 0.28)
-            : colorScheme.surface);
+        : colorScheme.surface;
     final borderColor = selected
         ? colorScheme.primary
         : (recommended
-            ? colorScheme.primary.withValues(alpha: 0.65)
+            ? colorScheme.tertiary.withValues(alpha: 0.55)
             : colorScheme.outlineVariant);
 
     return InkWell(
@@ -355,6 +353,15 @@ class _CandidateCard extends StatelessWidget {
                                   ),
                         ),
                       ),
+                      if (recommended && !selected) ...[
+                        const SizedBox(width: 6),
+                        _TinyChip(
+                          text: '推荐项',
+                          backgroundColor: colorScheme.tertiaryContainer
+                              .withValues(alpha: 0.7),
+                          textColor: colorScheme.onTertiaryContainer,
+                        ),
+                      ],
                       if (selected)
                         Icon(
                           Icons.check_circle_rounded,

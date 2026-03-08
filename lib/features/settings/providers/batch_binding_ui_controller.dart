@@ -155,6 +155,7 @@ class BatchBindingUiController extends ChangeNotifier {
     if (item == null) {
       return;
     }
+    _activePageId = pageId;
     _itemsByPageId[pageId] = item.copyWith(selected: !item.selected);
     notifyListeners();
   }

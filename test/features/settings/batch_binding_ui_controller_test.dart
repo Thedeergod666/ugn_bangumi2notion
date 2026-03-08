@@ -162,6 +162,30 @@ void main() {
       expect(controller.visibleItems.map((item) => item.pageId), ['p2']);
     });
 
+    test('toggle selection also moves active item to clicked row', () {
+      final controller = BatchBindingUiController();
+      controller.applyCandidates([
+        buildCandidate(
+          pageId: 'p1',
+          title: 'A',
+          matches: [
+            buildMatch(id: 1, nameCn: 'A', airDate: '2020', score: 7.0)
+          ],
+        ),
+        buildCandidate(
+          pageId: 'p2',
+          title: 'B',
+          matches: [
+            buildMatch(id: 2, nameCn: 'B', airDate: '2021', score: 7.0)
+          ],
+        ),
+      ]);
+
+      expect(controller.activeItem?.pageId, 'p1');
+      controller.toggleItemSelected('p2');
+      expect(controller.activeItem?.pageId, 'p2');
+    });
+
     test('auto-bind picks visible unbound items above threshold', () {
       final controller = BatchBindingUiController(autoBindThreshold: 85);
       controller.applyCandidates([
