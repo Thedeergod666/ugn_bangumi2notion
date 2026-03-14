@@ -129,4 +129,4 @@ flutter analyze
 
 ## 许可证
 
-未在仓库中声明许可证（如需开源发布请补充）。
+本项目采用 [Apache License 2.0](LICENSE) 开源。
