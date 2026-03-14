@@ -112,9 +112,9 @@ class RecommendationView extends StatelessWidget {
 
         final leftPanel = _buildLeftPanel(context, horizontal: isMedium);
         final rankCard =
-            _buildRankCard(context, hint: isUltraWide ? null : '鐐瑰嚮鍒囨崲');
+            _buildRankCard(context, hint: isUltraWide ? null : '点击切换');
         final reviewCard =
-            _buildLongReviewCard(context, hint: isUltraWide ? null : '鐐瑰嚮鍒囨崲');
+            _buildLongReviewCard(context, hint: isUltraWide ? null : '点击切换');
         final rightPanel = isUltraWide
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -169,7 +169,7 @@ class RecommendationView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '浠婃棩瀹夊埄',
+                '今日安利',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -196,7 +196,7 @@ class RecommendationView extends StatelessWidget {
             child: TextField(
               controller: state.notionSearchController,
               decoration: const InputDecoration(
-                hintText: 'Notion 鎼滅储',
+                hintText: 'Notion 搜索',
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
                 isDense: true,
@@ -209,7 +209,7 @@ class RecommendationView extends StatelessWidget {
             onPressed: () => callbacks.onNotionSearch(
               state.notionSearchController.text,
             ),
-            child: const Text('鎼滅储'),
+            child: const Text('搜索'),
           ),
         ],
       ),
@@ -341,7 +341,7 @@ class RecommendationView extends StatelessWidget {
         ],
         const SizedBox(height: 12),
         Text(
-          shortReview.isEmpty ? '鏆傛棤鐭瘎' : shortReview,
+          shortReview.isEmpty ? '暂无短评' : shortReview,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: shortReview.isEmpty
                     ? colorScheme.onSurfaceVariant
@@ -400,7 +400,7 @@ class RecommendationView extends StatelessWidget {
       body = Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text(
-          '鏆傛棤璇勫垎鍒嗗竷鏁版嵁',
+          '暂无评分分布数据',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -427,7 +427,7 @@ class RecommendationView extends StatelessWidget {
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildPanelHeader(context, title: '鎺掑悕鍒嗗竷', hint: hint),
+          _buildPanelHeader(context, title: '排名分布', hint: hint),
           const SizedBox(height: 12),
           body,
         ],
@@ -500,9 +500,8 @@ class RecommendationView extends StatelessWidget {
   Widget _buildLongReviewCard(BuildContext context, {String? hint}) {
     final colorScheme = Theme.of(context).colorScheme;
     final trimmed = state.longReview.trim();
-    final displayText = trimmed.isNotEmpty
-        ? trimmed
-        : (state.showLongReview ? '鏆傛棤闀胯瘎' : '鏆傛棤闀胯瘎');
+    final displayText =
+        trimmed.isNotEmpty ? trimmed : (state.showLongReview ? '暂无长评' : '暂无长评');
     final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: trimmed.isNotEmpty
               ? colorScheme.onSurface
@@ -515,7 +514,7 @@ class RecommendationView extends StatelessWidget {
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildPanelHeader(context, title: '闀胯瘎', hint: hint),
+          _buildPanelHeader(context, title: '长评', hint: hint),
           const SizedBox(height: 12),
           Text(displayText, style: textStyle),
         ],

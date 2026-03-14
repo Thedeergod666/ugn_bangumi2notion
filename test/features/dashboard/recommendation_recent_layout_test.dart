@@ -127,4 +127,30 @@ void main() {
     expect(find.byTooltip('+1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('recommendation hero section keeps readable Chinese labels',
+      (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() async => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: RecommendationView(
+            state: buildState(controller: controller),
+            callbacks: callbacks(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('今日安利'), findsOneWidget);
+    expect(find.text('Notion 搜索'), findsOneWidget);
+    expect(find.text('搜索'), findsOneWidget);
+    expect(find.text('排名分布'), findsOneWidget);
+    expect(find.text('长评'), findsOneWidget);
+  });
 }

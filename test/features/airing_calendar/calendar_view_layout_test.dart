@@ -20,6 +20,21 @@ BangumiCalendarItem _buildItem(int id) {
   );
 }
 
+BangumiCalendarItem _buildLongTitleItem(int id) {
+  return BangumiCalendarItem(
+    id: id,
+    type: 2,
+    name: 'Very Long Sample Title $id',
+    nameCn: '判处勇者刑 惩罚勇者9004队刑务纪录 特别篇 超长副标题',
+    summary: '用于验证追番卡长标题场景不会挤压到底部进度区。',
+    imageUrl: '',
+    airDate: '2026-03-09',
+    airWeekday: 1,
+    eps: 1,
+    epsCount: 24,
+  );
+}
+
 BangumiSubjectDetail _buildDetail(int id) {
   return BangumiSubjectDetail(
     id: id,
@@ -54,6 +69,7 @@ CalendarViewState _buildState({
   bool withItems = true,
   List<BangumiCalendarItem>? boundItems,
   Map<int, int>? watchedEpisodes,
+  Map<int, double?>? yougnScores,
   Map<int, DateTime?>? lastWatchedAt,
   Map<int, EpisodeReleaseSummary>? releaseSummaryCache,
 }) {
@@ -91,7 +107,7 @@ CalendarViewState _buildState({
           2: 5,
           3: 2,
         },
-    yougnScores: const {},
+    yougnScores: yougnScores ?? const {},
     lastWatchedAt: lastWatchedAt ?? const {},
     detailCache: detailCache,
     releaseSummaryCache: releaseSummaryCache ??
@@ -211,6 +227,45 @@ void main() {
     expect(find.textContaining('看到'), findsWidgets);
     expect(find.textContaining('最近观看'), findsWidgets);
     expect(find.textContaining('未看'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bound card handles long titles without overflow',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() async => tester.binding.setSurfaceSize(null));
+
+    final state = _buildState(
+      mode: 'list',
+      boundItems: [_buildLongTitleItem(9)],
+      watchedEpisodes: const {9: 9},
+      yougnScores: const {9: 7.1},
+      lastWatchedAt: {
+        9: DateTime.parse('2026-03-12T21:48:00'),
+      },
+      releaseSummaryCache: const {
+        9: EpisodeReleaseSummary(
+          latestAiredEpisode: 10,
+          latestAiredAt: null,
+          nextEpisode: 11,
+          nextAiredAt: null,
+        ),
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CalendarView(
+            state: state,
+            callbacks: _callbacks(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('判处勇者刑'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }
