@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_utools/core/theme/kazumi_theme.dart';
+import 'package:flutter_utools/core/theme/content_module_theme_extension.dart';
 import 'package:flutter_utools/core/theme/mapping_theme_extension.dart';
 
 void main() {
@@ -39,5 +40,23 @@ void main() {
     expect(ext, isNotNull);
     expect(ext!.configuredColor, isNot(equals(ext.errorColor)));
     expect(ext.warningColor, isNot(equals(ext.errorColor)));
+  });
+
+  test('Content module theme extension is injected with distinct accent roles',
+      () {
+    final darkScheme = KazumiTheme.buildScheme(
+      brightness: Brightness.dark,
+      seedColor: const Color(0xFF5ABF9B),
+    );
+    final theme = KazumiTheme.dark(
+      scheme: darkScheme,
+      useSystemFont: true,
+    );
+
+    final ext = theme.extension<ContentModuleThemeExtension>();
+    expect(ext, isNotNull);
+    expect(ext!.progressWatchedColor, isNot(equals(ext.progressUpdatedColor)));
+    expect(ext.badgeColor, isNot(equals(ext.containerColor)));
+    expect(ext.hoverBorderColor, isNot(equals(ext.borderColor)));
   });
 }

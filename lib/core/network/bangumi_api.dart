@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../models/bangumi_models.dart';
+import '../../models/progress_segments.dart';
 import 'http_retry.dart';
 import '../utils/logging.dart';
 
@@ -267,9 +268,7 @@ class BangumiApi {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final list = data['data'] as List<dynamic>? ?? [];
       episodes.addAll(
-        list
-            .whereType<Map<String, dynamic>>()
-            .map(BangumiEpisode.fromJson),
+        list.whereType<Map<String, dynamic>>().map(BangumiEpisode.fromJson),
       );
       total ??= (data['total'] as num?)?.toInt();
 
@@ -287,45 +286,73 @@ class BangumiApi {
     String? accessToken,
     int? type = 0,
   }) async {
+    final summary = await fetchEpisodeReleaseSummary(
+      subjectId: subjectId,
+      accessToken: accessToken,
+      type: type,
+    );
+    return summary.latestAiredEpisode ?? 0;
+  }
+
+  Future<EpisodeReleaseSummary> fetchEpisodeReleaseSummary({
+    required int subjectId,
+    String? accessToken,
+    int? type = 0,
+  }) async {
     final episodes = await fetchSubjectEpisodes(
       subjectId: subjectId,
       accessToken: accessToken,
       type: type,
     );
-    if (episodes.isEmpty) return 0;
+    return buildEpisodeReleaseSummary(episodes: episodes);
+  }
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    int pickNumber(BangumiEpisode e) {
-      final value = e.ep > 0 ? e.ep : e.sort;
-      return value.round();
-    }
+  EpisodeReleaseSummary buildEpisodeReleaseSummary({
+    required List<BangumiEpisode> episodes,
+    DateTime? now,
+  }) {
+    if (episodes.isEmpty) return EpisodeReleaseSummary.empty;
+    final reference = now ?? DateTime.now();
+    BangumiEpisode? latestAired;
+    DateTime? latestAiredAt;
+    BangumiEpisode? nextEpisode;
+    DateTime? nextAiredAt;
 
-    final dated = <BangumiEpisode>[];
     for (final episode in episodes) {
-      final raw = episode.airDate.trim();
-      if (raw.isEmpty) continue;
-      final parsed = DateTime.tryParse(raw);
-      if (parsed == null) continue;
-      if (!parsed.isAfter(today)) {
-        dated.add(episode);
+      final airedAt = DateTime.tryParse(episode.airDate.trim());
+      if (airedAt == null) continue;
+      final number = _episodeNumber(episode);
+      if (number <= 0) continue;
+
+      if (!airedAt.isAfter(reference)) {
+        final replaceLatest = latestAiredAt == null ||
+            airedAt.isAfter(latestAiredAt) ||
+            (airedAt.isAtSameMomentAs(latestAiredAt) &&
+                number >= _episodeNumber(latestAired!));
+        if (replaceLatest) {
+          latestAired = episode;
+          latestAiredAt = airedAt;
+        }
+        continue;
+      }
+
+      final replaceNext = nextAiredAt == null ||
+          airedAt.isBefore(nextAiredAt) ||
+          (airedAt.isAtSameMomentAs(nextAiredAt) &&
+              number <= _episodeNumber(nextEpisode!));
+      if (replaceNext) {
+        nextEpisode = episode;
+        nextAiredAt = airedAt;
       }
     }
 
-    List<BangumiEpisode> candidates = dated;
-    if (candidates.isEmpty) {
-      candidates = episodes
-          .where((e) => e.airDate.trim().isNotEmpty)
-          .toList();
-    }
-    if (candidates.isEmpty) return 0;
-
-    final best = candidates.reduce((a, b) {
-      final av = pickNumber(a);
-      final bv = pickNumber(b);
-      return av >= bv ? a : b;
-    });
-    return pickNumber(best);
+    return EpisodeReleaseSummary(
+      latestAiredEpisode:
+          latestAired == null ? null : _episodeNumber(latestAired),
+      latestAiredAt: latestAiredAt,
+      nextEpisode: nextEpisode == null ? null : _episodeNumber(nextEpisode),
+      nextAiredAt: nextAiredAt,
+    );
   }
 
   Future<String?> fetchLastEpisodeAirDate({
@@ -358,6 +385,11 @@ class BangumiApi {
 
     target ??= candidates.reduce((a, b) => a.sort >= b.sort ? a : b);
     return target.airDate.trim();
+  }
+
+  int _episodeNumber(BangumiEpisode episode) {
+    final value = episode.ep > 0 ? episode.ep : episode.sort;
+    return value.round();
   }
 
   Future<StaffResponse?> _fetchStaff(int subjectId) async {

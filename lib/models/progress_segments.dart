@@ -10,3 +10,25 @@ class ProgressSegments {
   });
 }
 
+class EpisodeReleaseSummary {
+  final int? latestAiredEpisode;
+  final DateTime? latestAiredAt;
+  final int? nextEpisode;
+  final DateTime? nextAiredAt;
+
+  const EpisodeReleaseSummary({
+    this.latestAiredEpisode,
+    this.latestAiredAt,
+    this.nextEpisode,
+    this.nextAiredAt,
+  });
+
+  static const empty = EpisodeReleaseSummary();
+
+  int get updatedEpisodes => latestAiredEpisode ?? 0;
+  bool get hasAnyData =>
+      latestAiredEpisode != null ||
+      latestAiredAt != null ||
+      nextEpisode != null ||
+      nextAiredAt != null;
+}

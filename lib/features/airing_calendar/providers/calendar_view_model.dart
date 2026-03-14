@@ -10,6 +10,7 @@ import '../../../core/network/bangumi_api.dart';
 import '../../../core/network/notion_api.dart';
 import '../../../models/bangumi_models.dart';
 import '../../../models/mapping_schema.dart';
+import '../../../models/progress_segments.dart';
 
 class CalendarViewModel extends ChangeNotifier {
   CalendarViewModel({
@@ -40,7 +41,7 @@ class CalendarViewModel extends ChangeNotifier {
   final Set<int> _detailLoading = {};
   Map<int, String?> _airEndDateCache = {};
   final Set<int> _airEndDateLoading = {};
-  Map<int, int> _latestEpisodeCache = {};
+  Map<int, EpisodeReleaseSummary> _releaseSummaryCache = {};
   final Set<int> _latestEpisodeLoading = {};
   final Queue<int> _latestEpisodeQueue = Queue<int>();
   int _latestEpisodeInFlight = 0;
@@ -62,7 +63,8 @@ class CalendarViewModel extends ChangeNotifier {
   Map<int, DateTime?> get lastWatchedAt => _lastWatchedAt;
   Map<int, BangumiSubjectDetail> get detailCache => _detailCache;
   Map<int, String?> get airEndDateCache => _airEndDateCache;
-  Map<int, int> get latestEpisodeCache => _latestEpisodeCache;
+  Map<int, EpisodeReleaseSummary> get releaseSummaryCache =>
+      _releaseSummaryCache;
   Map<int, List<BangumiCalendarItem>> get weekdayItems => _weekdayItems;
   Map<int, int> get weekdayBoundCounts => _weekdayBoundCounts;
   List<BangumiCalendarItem> get boundItems => _boundItems;
@@ -97,7 +99,7 @@ class CalendarViewModel extends ChangeNotifier {
       _notionPageIds = {};
       _detailCache = {};
       _airEndDateCache = {};
-      _latestEpisodeCache = {};
+      _releaseSummaryCache = {};
       _weekdayItems = {};
       _weekdayBoundCounts = {};
       _crossSeasonCandidateIds = {};
@@ -347,7 +349,7 @@ class CalendarViewModel extends ChangeNotifier {
   }
 
   void scheduleLatestEpisodeLoad(int subjectId) {
-    if (_latestEpisodeCache.containsKey(subjectId) ||
+    if (_releaseSummaryCache.containsKey(subjectId) ||
         _latestEpisodeLoading.contains(subjectId)) {
       return;
     }
@@ -704,28 +706,28 @@ class CalendarViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadLatestEpisode(int subjectId) async {
-    int latest = 0;
+    var summary = EpisodeReleaseSummary.empty;
     try {
       final token = _settings?.bangumiAccessToken ?? '';
-      latest = await _bangumiApi.fetchLatestEpisodeNumber(
+      summary = await _bangumiApi.fetchEpisodeReleaseSummary(
         subjectId: subjectId,
         accessToken: token.isEmpty ? null : token,
         type: 0,
       );
     } catch (_) {
       try {
-        latest = await _bangumiApi.fetchLatestEpisodeNumber(
+        summary = await _bangumiApi.fetchEpisodeReleaseSummary(
           subjectId: subjectId,
           accessToken: null,
           type: null,
         );
       } catch (_) {
-        latest = 0;
+        summary = EpisodeReleaseSummary.empty;
       }
     } finally {
       _latestEpisodeLoading.remove(subjectId);
     }
-    _latestEpisodeCache[subjectId] = latest;
+    _releaseSummaryCache[subjectId] = summary;
     _notify();
   }
 

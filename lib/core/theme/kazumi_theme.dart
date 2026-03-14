@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'content_module_theme_extension.dart';
 import 'mapping_theme_extension.dart';
 
 class ThemeSeed {
@@ -94,6 +95,7 @@ class KazumiTheme {
 
   static ThemeData _buildTheme(ColorScheme scheme, TextTheme textTheme) {
     final mappingExt = MappingThemeExtension.fromScheme(scheme);
+    final contentExt = ContentModuleThemeExtension.fromScheme(scheme);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
@@ -101,6 +103,7 @@ class KazumiTheme {
       scaffoldBackgroundColor: mappingExt.pageBgBottom,
       extensions: <ThemeExtension<dynamic>>[
         mappingExt,
+        contentExt,
       ],
       appBarTheme: AppBarTheme(
         backgroundColor: mappingExt.pageBgBottom,

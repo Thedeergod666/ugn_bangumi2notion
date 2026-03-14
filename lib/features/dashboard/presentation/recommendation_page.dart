@@ -8,6 +8,7 @@ import '../../../app/app_settings.dart';
 import '../../../core/widgets/error_detail_dialog.dart';
 import '../../../core/widgets/navigation_shell.dart';
 import '../../../models/notion_models.dart';
+import '../../../models/progress_segments.dart';
 import '../providers/recommendation_view_model.dart';
 import 'notion_detail_page.dart';
 import 'recommendation_view.dart';
@@ -290,7 +291,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
         : model.scoreToBinLabel(recommendation.yougnScore!);
 
     // Prefetch recent caches used by the View.
-    final recentLatest = <int, int>{};
+    final recentReleaseSummaries = <int, EpisodeReleaseSummary>{};
     for (final entry in [...model.recentWatching, ...model.recentWatched]) {
       if ((entry.coverUrl?.trim().isEmpty ?? true)) {
         model.scheduleNotionContentLoad(entry.id);
@@ -299,7 +300,8 @@ class _RecommendationPageState extends State<RecommendationPage> {
       if (id == null) continue;
       model.scheduleBangumiDetailLoad(id);
       model.scheduleRecentLatestEpisodeLoad(id);
-      recentLatest[id] = model.latestEpisodeFor(id) ?? 0;
+      recentReleaseSummaries[id] =
+          model.releaseSummaryFor(id) ?? EpisodeReleaseSummary.empty;
     }
 
     final viewState = RecommendationViewState(
@@ -323,7 +325,7 @@ class _RecommendationPageState extends State<RecommendationPage> {
       recentWatched: model.recentWatched,
       bangumiDetailCache: model.bangumiDetailCache,
       notionContentCache: model.notionContentCache,
-      recentLatestEpisodeCache: recentLatest,
+      recentReleaseSummaryCache: recentReleaseSummaries,
       notionSearchController: _notionSearchController,
     );
 

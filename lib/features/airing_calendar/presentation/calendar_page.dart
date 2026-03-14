@@ -120,7 +120,7 @@ class _CalendarPageBody extends StatelessWidget {
       yougnScores: model.yougnScores,
       lastWatchedAt: model.lastWatchedAt,
       detailCache: model.detailCache,
-      latestEpisodeCache: model.latestEpisodeCache,
+      releaseSummaryCache: model.releaseSummaryCache,
       airEndDateCache: model.airEndDateCache,
     );
 

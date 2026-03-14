@@ -2,11 +2,25 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/content_module_theme_extension.dart';
 import '../../../core/widgets/progress_segments_bar.dart';
 import '../../../core/widgets/view_mode_toggle.dart';
 import '../../../models/bangumi_models.dart';
 import '../../../models/notion_models.dart';
+import '../../../models/progress_segments.dart';
 import '../providers/recommendation_view_model.dart';
+
+String resolveRecentViewModeForWidth(String mode, double width) {
+  switch (mode) {
+    case 'gallery':
+      return 'gallery';
+    case 'list':
+      return 'list';
+    case 'auto':
+    default:
+      return 'list';
+  }
+}
 
 class RecommendationViewState {
   const RecommendationViewState({
@@ -30,7 +44,7 @@ class RecommendationViewState {
     required this.recentWatched,
     required this.bangumiDetailCache,
     required this.notionContentCache,
-    required this.recentLatestEpisodeCache,
+    required this.recentReleaseSummaryCache,
     required this.notionSearchController,
   });
 
@@ -56,7 +70,7 @@ class RecommendationViewState {
   final List<NotionWatchEntry> recentWatched;
   final Map<int, BangumiSubjectDetail> bangumiDetailCache;
   final Map<String, RecommendationNotionContent> notionContentCache;
-  final Map<int, int> recentLatestEpisodeCache;
+  final Map<int, EpisodeReleaseSummary> recentReleaseSummaryCache;
 
   final TextEditingController notionSearchController;
 }
@@ -98,9 +112,9 @@ class RecommendationView extends StatelessWidget {
 
         final leftPanel = _buildLeftPanel(context, horizontal: isMedium);
         final rankCard =
-            _buildRankCard(context, hint: isUltraWide ? null : '点击切换');
+            _buildRankCard(context, hint: isUltraWide ? null : '鐐瑰嚮鍒囨崲');
         final reviewCard =
-            _buildLongReviewCard(context, hint: isUltraWide ? null : '点击切换');
+            _buildLongReviewCard(context, hint: isUltraWide ? null : '鐐瑰嚮鍒囨崲');
         final rightPanel = isUltraWide
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -155,7 +169,7 @@ class RecommendationView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '今日安利',
+                '浠婃棩瀹夊埄',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -182,7 +196,7 @@ class RecommendationView extends StatelessWidget {
             child: TextField(
               controller: state.notionSearchController,
               decoration: const InputDecoration(
-                hintText: 'Notion 搜索',
+                hintText: 'Notion 鎼滅储',
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
                 isDense: true,
@@ -195,7 +209,7 @@ class RecommendationView extends StatelessWidget {
             onPressed: () => callbacks.onNotionSearch(
               state.notionSearchController.text,
             ),
-            child: const Text('搜索'),
+            child: const Text('鎼滅储'),
           ),
         ],
       ),
@@ -327,7 +341,7 @@ class RecommendationView extends StatelessWidget {
         ],
         const SizedBox(height: 12),
         Text(
-          shortReview.isEmpty ? '暂无短评' : shortReview,
+          shortReview.isEmpty ? '鏆傛棤鐭瘎' : shortReview,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: shortReview.isEmpty
                     ? colorScheme.onSurfaceVariant
@@ -386,7 +400,7 @@ class RecommendationView extends StatelessWidget {
       body = Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text(
-          '暂无评分分布数据',
+          '鏆傛棤璇勫垎鍒嗗竷鏁版嵁',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -413,7 +427,7 @@ class RecommendationView extends StatelessWidget {
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildPanelHeader(context, title: '排名分布', hint: hint),
+          _buildPanelHeader(context, title: '鎺掑悕鍒嗗竷', hint: hint),
           const SizedBox(height: 12),
           body,
         ],
@@ -486,8 +500,9 @@ class RecommendationView extends StatelessWidget {
   Widget _buildLongReviewCard(BuildContext context, {String? hint}) {
     final colorScheme = Theme.of(context).colorScheme;
     final trimmed = state.longReview.trim();
-    final displayText =
-        trimmed.isNotEmpty ? trimmed : (state.showLongReview ? '暂无长评' : '暂无长评');
+    final displayText = trimmed.isNotEmpty
+        ? trimmed
+        : (state.showLongReview ? '鏆傛棤闀胯瘎' : '鏆傛棤闀胯瘎');
     final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: trimmed.isNotEmpty
               ? colorScheme.onSurface
@@ -500,7 +515,7 @@ class RecommendationView extends StatelessWidget {
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildPanelHeader(context, title: '长评', hint: hint),
+          _buildPanelHeader(context, title: '闀胯瘎', hint: hint),
           const SizedBox(height: 12),
           Text(displayText, style: textStyle),
         ],
@@ -553,66 +568,77 @@ class RecommendationView extends StatelessWidget {
 
   Widget _buildRecentSection(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final viewMode = state.recentViewMode;
 
-    return _buildPanel(
-      context,
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layout = _RecentModuleLayout.fromWidth(constraints.maxWidth);
+        final viewMode = resolveRecentViewModeForWidth(
+          state.recentViewMode,
+          constraints.maxWidth,
+        );
+
+        return _buildPanel(
+          context,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '最近观看',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              const Spacer(),
-              ViewModeToggle(
-                mode: viewMode,
-                compact: true,
-                onChanged: callbacks.onRecentViewModeChanged,
-              ),
-              const SizedBox(width: 8),
-              if (state.isRecentLoading)
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colorScheme.primary,
+              Row(
+                children: [
+                  Text(
+                    '最近观看',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
+                  const Spacer(),
+                  ViewModeToggle(
+                    mode: viewMode,
+                    compact: true,
+                    onChanged: callbacks.onRecentViewModeChanged,
+                  ),
+                  const SizedBox(width: 8),
+                  if (state.isRecentLoading)
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                ],
+              ),
+              if (state.recentMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  state.recentMessage!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                 ),
+              ],
+              const SizedBox(height: 12),
+              _buildRecentRow(
+                context,
+                label: '在看',
+                items: state.recentWatching,
+                isWatching: true,
+                viewMode: viewMode,
+                layout: layout,
+              ),
+              const SizedBox(height: 16),
+              _buildRecentRow(
+                context,
+                label: '已看',
+                items: state.recentWatched,
+                isWatching: false,
+                viewMode: viewMode,
+                layout: layout,
+              ),
             ],
           ),
-          if (state.recentMessage != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              state.recentMessage!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          _buildRecentRow(
-            context,
-            label: '在看',
-            items: state.recentWatching,
-            showProgress: true,
-            viewMode: viewMode,
-          ),
-          const SizedBox(height: 16),
-          _buildRecentRow(
-            context,
-            label: '已看',
-            items: state.recentWatched,
-            showProgress: false,
-            viewMode: viewMode,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -620,8 +646,9 @@ class RecommendationView extends StatelessWidget {
     BuildContext context, {
     required String label,
     required List<NotionWatchEntry> items,
-    required bool showProgress,
+    required bool isWatching,
     required String viewMode,
+    required _RecentModuleLayout layout,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     if (items.isEmpty) {
@@ -649,19 +676,20 @@ class RecommendationView extends StatelessWidget {
             children: [
               for (final entry in items)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: _buildRecentCard(
                     context,
                     entry: entry,
-                    showProgress: showProgress,
+                    isWatching: isWatching,
                     isList: true,
+                    layout: layout,
                   ),
                 ),
             ],
           )
         else
           SizedBox(
-            height: 180,
+            height: layout.galleryHeight,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: items.length,
@@ -671,8 +699,9 @@ class RecommendationView extends StatelessWidget {
                 return _buildRecentCard(
                   context,
                   entry: entry,
-                  showProgress: showProgress,
+                  isWatching: isWatching,
                   isList: false,
+                  layout: layout,
                 );
               },
             ),
@@ -684,135 +713,241 @@ class RecommendationView extends StatelessWidget {
   Widget _buildRecentCard(
     BuildContext context, {
     required NotionWatchEntry entry,
-    required bool showProgress,
+    required bool isWatching,
     required bool isList,
+    required _RecentModuleLayout layout,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final moduleTheme = theme.extension<ContentModuleThemeExtension>() ??
+        ContentModuleThemeExtension.fromScheme(colorScheme);
     final watched = entry.watchedEpisodes ?? 0;
     final subjectId = int.tryParse(entry.bangumiId ?? '');
     final detail =
         subjectId != null ? state.bangumiDetailCache[subjectId] : null;
-    final latest =
-        subjectId != null ? state.recentLatestEpisodeCache[subjectId] : null;
-    final total = detail?.epsCount ?? entry.totalEpisodes ?? 0;
-    final updated = latest ?? 0;
-    final progressText = total > 0 ? '已追 $watched / $total' : '已追 $watched';
-    final serialStatus = showProgress
-        ? (total > 0 && updated >= total
-            ? '已完结'
-            : (updated > 0 ? '连载中' : '未放送'))
-        : '已看完';
+    final summary = subjectId != null
+        ? (state.recentReleaseSummaryCache[subjectId] ??
+            EpisodeReleaseSummary.empty)
+        : EpisodeReleaseSummary.empty;
+    final updated = summary.updatedEpisodes;
+    final total = _resolveRecentTotalEpisodes(
+      detail?.epsCount ?? entry.totalEpisodes ?? 0,
+      watched,
+      updated,
+    );
+    final statusText = _resolveRecentStatus(
+      isWatching: isWatching,
+      watched: watched,
+      total: total,
+      summary: summary,
+    );
+    final latestText = _formatRecentLatest(summary);
+    final lastWatchedText = _formatRecentMoment(entry.lastWatchedAt);
+    final progressLabel = total > 0
+        ? '已追 $watched / 已更 $updated / 共 $total'
+        : '已追 $watched / 已更 $updated';
+    final metaChips = <Widget>[
+      if (state.showRatings && entry.yougnScore != null)
+        _RecentChip(
+          label: '悠gn ${entry.yougnScore!.toStringAsFixed(1)}',
+          backgroundColor: moduleTheme.progressRemainingColor,
+          textColor: moduleTheme.primaryTextColor,
+        ),
+      if (isWatching)
+        _RecentChip(
+          label: statusText,
+          backgroundColor: moduleTheme.progressUpdatedColor,
+          textColor: moduleTheme.primaryTextColor,
+        ),
+      if (entry.followDate != null)
+        _RecentChip(
+          label: '追番 ${_formatRecentDate(entry.followDate)}',
+          backgroundColor: colorScheme.surfaceContainerHighest,
+          textColor: moduleTheme.secondaryTextColor,
+        ),
+    ];
 
-    final Widget infoBlock = showProgress
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                progressText,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-              ),
-              const SizedBox(height: 6),
-              if (updated > 0 || total > 0)
-                ProgressSegmentsBar(
-                  watched: watched,
-                  updated: updated,
-                  total: total > 0 ? total : (updated > 0 ? updated : watched),
-                )
-              else
-                LinearProgressIndicator(
-                  value: total > 0 ? watched / total : null,
-                  minHeight: 5,
-                  color: colorScheme.primary,
-                  backgroundColor: colorScheme.surfaceContainerHighest,
-                ),
-              const SizedBox(height: 6),
-              Text(
-                serialStatus,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ],
+    final action = isWatching
+        ? SizedBox(
+            width: layout.actionSize,
+            height: layout.actionSize,
+            child: IconButton.filledTonal(
+              tooltip: '+1',
+              onPressed: () => callbacks.onIncrementRecentWatch(entry),
+              icon: const Icon(Icons.add_rounded),
+            ),
           )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  serialStatus,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                progressText,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
+        : _RecentChip(
+            label: '已看完',
+            backgroundColor: moduleTheme.progressUpdatedColor,
+            textColor: moduleTheme.primaryTextColor,
           );
 
-    final card = Card(
-      color: colorScheme.surfaceContainerHighest,
+    Widget progressBlock() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '最近更新 $latestText',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: moduleTheme.primaryTextColor,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '最近观看 $lastWatchedText',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: moduleTheme.primaryTextColor,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ProgressSegmentsBar(
+            watched: watched,
+            updated: updated,
+            total: total,
+            watchedColor: moduleTheme.progressWatchedColor,
+            updatedColor: moduleTheme.progressUpdatedColor,
+            remainingColor: moduleTheme.progressRemainingColor,
+            height: isList ? 10 : 8,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            progressLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: moduleTheme.secondaryTextColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (!isWatching && entry.lastWatchedAt != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '最后观看 ${_formatRecentMoment(entry.lastWatchedAt)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: moduleTheme.secondaryTextColor,
+              ),
+            ),
+          ],
+        ],
+      );
+    }
+
+    Widget titleBlock() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            entry.title,
+            maxLines: isList && !layout.isNarrow ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: moduleTheme.primaryTextColor,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: metaChips,
+          ),
+        ],
+      );
+    }
+
+    final surface = Material(
+      color: moduleTheme.containerColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colorScheme.outlineVariant),
+        side: BorderSide(color: moduleTheme.borderColor),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => callbacks.onOpenRecentEntry(entry),
         child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildRecentCover(context, entry),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      entry.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+          padding: layout.padding,
+          child: isList
+              ? layout.isNarrow
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildRecentCover(
+                              context,
+                              entry,
+                              width: layout.coverWidth,
+                              height: layout.coverHeight,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(child: titleBlock()),
+                            const SizedBox(width: 12),
+                            action,
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        progressBlock(),
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildRecentCover(
+                          context,
+                          entry,
+                          width: layout.coverWidth,
+                          height: layout.coverHeight,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(flex: 4, child: titleBlock()),
+                        const SizedBox(width: 16),
+                        Expanded(flex: 5, child: progressBlock()),
+                        const SizedBox(width: 16),
+                        SizedBox(
+                          width: 72,
+                          child: Align(
+                            alignment: Alignment.topRight,
+                            child: action,
                           ),
+                        ),
+                      ],
+                    )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildRecentCover(
+                          context,
+                          entry,
+                          width: layout.coverWidth,
+                          height: layout.coverHeight,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: titleBlock()),
+                        const SizedBox(width: 8),
+                        action,
+                      ],
                     ),
-                    infoBlock,
+                    const SizedBox(height: 12),
+                    progressBlock(),
                   ],
                 ),
-              ),
-              if (showProgress)
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  tooltip: '+1',
-                  onPressed: () => callbacks.onIncrementRecentWatch(entry),
-                ),
-            ],
-          ),
         ),
       ),
     );
 
-    if (isList) return card;
-    return SizedBox(width: showProgress ? 260 : 240, child: card);
+    if (isList) return surface;
+    return SizedBox(width: layout.galleryWidth, child: surface);
   }
 
   String _resolveRecentCoverUrl(NotionWatchEntry entry) {
@@ -835,13 +970,18 @@ class RecommendationView extends StatelessWidget {
     return '';
   }
 
-  Widget _buildRecentCover(BuildContext context, NotionWatchEntry entry) {
+  Widget _buildRecentCover(
+    BuildContext context,
+    NotionWatchEntry entry, {
+    double width = 60,
+    double height = 80,
+  }) {
     final url = _resolveRecentCoverUrl(entry);
     final colorScheme = Theme.of(context).colorScheme;
     if (url.isEmpty) {
       return Container(
-        width: 62,
-        height: 86,
+        width: width,
+        height: height,
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(10),
@@ -853,16 +993,169 @@ class RecommendationView extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
       child: Image.network(
         url,
-        width: 62,
-        height: 86,
+        width: width,
+        height: height,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => Container(
-          width: 62,
-          height: 86,
+          width: width,
+          height: height,
           color: colorScheme.surfaceContainerLow,
           child: const Icon(Icons.broken_image_outlined, size: 28),
         ),
       ),
     );
   }
+}
+
+class _RecentModuleLayout {
+  const _RecentModuleLayout({
+    required this.isNarrow,
+    required this.coverWidth,
+    required this.coverHeight,
+    required this.actionSize,
+    required this.galleryWidth,
+    required this.galleryHeight,
+    required this.padding,
+  });
+
+  final bool isNarrow;
+  final double coverWidth;
+  final double coverHeight;
+  final double actionSize;
+  final double galleryWidth;
+  final double galleryHeight;
+  final EdgeInsets padding;
+
+  factory _RecentModuleLayout.fromWidth(double width) {
+    if (width >= 840) {
+      return const _RecentModuleLayout(
+        isNarrow: false,
+        coverWidth: 60,
+        coverHeight: 80,
+        actionSize: 40,
+        galleryWidth: 320,
+        galleryHeight: 236,
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      );
+    }
+    if (width >= 600) {
+      return const _RecentModuleLayout(
+        isNarrow: false,
+        coverWidth: 58,
+        coverHeight: 78,
+        actionSize: 40,
+        galleryWidth: 296,
+        galleryHeight: 228,
+        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      );
+    }
+    return const _RecentModuleLayout(
+      isNarrow: true,
+      coverWidth: 56,
+      coverHeight: 76,
+      actionSize: 40,
+      galleryWidth: 280,
+      galleryHeight: 220,
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    );
+  }
+}
+
+class _RecentChip extends StatelessWidget {
+  const _RecentChip({
+    required this.label,
+    required this.backgroundColor,
+    required this.textColor,
+  });
+
+  final String label;
+  final Color backgroundColor;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: textColor,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+int _resolveRecentTotalEpisodes(int total, int watched, int updated) {
+  if (total > 0) return total;
+  return max(1, max(watched, updated));
+}
+
+String _resolveRecentStatus({
+  required bool isWatching,
+  required int watched,
+  required int total,
+  required EpisodeReleaseSummary summary,
+}) {
+  if (!isWatching) return '已看完';
+  if (total > 0 && watched >= total) return '已看完';
+  if (total > 0 && summary.updatedEpisodes >= total) return '已完结';
+  if (summary.updatedEpisodes > 0) return '连载中';
+  if (summary.nextEpisode != null) return '未放送';
+  return '待更新';
+}
+
+String _formatRecentLatest(EpisodeReleaseSummary summary) {
+  final latest = summary.latestAiredEpisode;
+  if (latest == null || latest <= 0) {
+    if (summary.nextEpisode != null) {
+      final nextMoment = _formatRecentReleaseMoment(summary.nextAiredAt);
+      return nextMoment.isEmpty
+          ? 'EP${summary.nextEpisode}'
+          : 'EP${summary.nextEpisode} · $nextMoment';
+    }
+    return '暂无';
+  }
+  final moment = _formatRecentReleaseMoment(summary.latestAiredAt);
+  return moment.isEmpty ? 'EP$latest' : 'EP$latest · $moment';
+}
+
+String _formatRecentMoment(DateTime? value) {
+  if (value == null) return '-';
+  final date =
+      '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  if (_hasRecentTime(value)) {
+    return '$date ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  }
+  return date;
+}
+
+String _formatRecentDate(DateTime? value) {
+  if (value == null) return '-';
+  return '${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+}
+
+String _formatRecentReleaseMoment(DateTime? value) {
+  if (value == null) return '';
+  final date =
+      '${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  if (_hasRecentTime(value)) {
+    return '$date ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  }
+  return date;
+}
+
+bool _hasRecentTime(DateTime value) {
+  return value.hour != 0 ||
+      value.minute != 0 ||
+      value.second != 0 ||
+      value.millisecond != 0 ||
+      value.microsecond != 0;
 }

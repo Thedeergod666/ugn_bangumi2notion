@@ -24,7 +24,7 @@ class AppSettings extends ChangeNotifier {
   String _bangumiRedirectPort = '';
   String _calendarViewMode = 'list';
   String _searchViewMode = 'list';
-  String _recentViewMode = 'gallery';
+  String _recentViewMode = 'auto';
   String _searchSort = 'match';
 
   bool get loaded => _loaded;
@@ -193,8 +193,7 @@ class AppSettings extends ChangeNotifier {
     );
     _useDynamicColor =
         parseBool(SettingsKeys.useDynamicColor, _useDynamicColor);
-    _colorSchemeId =
-        data[SettingsKeys.colorSchemeId] ?? _colorSchemeId;
+    _colorSchemeId = data[SettingsKeys.colorSchemeId] ?? _colorSchemeId;
     _useSystemFont = parseBool(SettingsKeys.useSystemFont, _useSystemFont);
     _showRatings = parseBool(SettingsKeys.showRatings, _showRatings);
     _oledOptimization =
@@ -203,10 +202,8 @@ class AppSettings extends ChangeNotifier {
         parseBool(SettingsKeys.useSystemTitleBar, _useSystemTitleBar);
     _calendarViewMode =
         data[SettingsKeys.calendarViewMode] ?? _calendarViewMode;
-    _searchViewMode =
-        data[SettingsKeys.searchViewMode] ?? _searchViewMode;
-    _recentViewMode =
-        data[SettingsKeys.recentViewMode] ?? _recentViewMode;
+    _searchViewMode = data[SettingsKeys.searchViewMode] ?? _searchViewMode;
+    _recentViewMode = data[SettingsKeys.recentViewMode] ?? _recentViewMode;
     _searchSort = data[SettingsKeys.searchSort] ?? _searchSort;
     if (notify) {
       notifyListeners();

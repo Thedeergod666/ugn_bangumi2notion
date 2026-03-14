@@ -1,14 +1,29 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_utools/core/database/settings_storage.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  const secureStorageChannel =
+      MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
 
   group('SettingsStorage scoped cache payloads', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(secureStorageChannel, (call) async {
+        if (call.method == 'read') {
+          return null;
+        }
+        return null;
+      });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(secureStorageChannel, null);
     });
 
     test('calendar cache supports save/get/clear', () async {
@@ -84,6 +99,24 @@ void main() {
       await storage.clearErrorLogCache();
       final cleared = await storage.getErrorLogCache();
       expect(cleared, isNull);
+    });
+
+    test('loadAll defaults recent view mode to auto', () async {
+      final storage = SettingsStorage();
+
+      final data = await storage.loadAll();
+
+      expect(data[SettingsKeys.recentViewMode], 'auto');
+    });
+
+    test('loadAll preserves explicit recent view mode selection', () async {
+      final storage = SettingsStorage();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(SettingsKeys.recentViewMode, 'gallery');
+
+      final data = await storage.loadAll(forceRefresh: true);
+
+      expect(data[SettingsKeys.recentViewMode], 'gallery');
     });
   });
 }

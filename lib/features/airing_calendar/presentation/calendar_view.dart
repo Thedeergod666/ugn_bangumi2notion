@@ -3,10 +3,12 @@ import 'dart:math';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/content_module_theme_extension.dart';
 import '../../../core/widgets/episode_badge.dart';
 import '../../../core/widgets/progress_segments_bar.dart';
 import '../../../core/widgets/view_mode_toggle.dart';
 import '../../../models/bangumi_models.dart';
+import '../../../models/progress_segments.dart';
 
 class CalendarViewState {
   const CalendarViewState({
@@ -23,7 +25,7 @@ class CalendarViewState {
     required this.yougnScores,
     required this.lastWatchedAt,
     required this.detailCache,
-    required this.latestEpisodeCache,
+    required this.releaseSummaryCache,
     required this.airEndDateCache,
   });
 
@@ -40,7 +42,7 @@ class CalendarViewState {
   final Map<int, double?> yougnScores;
   final Map<int, DateTime?> lastWatchedAt;
   final Map<int, BangumiSubjectDetail> detailCache;
-  final Map<int, int> latestEpisodeCache;
+  final Map<int, EpisodeReleaseSummary> releaseSummaryCache;
   final Map<int, String?> airEndDateCache;
 }
 
@@ -146,7 +148,7 @@ class CalendarView extends StatelessWidget {
 
   DateTime _nextDateForWeekday(int weekday, DateTime now) {
     final base = DateTime(now.year, now.month, now.day);
-    int diff = weekday - now.weekday;
+    var diff = weekday - now.weekday;
     if (diff < 0) diff += 7;
     return base.add(Duration(days: diff));
   }
@@ -184,7 +186,10 @@ class CalendarView extends StatelessWidget {
     final now = DateTime.now();
     final dateLabel = '${now.year}-${now.month}-${now.day}';
     final hasBound = state.boundItems.isNotEmpty;
-    final headerText = hasBound ? '$dateLabel · 已追' : dateLabel;
+    final headerText = hasBound ? '$dateLabel · 追番' : dateLabel;
+    final layout =
+        _CalendarModuleLayout.fromWidth(MediaQuery.sizeOf(context).width);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -207,23 +212,28 @@ class CalendarView extends StatelessWidget {
         if (hasBound) ...[
           const SizedBox(height: 8),
           SizedBox(
-            height: 180,
+            height: layout.boundCardHeight,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: state.boundItems.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final item = state.boundItems[index];
-                return _BoundBangumiCard(
-                  item: item,
-                  watchedEpisodes: state.watchedEpisodes[item.id] ?? 0,
-                  yougnScore: state.yougnScores[item.id],
-                  detail: state.detailCache[item.id],
-                  latestEpisodes: state.latestEpisodeCache[item.id],
-                  lastWatchedAt: state.lastWatchedAt[item.id],
-                  showRatings: state.showRatings,
-                  onTap: () => callbacks.onTapSubject(item.id),
-                  onLongPress: () => callbacks.onLongPressBoundSubject(item.id),
+                return SizedBox(
+                  width: layout.boundCardWidth,
+                  child: _BoundBangumiCard(
+                    item: item,
+                    watchedEpisodes: state.watchedEpisodes[item.id] ?? 0,
+                    yougnScore: state.yougnScores[item.id],
+                    detail: state.detailCache[item.id],
+                    releaseSummary: state.releaseSummaryCache[item.id],
+                    lastWatchedAt: state.lastWatchedAt[item.id],
+                    showRatings: state.showRatings,
+                    layout: layout,
+                    onTap: () => callbacks.onTapSubject(item.id),
+                    onLongPress: () =>
+                        callbacks.onLongPressBoundSubject(item.id),
+                  ),
                 );
               },
             ),
@@ -267,10 +277,13 @@ class CalendarView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
+        final layout = _CalendarModuleLayout.fromWidth(width);
         final isGallery = state.calendarViewMode == 'gallery';
         final crossAxisCount =
-            isGallery ? (width >= 1200 ? 3 : (width >= 900 ? 2 : 1)) : 1;
-        final childAspectRatio = isGallery && crossAxisCount > 1 ? 2.2 : 3.2;
+            isGallery ? (layout.isWide ? (width >= 1200 ? 3 : 2) : 1) : 1;
+        final childAspectRatio = layout.isNarrow
+            ? 1.38
+            : (isGallery && crossAxisCount > 1 ? 1.9 : 3.0);
 
         if (crossAxisCount == 1) {
           return Column(
@@ -284,10 +297,11 @@ class CalendarView extends StatelessWidget {
                     isBound: state.boundIds.contains(item.id),
                     isGallery: isGallery,
                     watchedEpisodes: state.watchedEpisodes[item.id] ?? 0,
-                    latestEpisodes: state.latestEpisodeCache[item.id],
+                    releaseSummary: state.releaseSummaryCache[item.id],
                     airEndDate: state.airEndDateCache[item.id],
                     lastWatchedAt: state.lastWatchedAt[item.id],
                     showRatings: state.showRatings,
+                    layout: layout,
                     onTap: () => callbacks.onTapSubject(item.id),
                   ),
                 ),
@@ -313,10 +327,11 @@ class CalendarView extends StatelessWidget {
               isBound: state.boundIds.contains(item.id),
               isGallery: isGallery,
               watchedEpisodes: state.watchedEpisodes[item.id] ?? 0,
-              latestEpisodes: state.latestEpisodeCache[item.id],
+              releaseSummary: state.releaseSummaryCache[item.id],
               airEndDate: state.airEndDateCache[item.id],
               lastWatchedAt: state.lastWatchedAt[item.id],
               showRatings: state.showRatings,
+              layout: layout,
               onTap: () => callbacks.onTapSubject(item.id),
             );
           },
@@ -407,9 +422,10 @@ class _BoundBangumiCard extends StatelessWidget {
     required this.watchedEpisodes,
     required this.yougnScore,
     required this.detail,
-    required this.latestEpisodes,
+    required this.releaseSummary,
     required this.lastWatchedAt,
     required this.showRatings,
+    required this.layout,
     required this.onTap,
     required this.onLongPress,
   });
@@ -418,121 +434,152 @@ class _BoundBangumiCard extends StatelessWidget {
   final int watchedEpisodes;
   final double? yougnScore;
   final BangumiSubjectDetail? detail;
-  final int? latestEpisodes;
+  final EpisodeReleaseSummary? releaseSummary;
   final DateTime? lastWatchedAt;
   final bool showRatings;
+  final _CalendarModuleLayout layout;
   final VoidCallback onTap;
-  final VoidCallback? onLongPress;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final moduleTheme = theme.extension<ContentModuleThemeExtension>() ??
+        ContentModuleThemeExtension.fromScheme(theme.colorScheme);
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
-    final latestSegment = latestEpisodes == null
-        ? '已更 -'
-        : (latestEpisodes! > 0 ? '已更 ${latestEpisodes!}' : '未放送');
-    final totalValue = detail?.epsCount ?? item.epsCount;
-    final totalText = totalValue > 0 ? totalValue.toString() : '-';
-    final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
-    final updatedValue = latestEpisodes ?? 0;
-    final missingCount =
-        updatedValue > watchedEpisodes ? updatedValue - watchedEpisodes : 0;
-    final lastWatchedText = lastWatchedAt == null
-        ? '-'
-        : '${lastWatchedAt!.year}-${lastWatchedAt!.month.toString().padLeft(2, '0')}-${lastWatchedAt!.day.toString().padLeft(2, '0')}';
+    final summary = releaseSummary ?? EpisodeReleaseSummary.empty;
+    final updated = summary.updatedEpisodes;
+    final total = _resolveTotalEpisodes(
+      detail?.epsCount ?? item.epsCount,
+      watchedEpisodes,
+      updated,
+    );
+    final missingCount = max(0, updated - watchedEpisodes);
+    final progressLabel =
+        '已追 $watchedEpisodes / 已更 $updated / 共 ${total > 0 ? total : '-'}';
 
-    return IntrinsicWidth(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 180, maxWidth: 280),
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-              width: 0.8,
-            ),
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: onTap,
-            onLongPress: onLongPress,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Stack(
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
+    return Material(
+      color: moduleTheme.containerColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: moduleTheme.borderColor),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _CoverImage(
+                      url: item.imageUrl,
+                      width: layout.boundCoverWidth,
+                      height: layout.boundCoverHeight,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _CoverImage(url: item.imageUrl),
-                          const SizedBox(width: 8),
-                          Column(
+                          Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (showRatings && yougnScore != null)
-                                Text('评分 ${yougnScore!.toStringAsFixed(1)}'),
-                              if (showRatings && yougnScore != null)
-                                const SizedBox(height: 4),
-                              Text('最近观看 $lastWatchedText'),
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    color: moduleTheme.primaryTextColor,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.25,
+                                  ),
+                                ),
+                              ),
+                              if (missingCount > 0) ...[
+                                const SizedBox(width: 8),
+                                _InfoChip(
+                                  label: '未看 $missingCount 集',
+                                  backgroundColor: moduleTheme.badgeColor,
+                                  textColor: moduleTheme.badgeTextColor,
+                                ),
+                              ],
                             ],
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ProgressSegmentsBar(
-                              watched: watchedEpisodes,
-                              updated: updatedValue,
-                              total: totalValue > 0
-                                  ? totalValue
-                                  : max(watchedEpisodes, updatedValue),
-                              showWatched: true,
+                          if (showRatings && yougnScore != null) ...[
+                            const SizedBox(height: 6),
+                            _InfoChip(
+                              label: '悠gn ${yougnScore!.toStringAsFixed(1)}',
+                              backgroundColor:
+                                  moduleTheme.progressRemainingColor,
+                              textColor: moduleTheme.primaryTextColor,
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          _LabeledValueRow(
+                            label: '最近更新',
+                            value: _formatLatestEpisodeUpdate(summary),
+                            highlightLabel: true,
+                          ),
+                          const SizedBox(height: 4),
+                          _LabeledValueRow(
+                            label: '下次更新',
+                            value: _formatNextEpisodeUpdate(summary),
+                          ),
+                          const SizedBox(height: 4),
+                          _LabeledValueRow(
+                            label: '看到',
+                            value: watchedEpisodes > 0
+                                ? 'EP$watchedEpisodes'
+                                : '-',
+                          ),
+                          const SizedBox(height: 4),
+                          _LabeledValueRow(
+                            label: '最近观看',
+                            value: _formatWatchMoment(lastWatchedAt),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '长按卡片 +1 并更新追番时间',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: moduleTheme.secondaryTextColor,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              '已追 $watchedText / $latestSegment / 共 $totalText',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                            ),
-                          ),
                         ],
                       ),
-                    ],
-                  ),
-                  if (missingCount > 0)
-                    Positioned(
-                      top: 0,
-                      right: 0,
-                      child: EpisodeBadge(count: missingCount),
                     ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(height: 12),
+              ProgressSegmentsBar(
+                watched: watchedEpisodes,
+                updated: updated,
+                total: total,
+                watchedColor: moduleTheme.progressWatchedColor,
+                updatedColor: moduleTheme.progressUpdatedColor,
+                remainingColor: moduleTheme.progressRemainingColor,
+                height: 10,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                progressLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: moduleTheme.secondaryTextColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -547,10 +594,11 @@ class _CalendarItemCard extends StatelessWidget {
     required this.isBound,
     required this.isGallery,
     required this.watchedEpisodes,
-    required this.latestEpisodes,
+    required this.releaseSummary,
     required this.airEndDate,
     required this.lastWatchedAt,
     required this.showRatings,
+    required this.layout,
     required this.onTap,
   });
 
@@ -559,31 +607,31 @@ class _CalendarItemCard extends StatelessWidget {
   final bool isBound;
   final bool isGallery;
   final int watchedEpisodes;
-  final int? latestEpisodes;
+  final EpisodeReleaseSummary? releaseSummary;
   final String? airEndDate;
   final DateTime? lastWatchedAt;
   final bool showRatings;
+  final _CalendarModuleLayout layout;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final moduleTheme = theme.extension<ContentModuleThemeExtension>() ??
+        ContentModuleThemeExtension.fromScheme(theme.colorScheme);
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
     final airDate = item.airDate.isNotEmpty ? item.airDate : '待定';
-    final endDate = (airEndDate != null && airEndDate!.trim().isNotEmpty)
-        ? airEndDate!.trim()
-        : '';
+    final endDate = (airEndDate ?? '').trim();
     final airRangeText =
         endDate.isEmpty || endDate == airDate ? airDate : '$airDate ~ $endDate';
-    final latestSegment = latestEpisodes == null
-        ? '已更 -'
-        : (latestEpisodes! > 0 ? '已更 ${latestEpisodes!}' : '未放送');
-    final totalValue = detail?.epsCount ?? item.epsCount;
-    final totalText = totalValue > 0 ? totalValue.toString() : '-';
-    final watchedText = watchedEpisodes > 0 ? watchedEpisodes.toString() : '-';
-    final updatedValue = latestEpisodes ?? 0;
-    final missingCount =
-        updatedValue > watchedEpisodes ? updatedValue - watchedEpisodes : 0;
-    final colorScheme = Theme.of(context).colorScheme;
+    final summary = releaseSummary ?? EpisodeReleaseSummary.empty;
+    final updated = summary.updatedEpisodes;
+    final total = _resolveTotalEpisodes(
+      detail?.epsCount ?? item.epsCount,
+      watchedEpisodes,
+      updated,
+    );
+    final missingCount = max(0, updated - watchedEpisodes);
     final score = detail?.score ?? 0;
     final rank = detail?.rank;
     final hasRating = showRatings && (score > 0 || (rank != null && rank > 0));
@@ -592,188 +640,174 @@ class _CalendarItemCard extends StatelessWidget {
     final tagPool = sortedTags
         .map((tag) => tag.name)
         .where((name) => name.isNotEmpty)
-        .take(20)
+        .take(isGallery ? 3 : 5)
         .toList();
-    final compactLayout = isGallery;
+    final compact = isGallery || layout.isNarrow;
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
+    return Material(
       color: isBound
-          ? colorScheme.primaryContainer.withValues(alpha: 0.35)
-          : colorScheme.surfaceContainerLow,
+          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.22)
+          : moduleTheme.containerColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: isBound ? colorScheme.primary : colorScheme.outlineVariant,
-          width: isBound ? 1.1 : 0.8,
+          color:
+              isBound ? moduleTheme.hoverBorderColor : moduleTheme.borderColor,
+          width: isBound ? 1.1 : 1,
         ),
       ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
+        child: Padding(
+          padding: EdgeInsets.all(compact ? 12 : 14),
+          child: Stack(
+            children: [
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _CoverImage(url: item.imageUrl),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _CoverImage(
+                        url: item.imageUrl,
+                        width: layout.dayCoverWidth,
+                        height: layout.dayCoverHeight,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: Text(
-                                title,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            if (isBound)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: colorScheme.primary,
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  '已绑定',
-                                  style: TextStyle(
-                                    color: colorScheme.onPrimary,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    maxLines: compact ? 1 : 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: moduleTheme.primaryTextColor,
+                                    ),
                                   ),
                                 ),
+                                if (isBound) ...[
+                                  const SizedBox(width: 8),
+                                  _InfoChip(
+                                    label: '已绑定',
+                                    backgroundColor:
+                                        moduleTheme.progressUpdatedColor,
+                                    textColor: moduleTheme.primaryTextColor,
+                                  ),
+                                ],
+                              ],
+                            ),
+                            if (hasRating) ...[
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  if (score > 0)
+                                    _InfoChip(
+                                      label:
+                                          'Bangumi ${score.toStringAsFixed(1)}',
+                                      backgroundColor:
+                                          moduleTheme.progressRemainingColor,
+                                      textColor: moduleTheme.primaryTextColor,
+                                    ),
+                                  if (rank != null && rank > 0)
+                                    _InfoChip(
+                                      label: 'Rank #$rank',
+                                      backgroundColor:
+                                          moduleTheme.progressRemainingColor,
+                                      textColor: moduleTheme.secondaryTextColor,
+                                    ),
+                                ],
                               ),
-                          ],
-                        ),
-                        SizedBox(height: compactLayout ? 4 : 6),
-                        if (hasRating) ...[
-                          Row(
-                            children: [
-                              if (score > 0)
-                                Text(
-                                  'Bangumi ${score.toStringAsFixed(1)}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                        color: colorScheme.tertiary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              if (score > 0 && rank != null && rank > 0)
-                                const SizedBox(width: 8),
-                              if (rank != null && rank > 0)
-                                Text(
-                                  'Rank #$rank',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                ),
                             ],
-                          ),
-                          SizedBox(height: compactLayout ? 2 : 4),
-                        ],
-                        Text('放送：$airRangeText'),
-                        SizedBox(height: compactLayout ? 4 : 6),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ProgressSegmentsBar(
-                                watched: watchedEpisodes,
-                                updated: updatedValue,
-                                total: totalValue > 0
-                                    ? totalValue
-                                    : max(watchedEpisodes, updatedValue),
-                                showWatched: isBound,
-                              ),
+                            const SizedBox(height: 8),
+                            _LabeledValueRow(label: '放送', value: airRangeText),
+                            const SizedBox(height: 4),
+                            _LabeledValueRow(
+                              label: '最近更新',
+                              value: _formatLatestEpisodeUpdate(summary),
+                              highlightLabel: true,
                             ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                isBound
-                                    ? '已追 $watchedText / $latestSegment / 共 $totalText'
-                                    : '$latestSegment / 共 $totalText',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
+                            const SizedBox(height: 4),
+                            _LabeledValueRow(
+                              label: isBound ? '最近观看' : '下次更新',
+                              value: isBound
+                                  ? _formatWatchMoment(lastWatchedAt)
+                                  : _formatNextEpisodeUpdate(summary),
                             ),
                           ],
                         ),
-                        if (tagPool.isNotEmpty) ...[
-                          SizedBox(height: compactLayout ? 6 : 8),
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final maxPerLine =
-                                  max(1, (constraints.maxWidth / 88).floor());
-                              const maxLines = 1;
-                              final maxTags = max(1, maxPerLine * maxLines);
-                              final tags = tagPool.take(maxTags).toList();
-                              return Wrap(
-                                spacing: 6,
-                                runSpacing: compactLayout ? 4 : 6,
-                                children: tags.map((tag) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          colorScheme.surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      tag,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelSmall,
-                                    ),
-                                  );
-                                }).toList(),
-                              );
-                            },
-                          ),
-                        ],
-                        if (item.summary.isNotEmpty) ...[
-                          SizedBox(height: compactLayout ? 6 : 8),
-                          Text(
-                            item.summary,
-                            maxLines: compactLayout ? 1 : 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: colorScheme.onSurfaceVariant),
-                          ),
-                        ],
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ProgressSegmentsBar(
+                    watched: watchedEpisodes,
+                    updated: updated,
+                    total: total,
+                    showWatched: isBound,
+                    watchedColor: moduleTheme.progressWatchedColor,
+                    updatedColor: moduleTheme.progressUpdatedColor,
+                    remainingColor: moduleTheme.progressRemainingColor,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isBound
+                        ? '已追 $watchedEpisodes / 已更 $updated / 共 ${total > 0 ? total : '-'}'
+                        : '已更 $updated / 共 ${total > 0 ? total : '-'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: moduleTheme.secondaryTextColor,
                     ),
                   ),
+                  if (tagPool.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: tagPool
+                          .map(
+                            (tag) => _InfoChip(
+                              label: tag,
+                              backgroundColor:
+                                  theme.colorScheme.surfaceContainerHighest,
+                              textColor: moduleTheme.secondaryTextColor,
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ],
+                  if (!compact && item.summary.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      item.summary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: moduleTheme.secondaryTextColor,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ],
               ),
-            ),
-            if (isBound && missingCount > 0)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: EpisodeBadge(count: missingCount),
-              ),
-          ],
+              if (isBound && missingCount > 0)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: EpisodeBadge(count: missingCount),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -781,9 +815,15 @@ class _CalendarItemCard extends StatelessWidget {
 }
 
 class _CoverImage extends StatelessWidget {
-  const _CoverImage({required this.url});
+  const _CoverImage({
+    required this.url,
+    this.width = 72,
+    this.height = 96,
+  });
 
   final String url;
+  final double width;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
@@ -791,13 +831,13 @@ class _CoverImage extends StatelessWidget {
 
     Widget buildFallback(IconData icon) {
       return Container(
-        width: 72,
-        height: 96,
+        width: width,
+        height: height,
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, size: 32),
+        child: Icon(icon, size: min(width, height) * 0.34),
       );
     }
 
@@ -806,15 +846,213 @@ class _CoverImage extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(10),
       child: CachedNetworkImage(
         imageUrl: url,
-        width: 72,
-        height: 96,
+        width: width,
+        height: height,
         fit: BoxFit.cover,
         placeholder: (_, __) => buildFallback(Icons.image),
         errorWidget: (_, __, ___) => buildFallback(Icons.broken_image),
       ),
     );
   }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.label,
+    required this.backgroundColor,
+    required this.textColor,
+  });
+
+  final String label;
+  final Color backgroundColor;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: textColor,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+class _LabeledValueRow extends StatelessWidget {
+  const _LabeledValueRow({
+    required this.label,
+    required this.value,
+    this.highlightLabel = false,
+  });
+
+  final String label;
+  final String value;
+  final bool highlightLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final moduleTheme = theme.extension<ContentModuleThemeExtension>() ??
+        ContentModuleThemeExtension.fromScheme(theme.colorScheme);
+    return Text.rich(
+      TextSpan(
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: moduleTheme.secondaryTextColor,
+          height: 1.3,
+        ),
+        children: [
+          TextSpan(
+            text: '$label ',
+            style: TextStyle(
+              color: highlightLabel
+                  ? moduleTheme.progressWatchedColor
+                  : moduleTheme.secondaryTextColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          TextSpan(
+            text: value,
+            style: TextStyle(
+              color: moduleTheme.primaryTextColor,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+class _CalendarModuleLayout {
+  const _CalendarModuleLayout({
+    required this.isWide,
+    required this.isMedium,
+    required this.isNarrow,
+    required this.boundCardWidth,
+    required this.boundCardHeight,
+    required this.boundCoverWidth,
+    required this.boundCoverHeight,
+    required this.dayCoverWidth,
+    required this.dayCoverHeight,
+  });
+
+  final bool isWide;
+  final bool isMedium;
+  final bool isNarrow;
+  final double boundCardWidth;
+  final double boundCardHeight;
+  final double boundCoverWidth;
+  final double boundCoverHeight;
+  final double dayCoverWidth;
+  final double dayCoverHeight;
+
+  factory _CalendarModuleLayout.fromWidth(double width) {
+    if (width >= 840) {
+      return const _CalendarModuleLayout(
+        isWide: true,
+        isMedium: false,
+        isNarrow: false,
+        boundCardWidth: 352,
+        boundCardHeight: 224,
+        boundCoverWidth: 84,
+        boundCoverHeight: 112,
+        dayCoverWidth: 80,
+        dayCoverHeight: 108,
+      );
+    }
+    if (width >= 600) {
+      return const _CalendarModuleLayout(
+        isWide: false,
+        isMedium: true,
+        isNarrow: false,
+        boundCardWidth: 320,
+        boundCardHeight: 220,
+        boundCoverWidth: 78,
+        boundCoverHeight: 108,
+        dayCoverWidth: 74,
+        dayCoverHeight: 100,
+      );
+    }
+    return const _CalendarModuleLayout(
+      isWide: false,
+      isMedium: false,
+      isNarrow: true,
+      boundCardWidth: 292,
+      boundCardHeight: 228,
+      boundCoverWidth: 72,
+      boundCoverHeight: 98,
+      dayCoverWidth: 68,
+      dayCoverHeight: 92,
+    );
+  }
+}
+
+int _resolveTotalEpisodes(int baseTotal, int watched, int updated) {
+  if (baseTotal > 0) return baseTotal;
+  return max(1, max(watched, updated));
+}
+
+String _formatLatestEpisodeUpdate(EpisodeReleaseSummary summary) {
+  final episode = summary.latestAiredEpisode;
+  if (episode == null || episode <= 0) {
+    return summary.nextEpisode == null ? '未放送' : '待更新';
+  }
+  final moment = _formatReleaseMoment(summary.latestAiredAt);
+  return moment.isEmpty ? 'EP$episode' : 'EP$episode · $moment';
+}
+
+String _formatNextEpisodeUpdate(EpisodeReleaseSummary summary) {
+  final nextEpisode = summary.nextEpisode;
+  if (nextEpisode != null && nextEpisode > 0) {
+    final moment = _formatReleaseMoment(summary.nextAiredAt);
+    return moment.isEmpty ? 'EP$nextEpisode' : 'EP$nextEpisode · $moment';
+  }
+  final latest = summary.latestAiredEpisode;
+  if (latest != null && latest > 0) {
+    return '已更新至 EP$latest';
+  }
+  return '待定';
+}
+
+String _formatWatchMoment(DateTime? value) {
+  if (value == null) return '-';
+  final date =
+      '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  if (_hasTimePrecision(value)) {
+    return '$date ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  }
+  return date;
+}
+
+String _formatReleaseMoment(DateTime? value) {
+  if (value == null) return '';
+  final date =
+      '${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  if (_hasTimePrecision(value)) {
+    return '$date ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  }
+  return date;
+}
+
+bool _hasTimePrecision(DateTime value) {
+  return value.hour != 0 ||
+      value.minute != 0 ||
+      value.second != 0 ||
+      value.millisecond != 0 ||
+      value.microsecond != 0;
 }

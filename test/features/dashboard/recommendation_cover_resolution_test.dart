@@ -93,7 +93,7 @@ void main() {
       recentWatched: const [],
       bangumiDetailCache: bangumiDetailCache,
       notionContentCache: notionContentCache,
-      recentLatestEpisodeCache: const {},
+      recentReleaseSummaryCache: const {},
       notionSearchController: controller,
     );
   }

@@ -14,6 +14,7 @@ import '../../../models/bangumi_models.dart';
 import '../../../models/mapping_config.dart';
 import '../../../models/mapping_schema.dart';
 import '../../../models/notion_models.dart';
+import '../../../models/progress_segments.dart';
 
 class RecommendationNotionContent {
   final String? coverUrl;
@@ -88,7 +89,7 @@ class RecommendationViewModel extends ChangeNotifier {
 
   final Map<int, BangumiSubjectDetail> _bangumiDetailCache = {};
   final Set<int> _bangumiDetailLoading = {};
-  final Map<int, int> _recentLatestEpisodeCache = {};
+  final Map<int, EpisodeReleaseSummary> _recentReleaseSummaryCache = {};
   final Set<int> _recentLatestEpisodeLoading = {};
   final Map<String, RecommendationNotionContent> _notionContentCache = {};
   final Set<String> _notionContentLoading = {};
@@ -121,7 +122,8 @@ class RecommendationViewModel extends ChangeNotifier {
   Map<int, BangumiSubjectDetail> get bangumiDetailCache => _bangumiDetailCache;
   Map<String, RecommendationNotionContent> get notionContentCache =>
       _notionContentCache;
-  int? latestEpisodeFor(int subjectId) => _recentLatestEpisodeCache[subjectId];
+  EpisodeReleaseSummary? releaseSummaryFor(int subjectId) =>
+      _recentReleaseSummaryCache[subjectId];
   List<RecommendationScoreBin> get scoreBins => _scoreBins;
   int get scoreTotal => _scoreTotal;
   bool get isRecentLoading => _recentLoading;
@@ -215,7 +217,7 @@ class RecommendationViewModel extends ChangeNotifier {
       _recentMessage = null;
       _recentWatching = [];
       _recentWatched = [];
-      _recentLatestEpisodeCache.clear();
+      _recentReleaseSummaryCache.clear();
       _recentLatestEpisodeLoading.clear();
       notifyListeners();
     }
@@ -365,7 +367,7 @@ class RecommendationViewModel extends ChangeNotifier {
   }
 
   void scheduleRecentLatestEpisodeLoad(int subjectId) {
-    if (_recentLatestEpisodeCache.containsKey(subjectId) ||
+    if (_recentReleaseSummaryCache.containsKey(subjectId) ||
         _recentLatestEpisodeLoading.contains(subjectId)) {
       return;
     }
@@ -501,15 +503,15 @@ class RecommendationViewModel extends ChangeNotifier {
 
   Future<void> _loadLatestEpisode(int subjectId) async {
     try {
-      final latest = await _bangumiApi.fetchLatestEpisodeNumber(
+      final summary = await _bangumiApi.fetchEpisodeReleaseSummary(
         subjectId: subjectId,
         accessToken: _bangumiToken.isEmpty ? null : _bangumiToken,
         type: 0,
       );
-      _recentLatestEpisodeCache[subjectId] = latest;
+      _recentReleaseSummaryCache[subjectId] = summary;
       notifyListeners();
     } catch (_) {
-      _recentLatestEpisodeCache[subjectId] = 0;
+      _recentReleaseSummaryCache[subjectId] = EpisodeReleaseSummary.empty;
     } finally {
       _recentLatestEpisodeLoading.remove(subjectId);
     }

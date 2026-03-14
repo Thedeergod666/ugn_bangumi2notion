@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_utools/features/airing_calendar/presentation/calendar_view.dart';
 import 'package:flutter_utools/models/bangumi_models.dart';
+import 'package:flutter_utools/models/progress_segments.dart';
 
 BangumiCalendarItem _buildItem(int id) {
   return BangumiCalendarItem(
@@ -51,6 +52,10 @@ BangumiSubjectDetail _buildDetail(int id) {
 CalendarViewState _buildState({
   String mode = 'gallery',
   bool withItems = true,
+  List<BangumiCalendarItem>? boundItems,
+  Map<int, int>? watchedEpisodes,
+  Map<int, DateTime?>? lastWatchedAt,
+  Map<int, EpisodeReleaseSummary>? releaseSummaryCache,
 }) {
   final items = [_buildItem(1), _buildItem(2), _buildItem(3)];
   final detailCache = {
@@ -69,7 +74,7 @@ CalendarViewState _buildState({
       ja: '月',
     ),
     selectedItems: withItems ? items : const [],
-    boundItems: const [],
+    boundItems: boundItems ?? const [],
     boundIds: const {1, 2},
     weekdayBoundCounts: const {
       1: 12,
@@ -80,19 +85,36 @@ CalendarViewState _buildState({
       6: 5,
       7: 4,
     },
-    watchedEpisodes: const {
-      1: 3,
-      2: 5,
-      3: 2,
-    },
+    watchedEpisodes: watchedEpisodes ??
+        const {
+          1: 3,
+          2: 5,
+          3: 2,
+        },
     yougnScores: const {},
-    lastWatchedAt: const {},
+    lastWatchedAt: lastWatchedAt ?? const {},
     detailCache: detailCache,
-    latestEpisodeCache: const {
-      1: 8,
-      2: 10,
-      3: 6,
-    },
+    releaseSummaryCache: releaseSummaryCache ??
+        const {
+          1: EpisodeReleaseSummary(
+            latestAiredEpisode: 8,
+            latestAiredAt: null,
+            nextEpisode: 9,
+            nextAiredAt: null,
+          ),
+          2: EpisodeReleaseSummary(
+            latestAiredEpisode: 10,
+            latestAiredAt: null,
+            nextEpisode: 11,
+            nextAiredAt: null,
+          ),
+          3: EpisodeReleaseSummary(
+            latestAiredEpisode: 6,
+            latestAiredAt: null,
+            nextEpisode: 7,
+            nextAiredAt: null,
+          ),
+        },
     airEndDateCache: const {
       1: '2026-09-01',
       2: '2026-09-01',
@@ -147,6 +169,48 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bound card shows update-driven content without overflow',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() async => tester.binding.setSurfaceSize(null));
+
+    final state = _buildState(
+      mode: 'list',
+      boundItems: [_buildItem(1)],
+      watchedEpisodes: const {1: 6, 2: 5, 3: 2},
+      lastWatchedAt: {
+        1: DateTime.parse('2026-03-12T21:15:00'),
+      },
+      releaseSummaryCache: const {
+        1: EpisodeReleaseSummary(
+          latestAiredEpisode: 8,
+          latestAiredAt: null,
+          nextEpisode: 9,
+          nextAiredAt: null,
+        ),
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CalendarView(
+            state: state,
+            callbacks: _callbacks(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('最近更新'), findsWidgets);
+    expect(find.textContaining('下次更新'), findsWidgets);
+    expect(find.textContaining('看到'), findsWidgets);
+    expect(find.textContaining('最近观看'), findsWidgets);
+    expect(find.textContaining('未看'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

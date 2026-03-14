@@ -564,7 +564,7 @@ class SettingsStorage {
     final searchViewMode =
         prefs.getString(SettingsKeys.searchViewMode) ?? 'list';
     final recentViewMode =
-        prefs.getString(SettingsKeys.recentViewMode) ?? 'gallery';
+        prefs.getString(SettingsKeys.recentViewMode) ?? 'auto';
     final searchSort = prefs.getString(SettingsKeys.searchSort) ?? 'match';
     final notionMovieDatabaseId =
         prefs.getString(SettingsKeys.notionMovieDatabaseId) ?? '';
