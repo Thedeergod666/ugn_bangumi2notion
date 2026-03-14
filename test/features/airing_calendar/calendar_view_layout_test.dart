@@ -200,12 +200,12 @@ void main() {
       lastWatchedAt: {
         1: DateTime.parse('2026-03-12T21:15:00'),
       },
-      releaseSummaryCache: const {
+      releaseSummaryCache: {
         1: EpisodeReleaseSummary(
           latestAiredEpisode: 8,
           latestAiredAt: null,
           nextEpisode: 9,
-          nextAiredAt: null,
+          nextAiredAt: DateTime(2026, 3, 19, 23, 30),
         ),
       },
     );
@@ -226,7 +226,13 @@ void main() {
     expect(find.textContaining('下次更新'), findsWidgets);
     expect(find.textContaining('看到'), findsWidgets);
     expect(find.textContaining('最近观看'), findsWidgets);
-    expect(find.textContaining('未看'), findsWidgets);
+    expect(find.textContaining('周四更新'), findsWidgets);
+    final cadenceDy = tester.getTopLeft(find.textContaining('周四更新').first).dy;
+    final latestDy = tester.getTopLeft(find.textContaining('最近更新').first).dy;
+    expect(cadenceDy, lessThan(latestDy));
+    expect(find.byTooltip('+1'), findsOneWidget);
+    expect(find.textContaining('长按卡片 +1 并更新追番时间'), findsNothing);
+    expect(find.textContaining('未看 1 集'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

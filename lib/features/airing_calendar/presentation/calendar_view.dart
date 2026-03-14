@@ -457,6 +457,14 @@ class _BoundBangumiCard extends StatelessWidget {
     final missingCount = max(0, updated - watchedEpisodes);
     final progressLabel =
         '已追 $watchedEpisodes / 已更 $updated / 共 ${total > 0 ? total : '-'}';
+    final cadenceLabel =
+        _formatWeeklyUpdateLabel(summary.nextAiredAt, item.airWeekday);
+    final watchStatusLabel = cadenceLabel.isEmpty ? '看到' : '$cadenceLabel ·';
+    final watchStatusValue = watchedEpisodes > 0
+        ? (cadenceLabel.isEmpty
+            ? 'EP$watchedEpisodes'
+            : '看到 EP$watchedEpisodes')
+        : (cadenceLabel.isEmpty ? '-' : '看到 -');
 
     return Material(
       color: moduleTheme.containerColor,
@@ -468,29 +476,31 @@ class _BoundBangumiCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _CoverImage(
-                      url: item.imageUrl,
-                      width: layout.boundCoverWidth,
-                      height: layout.boundCoverHeight,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _CoverImage(
+                          url: item.imageUrl,
+                          width: layout.boundCoverWidth,
+                          height: layout.boundCoverHeight,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
+                              Padding(
+                                padding: EdgeInsets.only(
+                                  right: missingCount > 0 ? 28 : 0,
+                                ),
                                 child: Text(
                                   title,
                                   maxLines: 2,
@@ -502,85 +512,87 @@ class _BoundBangumiCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              if (missingCount > 0) ...[
-                                const SizedBox(width: 8),
-                                _InfoChip(
-                                  label: '未看 $missingCount 集',
-                                  backgroundColor: moduleTheme.badgeColor,
-                                  textColor: moduleTheme.badgeTextColor,
-                                ),
-                              ],
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (showRatings && yougnScore != null) ...[
+                                    _InfoChip(
+                                      label:
+                                          '悠gn ${yougnScore!.toStringAsFixed(1)}',
+                                      backgroundColor:
+                                          moduleTheme.progressRemainingColor,
+                                      textColor: moduleTheme.primaryTextColor,
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  _BoundQuickActionButton(
+                                    onPressed: onLongPress,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              _LabeledValueRow(
+                                label: watchStatusLabel,
+                                value: watchStatusValue,
+                                highlightLabel: cadenceLabel.isNotEmpty,
+                              ),
+                              const SizedBox(height: 4),
+                              _LabeledValueRow(
+                                label: '最近更新',
+                                value: _formatLatestEpisodeUpdate(summary),
+                                highlightLabel: true,
+                              ),
+                              const SizedBox(height: 4),
+                              _LabeledValueRow(
+                                label: '下次更新',
+                                value: _formatNextEpisodeUpdate(summary),
+                              ),
+                              const SizedBox(height: 4),
+                              _LabeledValueRow(
+                                label: '最近观看',
+                                value: _formatWatchMoment(lastWatchedAt),
+                              ),
                             ],
                           ),
-                          if (showRatings && yougnScore != null) ...[
-                            const SizedBox(height: 6),
-                            _InfoChip(
-                              label: '悠gn ${yougnScore!.toStringAsFixed(1)}',
-                              backgroundColor:
-                                  moduleTheme.progressRemainingColor,
-                              textColor: moduleTheme.primaryTextColor,
-                            ),
-                          ],
-                          const SizedBox(height: 8),
-                          _LabeledValueRow(
-                            label: '最近更新',
-                            value: _formatLatestEpisodeUpdate(summary),
-                            highlightLabel: true,
-                          ),
-                          const SizedBox(height: 4),
-                          _LabeledValueRow(
-                            label: '下次更新',
-                            value: _formatNextEpisodeUpdate(summary),
-                          ),
-                          const SizedBox(height: 4),
-                          _LabeledValueRow(
-                            label: '看到',
-                            value: watchedEpisodes > 0
-                                ? 'EP$watchedEpisodes'
-                                : '-',
-                          ),
-                          const SizedBox(height: 4),
-                          _LabeledValueRow(
-                            label: '最近观看',
-                            value: _formatWatchMoment(lastWatchedAt),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '长按卡片 +1 并更新追番时间',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: moduleTheme.secondaryTextColor,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                  const SizedBox(height: 10),
+                  ProgressSegmentsBar(
+                    watched: watchedEpisodes,
+                    updated: updated,
+                    total: total,
+                    watchedColor: moduleTheme.progressWatchedColor,
+                    updatedColor: moduleTheme.progressUpdatedColor,
+                    remainingColor: moduleTheme.progressRemainingColor,
+                    height: 10,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    progressLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: moduleTheme.secondaryTextColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (missingCount > 0)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: _CompactUnreadBadge(
+                  count: missingCount,
+                  backgroundColor: moduleTheme.badgeColor,
+                  textColor: moduleTheme.badgeTextColor,
                 ),
               ),
-              const SizedBox(height: 12),
-              ProgressSegmentsBar(
-                watched: watchedEpisodes,
-                updated: updated,
-                total: total,
-                watchedColor: moduleTheme.progressWatchedColor,
-                updatedColor: moduleTheme.progressUpdatedColor,
-                remainingColor: moduleTheme.progressRemainingColor,
-                height: 10,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                progressLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: moduleTheme.secondaryTextColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -891,6 +903,88 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
+class _BoundQuickActionButton extends StatelessWidget {
+  const _BoundQuickActionButton({
+    required this.onPressed,
+  });
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final moduleTheme = theme.extension<ContentModuleThemeExtension>() ??
+        ContentModuleThemeExtension.fromScheme(theme.colorScheme);
+    final radius = BorderRadius.circular(999);
+
+    return Tooltip(
+      message: '+1',
+      child: Material(
+        color: moduleTheme.progressRemainingColor,
+        borderRadius: radius,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: radius,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              border: Border.all(color: moduleTheme.borderColor),
+              borderRadius: radius,
+            ),
+            child: Text(
+              '+1',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: moduleTheme.progressWatchedColor,
+                fontWeight: FontWeight.w800,
+                height: 1,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactUnreadBadge extends StatelessWidget {
+  const _CompactUnreadBadge({
+    required this.count,
+    required this.backgroundColor,
+    required this.textColor,
+  });
+
+  final int count;
+  final Color backgroundColor;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : '$count';
+    final circular = label.length == 1;
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+      padding: EdgeInsets.symmetric(horizontal: circular ? 0 : 6),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        shape: circular ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: circular ? null : BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: textColor,
+              fontWeight: FontWeight.w800,
+              height: 1,
+            ),
+      ),
+    );
+  }
+}
+
 class _LabeledValueRow extends StatelessWidget {
   const _LabeledValueRow({
     required this.label,
@@ -968,7 +1062,7 @@ class _CalendarModuleLayout {
         isMedium: false,
         isNarrow: false,
         boundCardWidth: 352,
-        boundCardHeight: 252,
+        boundCardHeight: 228,
         boundCoverWidth: 84,
         boundCoverHeight: 112,
         dayCoverWidth: 80,
@@ -981,7 +1075,7 @@ class _CalendarModuleLayout {
         isMedium: true,
         isNarrow: false,
         boundCardWidth: 320,
-        boundCardHeight: 248,
+        boundCardHeight: 228,
         boundCoverWidth: 78,
         boundCoverHeight: 108,
         dayCoverWidth: 74,
@@ -993,7 +1087,7 @@ class _CalendarModuleLayout {
       isMedium: false,
       isNarrow: true,
       boundCardWidth: 292,
-      boundCardHeight: 256,
+      boundCardHeight: 236,
       boundCoverWidth: 72,
       boundCoverHeight: 98,
       dayCoverWidth: 68,
@@ -1027,6 +1121,21 @@ String _formatNextEpisodeUpdate(EpisodeReleaseSummary summary) {
     return '已更新至 EP$latest';
   }
   return '待定';
+}
+
+String _formatWeeklyUpdateLabel(DateTime? nextAiredAt, int fallbackWeekday) {
+  final weekday = nextAiredAt?.weekday ?? fallbackWeekday;
+  const weekdayLabels = <int, String>{
+    DateTime.monday: '周一',
+    DateTime.tuesday: '周二',
+    DateTime.wednesday: '周三',
+    DateTime.thursday: '周四',
+    DateTime.friday: '周五',
+    DateTime.saturday: '周六',
+    DateTime.sunday: '周日',
+  };
+  final label = weekdayLabels[weekday];
+  return label == null ? '' : '${label}更新';
 }
 
 String _formatWatchMoment(DateTime? value) {
