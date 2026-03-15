@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../app/app_services.dart';
 import '../../../app/app_settings.dart';
 import '../../../core/widgets/navigation_shell.dart';
+import '../../../core/widgets/undo_snack_bar.dart';
 import '../../../models/bangumi_models.dart';
 import '../../detail/presentation/detail_page.dart';
 import '../providers/calendar_view_model.dart';
@@ -196,14 +197,11 @@ class _CalendarPageBody extends StatelessWidget {
         );
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('已追集数 +1'),
-          action: SnackBarAction(
-            label: '撤销',
-            onPressed: () => unawaited(model.revertWatchedEpisodes(result)),
-          ),
-        ),
+      showUndoSnackBar(
+        context,
+        message: '已追集数 +1',
+        actionLabel: '撤销',
+        onUndo: () => unawaited(model.revertWatchedEpisodes(result)),
       );
     } catch (_) {
       if (!context.mounted) return;

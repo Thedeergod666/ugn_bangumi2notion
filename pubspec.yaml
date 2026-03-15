@@ -53,6 +53,7 @@ dev_dependencies:
   # 您包根目录下的 `analysis_options.yaml` 文件中
   # 查看该文件可了解如何禁用特定规则或激活额外规则
   flutter_lints: ^2.0.0
+  url_launcher_platform_interface: ^2.3.2
 
 # 有关此文件中通用 Dart 配置的信息，请参考：
 # https://dart.dev/tools/pub/pubspec

@@ -21,6 +21,8 @@ class SettingsKeys {
   static const notionProperties = 'notionProperties';
   static const dailyRecommendationDate = 'dailyRecommendationDate';
   static const dailyRecommendationPayload = 'dailyRecommendationPayload';
+  static const dailyRecommendationScopedCachePayload =
+      'dailyRecommendationScopedCachePayload';
   static const calendarViewMode = 'calendarViewMode';
   static const searchViewMode = 'searchViewMode';
   static const recentViewMode = 'recentViewMode';
@@ -226,6 +228,53 @@ class SettingsStorage {
     final prefs = await _prefs;
     await prefs.remove(SettingsKeys.dailyRecommendationDate);
     await prefs.remove(SettingsKeys.dailyRecommendationPayload);
+  }
+
+  Future<void> saveDailyRecommendationScopedCache({
+    required String scope,
+    required int version,
+    required String date,
+    required String payload,
+  }) {
+    return _saveScopedPayload(
+      key: SettingsKeys.dailyRecommendationScopedCachePayload,
+      scope: scope,
+      version: version,
+      data: {
+        'date': date,
+        'payload': payload,
+      },
+    );
+  }
+
+  Future<Map<String, String>?> getDailyRecommendationScopedCache({
+    required String scope,
+    int minVersion = 1,
+  }) async {
+    final data = await _getScopedPayload(
+      key: SettingsKeys.dailyRecommendationScopedCachePayload,
+      scope: scope,
+      minVersion: minVersion,
+    );
+    if (data == null) {
+      return null;
+    }
+
+    final date = data['date']?.toString() ?? '';
+    final payload = data['payload']?.toString() ?? '';
+    if (date.isEmpty || payload.isEmpty) {
+      return null;
+    }
+
+    return {
+      'date': date,
+      'payload': payload,
+    };
+  }
+
+  Future<void> clearDailyRecommendationScopedCache() async {
+    final prefs = await _prefs;
+    await prefs.remove(SettingsKeys.dailyRecommendationScopedCachePayload);
   }
 
   Future<void> saveCalendarPageCache({

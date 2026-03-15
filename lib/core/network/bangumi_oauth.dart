@@ -172,7 +172,7 @@ class _LocalOAuthServer {
 
   final String _expectedState;
   HttpServer? _server;
-  Completer<String>? _codeCompleter;
+  final Completer<String> _codeCompleter = Completer<String>();
 
   Future<void> start() async {
     _server = await HttpServer.bind(
@@ -214,8 +214,8 @@ class _LocalOAuthServer {
       return;
     }
 
-    if (_codeCompleter != null && !_codeCompleter!.isCompleted) {
-      _codeCompleter!.complete(code);
+    if (!_codeCompleter.isCompleted) {
+      _codeCompleter.complete(code);
     }
 
     await _writeHtmlResponse(
@@ -239,9 +239,8 @@ class _LocalOAuthServer {
 
   Future<String> waitForCode(
       {Duration timeout = const Duration(minutes: 5)}) async {
-    _codeCompleter = Completer<String>();
     try {
-      return await _codeCompleter!.future.timeout(
+      return await _codeCompleter.future.timeout(
         timeout,
         onTimeout: () {
           throw TimeoutException('授权超时，请重试。', timeout);

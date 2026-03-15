@@ -18,7 +18,6 @@ class ThemeSeed {
 
 class KazumiTheme {
   static const double _radius = 18;
-  static const double _cardRadius = 20;
 
   static const List<ThemeSeed> seeds = [
     ThemeSeed(id: 'default', label: '默认', color: Color(0xFF5ABF9B)),

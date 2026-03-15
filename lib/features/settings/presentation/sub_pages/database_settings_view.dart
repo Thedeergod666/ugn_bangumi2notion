@@ -125,24 +125,6 @@ class DatabaseSettingsView extends StatelessWidget {
             ),
             onChanged: callbacks.onDatabaseIdChanged,
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: notionMovieDatabaseIdController,
-            decoration: const InputDecoration(
-              labelText: '电影 Database ID (可选)',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: callbacks.onMovieDatabaseIdChanged,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: notionGameDatabaseIdController,
-            decoration: const InputDecoration(
-              labelText: '游戏 Database ID (可选)',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: callbacks.onGameDatabaseIdChanged,
-          ),
           const SizedBox(height: 16),
           Row(
             children: [

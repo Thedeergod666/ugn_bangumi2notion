@@ -102,8 +102,8 @@ class SettingsView extends StatelessWidget {
             ),
             _buildNavTile(
               icon: Icons.cloud_upload_outlined,
-              title: '批量导入/更新',
-              subtitle: '批量绑定 Bangumi ID',
+              title: '批量绑定',
+              subtitle: '扫描最近 30 条未绑定 Notion 条目并匹配 Bangumi',
               onTap: callbacks.onOpenBatchImport,
             ),
             _buildNavTile(

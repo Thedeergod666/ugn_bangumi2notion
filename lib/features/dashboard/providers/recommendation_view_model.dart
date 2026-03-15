@@ -149,7 +149,7 @@ class RecommendationViewModel extends ChangeNotifier {
     var hasRecentCache = false;
 
     if (!forceRefresh) {
-      final cachedDaily = await _loadDailyCache();
+      final cachedDaily = await _loadDailyCache(cacheScope);
       final cachedStats = await _loadStatsCache(cacheScope);
       final cachedRecent = await _loadRecentCache(cacheScope);
 
@@ -260,6 +260,7 @@ class RecommendationViewModel extends ChangeNotifier {
         candidates: candidates,
         indices: indices,
         currentIndex: 0,
+        scope: cacheScope,
       );
 
       _dailyCandidates = candidates;
@@ -327,6 +328,7 @@ class RecommendationViewModel extends ChangeNotifier {
       candidates: _dailyCandidates,
       indices: _heroIndices,
       currentIndex: _currentHeroIndex,
+      scope: _cacheScope(),
     );
   }
 
@@ -348,6 +350,7 @@ class RecommendationViewModel extends ChangeNotifier {
       candidates: _dailyCandidates,
       indices: _heroIndices,
       currentIndex: _currentHeroIndex,
+      scope: _cacheScope(),
     );
     // rotation disabled
   }
@@ -938,9 +941,16 @@ class RecommendationViewModel extends ChangeNotifier {
     return '${trimmed.substring(0, logTextLimit)}...';
   }
 
-  Future<_RecommendationCacheData?> _loadDailyCache() async {
-    final cachedDate = await _settingsStorage.getDailyRecommendationCacheDate();
-    final payload = await _settingsStorage.getDailyRecommendationCachePayload();
+  Future<_RecommendationCacheData?> _loadDailyCache(String scope) async {
+    final cached = await _settingsStorage.getDailyRecommendationScopedCache(
+      scope: scope,
+      minVersion: dailyCacheVersion,
+    );
+    if (cached == null) {
+      return null;
+    }
+    final cachedDate = cached['date'];
+    final payload = cached['payload'];
     if (payload == null || payload.isEmpty) {
       return null;
     }
@@ -1015,6 +1025,7 @@ class RecommendationViewModel extends ChangeNotifier {
     required List<DailyRecommendation> candidates,
     required List<int> indices,
     required int currentIndex,
+    required String scope,
   }) async {
     final payload = jsonEncode({
       'version': dailyCacheVersion,
@@ -1022,7 +1033,9 @@ class RecommendationViewModel extends ChangeNotifier {
       'indices': indices,
       'candidates': candidates.map((item) => item.toJson()).toList(),
     });
-    await _settingsStorage.saveDailyRecommendationCache(
+    await _settingsStorage.saveDailyRecommendationScopedCache(
+      scope: scope,
+      version: dailyCacheVersion,
       date: _buildTodayKey(),
       payload: payload,
     );
