@@ -100,6 +100,7 @@ void main() {
       ),
       findsNothing,
     );
+    expect(find.textContaining('30'), findsOneWidget);
   });
 
   testWidgets('uses two-pane layout on wide width', (tester) async {

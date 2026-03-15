@@ -36,7 +36,7 @@ class BatchImportCandidate {
 
 class BatchImportViewModel extends ChangeNotifier {
   static const int _candidatesCacheVersion = 1;
-  static List<BatchImportCandidate> _candidateCache = [];
+  static final Map<String, List<BatchImportCandidate>> _candidateCache = {};
   static final Map<int, BangumiSubjectDetail> _subjectDetailCache = {};
 
   BatchImportViewModel({
@@ -69,8 +69,9 @@ class BatchImportViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _syncCacheFromState() {
-    _candidateCache = List<BatchImportCandidate>.from(_candidates);
+  void _syncCacheFromState([String? scope]) {
+    _candidateCache[scope ?? _cacheScope()] =
+        List<BatchImportCandidate>.from(_candidates);
   }
 
   bool _isMangaType(String? notionType) {
@@ -184,7 +185,7 @@ class BatchImportViewModel extends ChangeNotifier {
 
       if (_disposed) return;
       _candidates = results;
-      _syncCacheFromState();
+      _syncCacheFromState(cacheScope);
       await _saveToCache(cacheScope);
     } catch (e) {
       if (_disposed) return;
@@ -200,8 +201,9 @@ class BatchImportViewModel extends ChangeNotifier {
   String _cacheScope() => _settings.notionDatabaseId.trim();
 
   Future<bool> _restoreFromCache(String scope) async {
-    if (_candidateCache.isNotEmpty) {
-      _candidates = List<BatchImportCandidate>.from(_candidateCache);
+    final memoryCache = _candidateCache[scope];
+    if (memoryCache != null && memoryCache.isNotEmpty) {
+      _candidates = List<BatchImportCandidate>.from(memoryCache);
       return true;
     }
     final payload = await _settingsStorage.getBatchImportCandidatesCache(
@@ -225,11 +227,12 @@ class BatchImportViewModel extends ChangeNotifier {
       restored.add(candidate);
     }
     _candidates = restored;
-    _syncCacheFromState();
+    _syncCacheFromState(scope);
     return true;
   }
 
   Future<void> _saveToCache(String scope) async {
+    _syncCacheFromState(scope);
     await _settingsStorage.saveBatchImportCandidatesCache(
       scope: scope,
       version: _candidatesCacheVersion,
@@ -348,7 +351,7 @@ class BatchImportViewModel extends ChangeNotifier {
         .map((item) =>
             item.notionItem.id == pageId ? item.copyWith(bound: true) : item)
         .toList();
-    _syncCacheFromState();
+    _syncCacheFromState(_cacheScope());
     unawaited(_saveToCache(_cacheScope()));
     _notifySafely();
   }

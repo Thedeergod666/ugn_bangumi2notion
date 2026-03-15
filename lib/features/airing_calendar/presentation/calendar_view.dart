@@ -449,6 +449,9 @@ class _BoundBangumiCard extends StatelessWidget {
     final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
     final summary = releaseSummary ?? EpisodeReleaseSummary.empty;
     final updated = summary.updatedEpisodes;
+    final bangumiScore = detail?.score;
+    final hasBangumiScore =
+        showRatings && bangumiScore != null && bangumiScore > 0;
     final total = _resolveTotalEpisodes(
       detail?.epsCount ?? item.epsCount,
       watchedEpisodes,
@@ -513,8 +516,9 @@ class _BoundBangumiCard extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
                                 children: [
                                   if (showRatings && yougnScore != null) ...[
                                     _InfoChip(
@@ -523,9 +527,18 @@ class _BoundBangumiCard extends StatelessWidget {
                                       backgroundColor:
                                           moduleTheme.progressRemainingColor,
                                       textColor: moduleTheme.primaryTextColor,
+                                      compact: true,
                                     ),
-                                    const SizedBox(width: 8),
                                   ],
+                                  if (hasBangumiScore)
+                                    _InfoChip(
+                                      label:
+                                          'BGM ${bangumiScore.toStringAsFixed(1)}',
+                                      backgroundColor:
+                                          moduleTheme.progressUpdatedColor,
+                                      textColor: moduleTheme.primaryTextColor,
+                                      compact: true,
+                                    ),
                                   _BoundQuickActionButton(
                                     onPressed: onLongPress,
                                   ),
@@ -876,16 +889,21 @@ class _InfoChip extends StatelessWidget {
     required this.label,
     required this.backgroundColor,
     required this.textColor,
+    this.compact = false,
   });
 
   final String label;
   final Color backgroundColor;
   final Color textColor;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 4 : 5,
+      ),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
@@ -1062,7 +1080,7 @@ class _CalendarModuleLayout {
         isMedium: false,
         isNarrow: false,
         boundCardWidth: 352,
-        boundCardHeight: 228,
+        boundCardHeight: 236,
         boundCoverWidth: 84,
         boundCoverHeight: 112,
         dayCoverWidth: 80,
@@ -1075,7 +1093,7 @@ class _CalendarModuleLayout {
         isMedium: true,
         isNarrow: false,
         boundCardWidth: 320,
-        boundCardHeight: 228,
+        boundCardHeight: 236,
         boundCoverWidth: 78,
         boundCoverHeight: 108,
         dayCoverWidth: 74,
@@ -1135,7 +1153,7 @@ String _formatWeeklyUpdateLabel(DateTime? nextAiredAt, int fallbackWeekday) {
     DateTime.sunday: '周日',
   };
   final label = weekdayLabels[weekday];
-  return label == null ? '' : '${label}更新';
+  return label == null ? '' : '$label更新';
 }
 
 String _formatWatchMoment(DateTime? value) {

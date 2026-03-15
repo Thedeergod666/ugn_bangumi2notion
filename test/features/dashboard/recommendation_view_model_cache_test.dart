@@ -85,7 +85,9 @@ Future<void> _seedAllCaches(
   required String scope,
 }) async {
   final recommendation = _buildRecommendation();
-  await storage.saveDailyRecommendationCache(
+  await storage.saveDailyRecommendationScopedCache(
+    scope: scope,
+    version: RecommendationViewModel.dailyCacheVersion,
     date: '2026-02-01',
     payload: jsonEncode({
       'version': RecommendationViewModel.dailyCacheVersion,
@@ -174,6 +176,26 @@ void main() {
       expect(viewModel.errorMessage, isNull);
       expect(viewModel.scoreTotal, 1);
       expect(viewModel.recentWatching.length, 1);
+    });
+
+    test('does not restore daily cache from another database scope', () async {
+      final storage = SettingsStorage();
+      await _seedAllCaches(storage, scope: 'db-1');
+
+      final client = MockClient(
+        (_) async => http.Response('{"message":"failed"}', 500),
+      );
+      final viewModel = RecommendationViewModel(
+        notionApi: NotionApi(client: client),
+        bangumiApi: BangumiApi(client: client),
+        settingsStorage: storage,
+      );
+
+      await viewModel.load(
+        _StaticSettings(databaseId: 'db-2'),
+      );
+
+      expect(viewModel.dailyCandidates, isEmpty);
     });
   });
 }
