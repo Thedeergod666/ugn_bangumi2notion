@@ -184,7 +184,7 @@ class MyApp extends StatelessWidget {
           oledOptimization: settings.oledOptimization,
         );
         return MaterialApp(
-          title: '鎮爂n助手',
+          title: '悠gn追番助手',
           theme: KazumiTheme.light(
             scheme: lightScheme,
             useSystemFont: settings.useSystemFont,

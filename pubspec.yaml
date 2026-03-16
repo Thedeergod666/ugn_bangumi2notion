@@ -1,5 +1,5 @@
 name: flutter_utools
-description: 一个新的 Flutter 项目。
+description: 悠gn追番助手，一个围绕 Bangumi 与 Notion 构建的 Flutter 追番工具。
 
 # 以下行防止通过 `flutter pub publish` 意外发布到 pub.dev，私有包建议保留此设置
 publish_to: 'none' # 如需发布到 pub.dev，请移除此行
