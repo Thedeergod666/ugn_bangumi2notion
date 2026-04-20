@@ -93,10 +93,12 @@ void main() {
   RecommendationViewCallbacks callbacks() {
     return RecommendationViewCallbacks(
       onOpenNotionDetail: () {},
+      onCopyRecommendationTitle: (_) {},
       onToggleLongReview: () {},
       onNotionSearch: (_) {},
       onRecentViewModeChanged: (_) {},
       onOpenRecentEntry: (_) {},
+      onCopyRecentTitle: (_) {},
       onIncrementRecentWatch: (_) {},
     );
   }
@@ -151,5 +153,80 @@ void main() {
     expect(find.text('搜索'), findsOneWidget);
     expect(find.text('排名分布'), findsOneWidget);
     expect(find.text('长评'), findsOneWidget);
+  });
+
+  testWidgets('recent card long press copies title while +1 stays unchanged',
+      (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() async => tester.binding.setSurfaceSize(null));
+
+    String? copiedTitle;
+    NotionWatchEntry? incrementedEntry;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: RecommendationView(
+            state: buildState(controller: controller),
+            callbacks: RecommendationViewCallbacks(
+              onOpenNotionDetail: () {},
+              onCopyRecommendationTitle: (_) {},
+              onToggleLongReview: () {},
+              onNotionSearch: (_) {},
+              onRecentViewModeChanged: (_) {},
+              onOpenRecentEntry: (_) {},
+              onCopyRecentTitle: (title) => copiedTitle = title,
+              onIncrementRecentWatch: (entry) => incrementedEntry = entry,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.longPress(find.text('在看作品'));
+    await tester.pump();
+    expect(copiedTitle, '在看作品');
+    expect(incrementedEntry, isNull);
+
+    await tester.tap(find.byTooltip('+1'));
+    await tester.pump();
+    expect(incrementedEntry?.title, '在看作品');
+  });
+  testWidgets('hero card long press copies recommendation title',
+      (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() async => tester.binding.setSurfaceSize(null));
+
+    String? copiedTitle;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: RecommendationView(
+            state: buildState(controller: controller),
+            callbacks: RecommendationViewCallbacks(
+              onOpenNotionDetail: () {},
+              onCopyRecommendationTitle: (title) => copiedTitle = title,
+              onToggleLongReview: () {},
+              onNotionSearch: (_) {},
+              onRecentViewModeChanged: (_) {},
+              onOpenRecentEntry: (_) {},
+              onCopyRecentTitle: (_) {},
+              onIncrementRecentWatch: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.longPress(find.text('demo'));
+    await tester.pump();
+    expect(copiedTitle, 'demo');
   });
 }

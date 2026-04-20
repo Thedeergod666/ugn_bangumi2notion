@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_services.dart';
 import '../../../app/app_settings.dart';
+import '../../../core/utils/copy_text_feedback.dart';
 import '../../../core/widgets/error_detail_dialog.dart';
 import '../../../core/widgets/navigation_shell.dart';
 import '../../../models/notion_models.dart';
@@ -165,6 +166,10 @@ class _RecommendationPageState extends State<RecommendationPage> {
         const SnackBar(content: Text('更新失败，请稍后重试')),
       );
     }
+  }
+
+  Future<void> _handleCopyTitle(BuildContext context, String title) {
+    return copyTextWithFeedback(context, title);
   }
 
   @override
@@ -338,11 +343,15 @@ class _RecommendationPageState extends State<RecommendationPage> {
         tags: recommendation.tags,
         bangumiScore: bangumiScore,
       ),
+      onCopyRecommendationTitle: (title) =>
+          unawaited(_handleCopyTitle(context, title)),
       onToggleLongReview: model.toggleLongReview,
       onNotionSearch: _triggerNotionSearch,
       onRecentViewModeChanged: settings.setRecentViewMode,
       onOpenRecentEntry: (entry) =>
           _openNotionDetailFromWatchEntry(context, entry),
+      onCopyRecentTitle: (title) =>
+          unawaited(_handleCopyTitle(context, title)),
       onIncrementRecentWatch: (entry) =>
           unawaited(_handleRecentIncrement(context, model, entry)),
     );

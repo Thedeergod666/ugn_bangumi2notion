@@ -78,18 +78,22 @@ class RecommendationViewState {
 class RecommendationViewCallbacks {
   const RecommendationViewCallbacks({
     required this.onOpenNotionDetail,
+    required this.onCopyRecommendationTitle,
     required this.onToggleLongReview,
     required this.onNotionSearch,
     required this.onRecentViewModeChanged,
     required this.onOpenRecentEntry,
+    required this.onCopyRecentTitle,
     required this.onIncrementRecentWatch,
   });
 
   final VoidCallback onOpenNotionDetail;
+  final ValueChanged<String> onCopyRecommendationTitle;
   final VoidCallback onToggleLongReview;
   final ValueChanged<String> onNotionSearch;
   final ValueChanged<String> onRecentViewModeChanged;
   final ValueChanged<NotionWatchEntry> onOpenRecentEntry;
+  final ValueChanged<String> onCopyRecentTitle;
   final ValueChanged<NotionWatchEntry> onIncrementRecentWatch;
 }
 
@@ -262,6 +266,8 @@ class RecommendationView extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: callbacks.onOpenNotionDetail,
+        onLongPress: () =>
+            callbacks.onCopyRecommendationTitle(state.recommendation.title),
         child: content,
       ),
     );
@@ -870,6 +876,7 @@ class RecommendationView extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => callbacks.onOpenRecentEntry(entry),
+        onLongPress: () => callbacks.onCopyRecentTitle(entry.title),
         child: Padding(
           padding: layout.padding,
           child: isList

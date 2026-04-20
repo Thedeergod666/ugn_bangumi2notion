@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_services.dart';
 import '../../../app/app_settings.dart';
+import '../../../core/utils/copy_text_feedback.dart';
 import '../../../core/widgets/navigation_shell.dart';
 import '../../../core/widgets/undo_snack_bar.dart';
 import '../../../models/bangumi_models.dart';
@@ -135,7 +136,11 @@ class _CalendarPageBody extends StatelessWidget {
           ),
         );
       },
-      onLongPressBoundSubject: (subjectId) =>
+      onCopyBoundSubjectTitle: (title) =>
+          unawaited(_handleCopyTitle(context, title)),
+      onCopyDaySubjectTitle: (title) =>
+          unawaited(_handleCopyTitle(context, title)),
+      onIncrementBoundSubject: (subjectId) =>
           unawaited(_handleIncrement(context, model, subjectId)),
     );
 
@@ -209,5 +214,9 @@ class _CalendarPageBody extends StatelessWidget {
         const SnackBar(content: Text('更新失败，请稍后重试')),
       );
     }
+  }
+
+  Future<void> _handleCopyTitle(BuildContext context, String title) {
+    return copyTextWithFeedback(context, title);
   }
 }

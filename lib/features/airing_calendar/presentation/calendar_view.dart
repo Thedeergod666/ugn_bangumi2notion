@@ -51,13 +51,17 @@ class CalendarViewCallbacks {
     required this.onWeekdaySelected,
     required this.onCalendarViewModeChanged,
     required this.onTapSubject,
-    required this.onLongPressBoundSubject,
+    required this.onCopyBoundSubjectTitle,
+    required this.onCopyDaySubjectTitle,
+    required this.onIncrementBoundSubject,
   });
 
   final ValueChanged<int> onWeekdaySelected;
   final ValueChanged<String> onCalendarViewModeChanged;
   final ValueChanged<int> onTapSubject;
-  final ValueChanged<int> onLongPressBoundSubject;
+  final ValueChanged<String> onCopyBoundSubjectTitle;
+  final ValueChanged<String> onCopyDaySubjectTitle;
+  final ValueChanged<int> onIncrementBoundSubject;
 }
 
 class CalendarView extends StatelessWidget {
@@ -219,6 +223,7 @@ class CalendarView extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final item = state.boundItems[index];
+                final title = item.nameCn.isNotEmpty ? item.nameCn : item.name;
                 return SizedBox(
                   width: layout.boundCardWidth,
                   child: _BoundBangumiCard(
@@ -232,7 +237,9 @@ class CalendarView extends StatelessWidget {
                     layout: layout,
                     onTap: () => callbacks.onTapSubject(item.id),
                     onLongPress: () =>
-                        callbacks.onLongPressBoundSubject(item.id),
+                        callbacks.onCopyBoundSubjectTitle(title),
+                    onIncrement: () =>
+                        callbacks.onIncrementBoundSubject(item.id),
                   ),
                 );
               },
@@ -303,6 +310,9 @@ class CalendarView extends StatelessWidget {
                     showRatings: state.showRatings,
                     layout: layout,
                     onTap: () => callbacks.onTapSubject(item.id),
+                    onLongPress: () => callbacks.onCopyDaySubjectTitle(
+                      item.nameCn.isNotEmpty ? item.nameCn : item.name,
+                    ),
                   ),
                 ),
             ],
@@ -333,6 +343,9 @@ class CalendarView extends StatelessWidget {
               showRatings: state.showRatings,
               layout: layout,
               onTap: () => callbacks.onTapSubject(item.id),
+              onLongPress: () => callbacks.onCopyDaySubjectTitle(
+                item.nameCn.isNotEmpty ? item.nameCn : item.name,
+              ),
             );
           },
         );
@@ -428,6 +441,7 @@ class _BoundBangumiCard extends StatelessWidget {
     required this.layout,
     required this.onTap,
     required this.onLongPress,
+    required this.onIncrement,
   });
 
   final BangumiCalendarItem item;
@@ -440,6 +454,7 @@ class _BoundBangumiCard extends StatelessWidget {
   final _CalendarModuleLayout layout;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final VoidCallback onIncrement;
 
   @override
   Widget build(BuildContext context) {
@@ -540,7 +555,7 @@ class _BoundBangumiCard extends StatelessWidget {
                                       compact: true,
                                     ),
                                   _BoundQuickActionButton(
-                                    onPressed: onLongPress,
+                                    onPressed: onIncrement,
                                   ),
                                 ],
                               ),
@@ -625,6 +640,7 @@ class _CalendarItemCard extends StatelessWidget {
     required this.showRatings,
     required this.layout,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final BangumiCalendarItem item;
@@ -638,6 +654,7 @@ class _CalendarItemCard extends StatelessWidget {
   final bool showRatings;
   final _CalendarModuleLayout layout;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -684,6 +701,7 @@ class _CalendarItemCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: EdgeInsets.all(compact ? 12 : 14),
           child: Stack(

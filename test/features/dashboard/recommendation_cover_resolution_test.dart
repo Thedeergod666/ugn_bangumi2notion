@@ -10,10 +10,12 @@ void main() {
   RecommendationViewCallbacks buildCallbacks() {
     return RecommendationViewCallbacks(
       onOpenNotionDetail: () {},
+      onCopyRecommendationTitle: (_) {},
       onToggleLongReview: () {},
       onNotionSearch: (_) {},
       onRecentViewModeChanged: (_) {},
       onOpenRecentEntry: (_) {},
+      onCopyRecentTitle: (_) {},
       onIncrementRecentWatch: (_) {},
     );
   }

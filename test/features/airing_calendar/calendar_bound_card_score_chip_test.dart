@@ -84,7 +84,9 @@ CalendarViewCallbacks _callbacks() {
     onWeekdaySelected: (_) {},
     onCalendarViewModeChanged: (_) {},
     onTapSubject: (_) {},
-    onLongPressBoundSubject: (_) {},
+    onCopyBoundSubjectTitle: (_) {},
+    onCopyDaySubjectTitle: (_) {},
+    onIncrementBoundSubject: (_) {},
   );
 }
 

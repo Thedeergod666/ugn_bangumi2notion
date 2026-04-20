@@ -144,8 +144,39 @@ CalendarViewCallbacks _callbacks() {
     onWeekdaySelected: (_) {},
     onCalendarViewModeChanged: (_) {},
     onTapSubject: (_) {},
-    onLongPressBoundSubject: (_) {},
+    onCopyBoundSubjectTitle: (_) {},
+    onCopyDaySubjectTitle: (_) {},
+    onIncrementBoundSubject: (_) {},
   );
+  testWidgets('day schedule card long press copies title', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() async => tester.binding.setSurfaceSize(null));
+
+    String? copiedTitle;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CalendarView(
+            state: _buildState(mode: 'list'),
+            callbacks: CalendarViewCallbacks(
+              onWeekdaySelected: (_) {},
+              onCalendarViewModeChanged: (_) {},
+              onTapSubject: (_) {},
+              onCopyBoundSubjectTitle: (_) {},
+              onCopyDaySubjectTitle: (title) => copiedTitle = title,
+              onIncrementBoundSubject: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.longPress(find.text('绀轰緥鏉＄洰 1').last);
+    await tester.pump();
+    expect(copiedTitle, '绀轰緥鏉＄洰 1');
+  });
 }
 
 void main() {
@@ -273,5 +304,46 @@ void main() {
 
     expect(find.textContaining('判处勇者刑'), findsWidgets);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bound card long press copies title while +1 stays separate',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() async => tester.binding.setSurfaceSize(null));
+
+    String? copiedTitle;
+    int? incrementedId;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CalendarView(
+            state: _buildState(
+              mode: 'list',
+              withItems: false,
+              boundItems: [_buildItem(1)],
+            ),
+            callbacks: CalendarViewCallbacks(
+              onWeekdaySelected: (_) {},
+              onCalendarViewModeChanged: (_) {},
+              onTapSubject: (_) {},
+              onCopyBoundSubjectTitle: (title) => copiedTitle = title,
+              onCopyDaySubjectTitle: (_) {},
+              onIncrementBoundSubject: (subjectId) => incrementedId = subjectId,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.longPress(find.text('示例条目 1'));
+    await tester.pump();
+    expect(copiedTitle, '示例条目 1');
+    expect(incrementedId, isNull);
+
+    await tester.tap(find.byTooltip('+1'));
+    await tester.pump();
+    expect(incrementedId, 1);
   });
 }
